@@ -10,9 +10,9 @@ export const dynamic = 'force-dynamic';
 export default async function AccountsPage({ searchParams }: { searchParams: Promise<{ instagram?: string }> }) {
   const { instagram: outcome } = await searchParams;
   const session = await auth();
-  if (!(session?.user as { id?: string } | undefined)?.id) redirect('/login');
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) redirect('/login');
 
-  const userId = (session.user as { id: string }).id;
   const accounts = await prisma.instagramAccount.findMany({
     where: { userId },
     include: {

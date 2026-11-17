@@ -6,9 +6,9 @@ import { prisma } from '@/lib/db';
 
 export async function GET() {
   const session = await auth();
-  if (!(session?.user as { id?: string } | undefined)?.id) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  const userId = (session.user as { id: string }).id;
   const accounts = await prisma.instagramAccount.findMany({
     where: { userId },
     select: { id: true },

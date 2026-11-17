@@ -106,7 +106,7 @@
     "react-dom": "19.2.8",
     "react-hook-form": "7.91.0",
     "react-hot-toast": "2.4.1",
-    "react-intersection-observer": "9.8.0",
+    "react-intersection-observer": "10.0.0",
     "react-is": "19.2.8",
     "react-plotly.js": "2.6.0",
     "react-resizable-panels": "2.1.9",

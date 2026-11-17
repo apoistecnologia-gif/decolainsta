@@ -5,7 +5,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:smoke": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "preflight": "node scripts/preflight.mjs",
+    "db:seed": "prisma db seed"
   },
   "prisma": {
     "seed": "tsx --require dotenv/config scripts/safe-seed.ts"

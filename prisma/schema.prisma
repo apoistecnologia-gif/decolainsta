@@ -1,0 +1,204 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String
+  role          String    @default("user")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  instagramAccounts InstagramAccount[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model InstagramAccount {
+  id              String   @id @default(cuid())
+  userId          String
+  username        String
+  encryptedPassword String   @default("") // legacy; no new Instagram password collection
+  instagramUserId String?
+  encryptedAccessToken String? @db.Text
+  tokenExpiresAt DateTime?
+  lastSyncedAt DateTime?
+  profileFollowersCount Int?
+  profileMediaCount Int?
+  proxyUrl        String?
+  sessionData     String?  @db.Text
+  status          String   @default("inactive") // active, inactive, paused, cooldown, checkpoint, banned
+  cooldownUntil   DateTime?
+  lastActivity    DateTime?
+  dryMode         Boolean  @default(true)
+  followsToday    Int      @default(0)
+  unfollowsToday  Int      @default(0)
+  followsThisHour Int      @default(0)
+  totalFollows    Int      @default(0)
+  totalUnfollows  Int      @default(0)
+  totalFollowBacks Int     @default(0)
+  dayCounterResetAt DateTime?
+  hourCounterResetAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  settings        AccountSettings?
+  targetAccounts  TargetAccount[]
+  followActions   FollowAction[]
+  activityLogs    ActivityLog[]
+  alerts          Alert[]
+  whitelist       Whitelist[]
+
+  @@unique([userId, username])
+  @@unique([userId, instagramUserId])
+  @@index([userId])
+  @@index([status])
+}
+
+model AccountSettings {
+  id                    String @id @default(cuid())
+  instagramAccountId    String @unique
+  minDelaySeconds       Int    @default(25)
+  maxDelaySeconds       Int    @default(90)
+  longPauseMinMinutes   Int    @default(5)
+  longPauseMaxMinutes   Int    @default(15)
+  longPauseFrequency    Int    @default(10) // every N actions
+  maxFollowsPerDay      Int    @default(100)
+  maxFollowsPerHour     Int    @default(15)
+  maxUnfollowsPerDay    Int    @default(80)
+  unfollowAfterDays     Int    @default(3)
+  warmupEnabled         Boolean @default(true)
+  warmupDaysCompleted   Int    @default(0)
+  warmupMaxDays         Int    @default(14)
+  warmupStartFollows    Int    @default(20)
+  operationStartHour    Int    @default(8)
+  operationEndHour      Int    @default(22)
+  timezone              String @default("America/Sao_Paulo")
+  restDaysEnabled       Boolean @default(true)
+  skipPrivateProfiles   Boolean @default(true)
+  skipNoPhoto           Boolean @default(true)
+  neverUnfollowFollowers Boolean @default(true)
+  mixActions            Boolean @default(true)
+  mixActionChance       Int    @default(30) // percentage
+  instagramAccount      InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+}
+
+model TargetAccount {
+  id                  String   @id @default(cuid())
+  instagramAccountId  String
+  username            String
+  niche               String?  @default("geral")
+  enabled             Boolean  @default(true)
+  followersCollected  Int      @default(0)
+  lastCollectedAt     DateTime?
+  createdAt           DateTime @default(now())
+  instagramAccount    InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([instagramAccountId, username])
+  @@index([instagramAccountId])
+}
+
+model FollowAction {
+  id                  String   @id @default(cuid())
+  instagramAccountId  String
+  targetUsername      String
+  action              String   // follow, unfollow
+  followedBack        Boolean  @default(false)
+  followedAt          DateTime?
+  unfollowedAt        DateTime?
+  unfollowScheduledAt DateTime?
+  sourceTarget        String?  // which target account sourced this
+  isDryRun            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  instagramAccount    InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@index([instagramAccountId])
+  @@index([instagramAccountId, action])
+  @@index([instagramAccountId, targetUsername])
+  @@index([unfollowScheduledAt])
+}
+
+model ActivityLog {
+  id                  String   @id @default(cuid())
+  instagramAccountId  String
+  action              String   // follow, unfollow, like, view_profile, view_story, pause, resume, cooldown, error
+  details             String?  @db.Text
+  targetUsername      String?
+  success             Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  instagramAccount    InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@index([instagramAccountId])
+  @@index([createdAt])
+  @@index([instagramAccountId, createdAt])
+}
+
+model Alert {
+  id                  String   @id @default(cuid())
+  instagramAccountId  String
+  type                String   // rate_limit, action_blocked, challenge, checkpoint, error, info
+  message             String
+  read                Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  instagramAccount    InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@index([instagramAccountId])
+  @@index([read])
+}
+
+model Whitelist {
+  id                  String   @id @default(cuid())
+  instagramAccountId  String
+  username            String
+  createdAt           DateTime @default(now())
+  instagramAccount    InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([instagramAccountId, username])
+  @@index([instagramAccountId])
+}

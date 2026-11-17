@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
-  if (!(session?.user as { id?: string } | undefined)?.id) redirect('/login');
+  if (!session?.user || !(session.user as { id?: string }).id) redirect('/login');
 
   return (
     <AppShell

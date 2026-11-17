@@ -7,10 +7,10 @@ import { cleanUsername } from '@/lib/instagram/validation';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!(session?.user as { id?: string } | undefined)?.id) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
   const { id } = await params;
-  const userId = (session.user as { id: string }).id;
   const account = await prisma.instagramAccount.findFirst({ where: { id, userId } });
   if (!account) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 });
 
@@ -24,10 +24,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!(session?.user as { id?: string } | undefined)?.id) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
   const { id } = await params;
-  const userId = (session.user as { id: string }).id;
   const account = await prisma.instagramAccount.findFirst({ where: { id, userId } });
   if (!account) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 });
 

@@ -120,3 +120,13 @@ export function recordConfirmedVisibleSample(history, reference, usernames, hmac
   };
   return recordVisit(history, key, visit, newIds);
 }
+
+/** Delete all inspection visits and fingerprints for one reference. */
+export function forgetReferenceHistory(history, reference) {
+  verifyHistory(history);
+  const key = cleanReference(reference);
+  const next = structuredClone(history);
+  const deleted = Object.hasOwn(next.references, key);
+  delete next.references[key];
+  return { history: next, deleted };
+}

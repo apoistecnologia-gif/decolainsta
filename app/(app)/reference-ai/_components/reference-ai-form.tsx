@@ -126,10 +126,10 @@ export function ReferenceAIForm() {
       {result && (
         <Card>
           <CardHeader>
-            <CardTitle>Estratégias para o perfil de referência @{result.referenceUsername}</CardTitle>
+            <CardTitle>Estratégias de conteúdo com referência @{result.referenceUsername}</CardTitle>
             <CardDescription>
-              Hipóteses criadas somente a partir do texto fornecido.
-              Nenhuma lista de seguidores foi consultada.
+              Estas sugestões são para o seu objetivo. O GPT não verificou o perfil
+              @{result.referenceUsername}, seus conteúdos ou seus seguidores.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

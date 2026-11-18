@@ -12,6 +12,7 @@ import {
   Shield,
   Sparkles,
   ListChecks,
+  CalendarClock,
 } from 'lucide-react';
 
 const navItems = [
@@ -19,6 +20,7 @@ const navItems = [
   { href: '/accounts', label: 'Contas', icon: Instagram },
   { href: '/references', label: 'Contas de referência', icon: ListChecks },
   { href: '/reference-ai', label: 'IA · Referências', icon: Sparkles },
+  { href: '/scheduled-posts', label: 'Publicações agendadas', icon: CalendarClock },
   { href: '/activity', label: 'Atividade', icon: Activity },
   { href: '/alerts', label: 'Alertas', icon: Bell },
   { href: '/engine', label: 'Motor', icon: Zap },

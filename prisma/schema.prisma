@@ -92,6 +92,7 @@ model InstagramAccount {
   targetAccounts  TargetAccount[]
   followActions   FollowAction[]
   activityLogs    ActivityLog[]
+  scheduledPosts  ScheduledInstagramPost[]
   alerts          Alert[]
   whitelist       Whitelist[]
 
@@ -201,4 +202,24 @@ model Whitelist {
 
   @@unique([instagramAccountId, username])
   @@index([instagramAccountId])
+}
+
+/** Publication queue managed via official Meta API; never used for follow/unfollow. */
+model ScheduledInstagramPost {
+  id                 String   @id @default(cuid())
+  instagramAccountId String
+  imageUrl           String   @db.Text
+  caption            String   @default("") @db.Text
+  scheduledFor       DateTime
+  status             String   @default("queued") // queued, processing, published, needs_review, cancelled
+  startedAt          DateTime?
+  publishedAt        DateTime?
+  publishedMediaId   String?
+  reviewNote         String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  instagramAccount   InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledFor])
+  @@index([instagramAccountId, createdAt])
 }

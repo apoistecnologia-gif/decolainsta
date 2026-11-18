@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/sync-insights",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/publish-scheduled",
+      "schedule": "0 12 * * *"
     }
   ]
 }

@@ -10,8 +10,8 @@ export async function POST() {
 
   try {
     const result = await runEngineTick((session.user as { id: string }).id);
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, mode: 'simulation', realFollows: 0, realUnfollows: 0 });
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message ?? 'Erro no motor' }, { status: 500 });
+    return NextResponse.json({ error: 'Falha ao executar laboratório de simulação' }, { status: 500 });
   }
 }

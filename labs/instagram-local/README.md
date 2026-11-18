@@ -46,7 +46,24 @@ npm run inspect-menu -- nome_do_perfil
 
 Com a conta de teste conectada, clique **manualmente apenas em Seguindo** no Chrome, sem selecionar **Deixar de seguir**. Pressione Enter no PowerShell. O programa informa se o Instagram abriu um diálogo/menu e quais controles de seguir/deixar de seguir encontrou, sem imprimir dados privados da página. Tire uma captura da janela do Chrome com esse menu aberto e só depois pressione Enter novamente para fechar a janela. Isso serve para adaptar a seleção ao formato observado da interface, evitando cliques incertos.
 
-## Fila local por nicho — candidatos fornecidos manualmente
+## Fluxo principal: contas de referência (sem nichos obrigatórios)
+
+O produto DecolaInsta deve começar pelo **@ da conta de referência**. Exemplo: um cartomante cadastra o @ de outro cartomante conhecido e pretende alcançar **pessoas que realmente seguem aquela referência**. Esse vínculo precisa ser comprovado; não se pode preencher o banco com usuários aleatórios.
+
+Para cadastrar a referência localmente:
+
+```powershell
+npm run refs -- add cartomante_referencia
+npm run refs -- list
+```
+
+O cadastro funciona **sem categoria de nicho** e não requer conectar a referência à conta da pessoa que utiliza o DecolaInsta.
+
+**Situação real:** o laboratório consegue cadastrar contas de referência, mas **ainda não consegue recuperar automaticamente a lista de seguidores de uma referência**. A API oficial da Meta não fornece essa relação. Os métodos não oficiais de coleta podem violar os Termos do Instagram, ter limitações de acesso e causar bloqueios; não foram implementados. Cadastrar uma referência não significa que o sistema conhece seus seguidores.
+
+A fila de candidatos da seção abaixo é apenas uma ferramenta auxiliar para usuários fornecidos manualmente e cuja relação com a referência permanece **não verificada**. Ela não substitui a descoberta da audiência real da referência.
+
+## Fila auxiliar de candidatos manuais (não comprova vínculo com a referência)
 
 A próxima etapa do motor de nichos é uma **fila local de perfis para revisão**, sem coleta automática nem follow em massa. As referências de origem não são verificadas na rede social. Não use listas adquiridas sem permissão ou dados privados de terceiros.
 

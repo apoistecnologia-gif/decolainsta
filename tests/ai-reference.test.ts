@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   buildReferencePrompt, validateReferenceContext, parseReferenceInsight, extractResponseText,
+  labelReferenceInsight,
 } from '../lib/ai/reference';
 
 test('contexto de referência somente aceita textos públicos curtos', () => {
@@ -70,4 +71,43 @@ test('UI pede consentimento antes de enviar informações públicas e não faz a
   assert.match(ui, /Analisar com IA/);
   assert.match(ui, /serão enviados à API OpenAI/);
   assert.match(ui, /não identifica os seguidores da referência/);
+});
+
+test('sem biografia, o resumo não atribui características não verificadas à referência', () => {
+  const invented = {
+    resumo: 'O perfil mameto_lueji é focado em tarô.',
+    publicoHipotetico: ['Pessoas interessadas em tarot'],
+    ideiasConteudo: ['Vídeos explicativos'],
+    ressalva: 'Hipóteses',
+  };
+  const result = labelReferenceInsight(invented, {
+    bioPublica: '', objetivo: 'Criar conteúdos educativos sobre espiritualidade',
+  });
+  assert.doesNotMatch(result.resumo, /O perfil mameto_lueji é focado/);
+  assert.match(result.resumo, /baseadas apenas no objetivo informado/);
+  assert.match(result.ressalva, /Não verificamos a conta de referência/);
+  assert.deepEqual(result.ideiasConteudo, invented.ideiasConteudo);
+  const prompt = buildReferencePrompt('mameto_lueji', {
+    bioPublica: '', objetivo: 'Criar conteúdos educativos',
+  });
+  assert.match(prompt.instructions, /O objetivoDoCriador refere-se ao usuário/);
+  assert.match(prompt.instructions, /NÃO declare que o perfil de referência é focado/);
+});
+
+test('com descrição fornecida, o resumo deixa clara a ausência de verificação', () => {
+  const result = labelReferenceInsight({
+    resumo: 'Conteúdo educativo.',
+    publicoHipotetico: [], ideiasConteudo: [], ressalva: '',
+  }, { bioPublica: 'Publica leituras de cartas', objetivo: 'Atrair clientes' });
+  assert.match(result.resumo, /descrição informada por você \(não verificada\)/);
+});
+
+test('ambas rotas de GPT aplicam aviso de não verificação à resposta', () => {
+  for (const path of [
+    'app/api/ai/reference/route.ts',
+    'app/api/instagram-accounts/[id]/targets/[targetId]/ai/route.ts',
+  ]) {
+    const code = readFileSync(path, 'utf8');
+    assert.match(code, /labelReferenceInsight\(/);
+  }
 });

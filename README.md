@@ -38,6 +38,10 @@ A API oficial de Instagram não fornece operações para seguir/deixar de seguir
 
 O endpoint de sincronização do Instagram registra `followers_snapshot` com fonte `meta_official_api` quando recebe `followers_count` válido. A primeira leitura sem base anterior não gera delta. Diferença de contagem não comprova que novos seguidores vieram de alguma ação específica. O laboratório segue exclusivamente fictício, e sua API declara `realFollows: 0` e `realUnfollows: 0`. Não houve desenvolvimento ou ativação de automação real de seguir/deixar de seguir.
 
+## Laboratório experimental de follow/unfollow (isolado, NÃO publicado)
+
+Em `labs/instagram-local/` existe um protótipo **local e separado** do painel da Vercel: abre o Chrome, exige login diretamente no Instagram e confirmação no terminal para tentar **uma única** ação de seguir ou deixar de seguir em uma conta de teste. O resultado só é registrado como confirmado quando uma mudança visível na interface puder ser observada. **Não** acessa listas de seguidores, escolhe pessoas por nicho, trabalha em lote ou executa tarefas em segundo plano; não deve ser interpretado como motor de crescimento funcional. Leia `labs/instagram-local/README.md` antes de instalar. O login oficial Meta conectado ao site não substitui a sessão desse navegador local. Não rode em contas de clientes. A automação não oficial pode infringir os Termos de Uso do Instagram e ocasionar restrições.
+
 ## Revisões de prontidão antes de publicar
 
 `npm run preflight` identifica variáveis ausentes/inválidas, mas **não configura recursos por conta própria**. A integração somente estará apta depois de registrar o aplicativo Meta, confirmar domínio HTTPS, preparar PostgreSQL com backup e verificar permissões reais de uma conta profissional. Coloque rate limiting/anti-bot na borda do domínio antes de liberar cadastro público.

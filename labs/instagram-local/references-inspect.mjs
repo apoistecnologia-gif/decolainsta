@@ -2,6 +2,7 @@
 /**
  * Read-only manual visibility diagnostic for a registered reference account.
  * Normal mode does not extract usernames; optional diagnostic reads up to 5 visible links.
+ * The optional history mode requires explicit typed confirmation before storing HMAC fingerprints.
  * Never clicks, scrolls, persists a list or acts on accounts.
  * Reuses the local Chrome session created by the single-action laboratory.
  */
@@ -13,6 +14,7 @@ import { mkdir } from 'node:fs/promises';
 import { validateUsername, isRestrictedUrl } from './guard.mjs';
 import { referenceFollowerVisibility } from './reference-visibility.mjs';
 import { visibleFollowerSample } from './reference-visible-sample.mjs';
+import { saveConfirmedSample } from './reference-history-store.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sessionDir = path.join(here, '.session');
@@ -20,9 +22,10 @@ const FOLLOWER_LABEL = /seguidores|followers/i;
 
 async function run() {
   const [rawUsername, ...extra] = process.argv.slice(2);
-  const sampleMode = extra.length === 1 && extra[0] === '--visible-sample';
+  const recordMode = extra.length === 1 && extra[0] === '--record-confirmed';
+  const sampleMode = recordMode || (extra.length === 1 && extra[0] === '--visible-sample');
   if ((!sampleMode && extra.length) || !rawUsername) {
-    throw new Error('Uso: node references-inspect.mjs usuario_referencia [--visible-sample]');
+    throw new Error('Uso: node references-inspect.mjs usuario_referencia [--visible-sample|--record-confirmed]');
   }
   const username = validateUsername(rawUsername);
   const { chromium } = await import('playwright').catch(() => {
@@ -73,6 +76,7 @@ async function run() {
     const restriction = /limitamos certas coisas|restringimos certas atividades|we limit certain things|we restrict certain activity|ação bloqueada|action blocked|tente novamente mais tarde|try again later/i.test(text);
     console.log('Janelas visíveis:', visible);
     console.log('Status:', referenceFollowerVisibility(headerText, visible > 0, restriction));
+    let historyStored = false;
     if (sampleMode && !restriction && visible === 1 && FOLLOWER_LABEL.test(headerText)) {
       const visibleDialog = await dialogs.filter({ visible: true }).first();
       const dialogLabel = (await visibleDialog.innerText().catch(() => '')).slice(0, 80);
@@ -98,15 +102,34 @@ async function run() {
         console.log('Amostra de até 5 @ visíveis, sem salvar:', sample.length);
         for (const handle of sample) console.log('  @' + handle);
         console.log('Amostra PARCIAL: não comprova que todos os seguidores estão disponíveis.');
+        if (recordMode && sample.length > 0) {
+          console.log('Confira cada @ desta amostra no Instagram antes de registrar.');
+          console.log('O registro guardará somente identificadores HMAC locais, NUNCA @ em texto claro.');
+          console.log('Nenhum histórico será enviado para Vercel, OpenAI ou outros serviços.');
+          const expected = 'REGISTRAR @' + username.toLowerCase();
+          const answer = await rl.question('Para salvar o resumo (sem @), digite exatamente "' + expected + '": ');
+          if (answer.trim() === expected) {
+            const saved = await saveConfirmedSample(username, sample);
+            const visit = saved.visit;
+            console.log('Histórico local registrado: ' + visit.sampleSize + ' observados; ' +
+              visit.uniqueNew + ' novos nesta referência, ' + visit.repeated + ' repetidos.');
+            console.log('O histórico não comprova número total de seguidores nem followback.');
+            historyStored = true;
+          } else {
+            console.log('Registro cancelado. Nenhum @ ou histórico foi salvo.');
+          }
+        }
       } else {
         console.log('Janela não identificada como lista de seguidores. Nenhum @ foi lido.');
       }
     } else if (sampleMode) {
       console.log('Não houve janela única de seguidores sem restrição; nenhum @ foi lido.');
     }
-    console.log(sampleMode
-      ? 'Nenhum usuário foi armazenado e nenhuma ação foi executada.'
-      : 'Nenhum usuário da lista foi coletado. Nenhuma ação foi executada.');
+    console.log(historyStored
+      ? 'Somente fingerprints HMAC e números resumidos foram salvos localmente. Nenhuma ação foi executada.'
+      : sampleMode
+        ? 'Nenhum usuário foi armazenado e nenhuma ação foi executada.'
+        : 'Nenhum usuário da lista foi coletado. Nenhuma ação foi executada.');
     await rl.question('Confira a janela e pressione Enter para fechar o Chrome. ');
   } finally {
     rl.close();

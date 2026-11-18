@@ -15,7 +15,7 @@ Projeto Next.js/React com área autenticada, várias contas profissionais conect
 1. Faça backup do banco existente se for atualizar uma instalação anterior.
 2. Execute `npm install` (ou o gerenciador escolhido no seu ambiente).
 3. Copie `.env.example` para `.env` e configure todos os segredos; `ENCRYPTION_KEY` e `AUTH_SECRET` devem ser diferentes.
-4. Com acesso ao banco: `npx prisma generate` e `npx prisma db push`. **Revise as alterações previstas pelo Prisma antes de aplicá-las em produção.** O projeto original não continha migrações SQL versionadas.
+4. Com acesso ao banco: `npx prisma generate` e `npx prisma db push`. **Revise as alterações previstas pelo Prisma antes de aplicá-las em produção.** O esquema original não continha migrações SQL versionadas; a nova fila de publicações tem migração própria a ser revisada.
 5. Execute `npm run preflight` para conferir variáveis sem imprimir segredos. Depois execute `npm run typecheck`, `npm run lint`, `npm run test:smoke` e `npm run build`.
 6. Use `npm run dev` para desenvolver ou `npm run start` após compilar.
 7. Registre o endereço `https://SEU-DOMINIO.com/api/instagram/connect/callback` entre os redirect URIs da Meta.
@@ -32,7 +32,7 @@ Projeto Next.js/React com área autenticada, várias contas profissionais conect
 
 ## Limites
 
-A API oficial de Instagram não fornece operações para seguir/deixar de seguir usuários arbitrários nem a coleta irrestrita de seguidores de outras contas. A automação não oficial de follow/unfollow pode violar termos de uso e causar limitações ou suspensão de contas. O antigo motor permanece em **modo demo**; ligar/desligar seu estado no painel não produz ações reais. Resultados do laboratório não são métricas do Instagram. A sincronização de contas profissionais pode registrar uma observação real da contagem de seguidores e sua variação desde a leitura anterior, sem atribuição causal. O servidor possui uma rotina **opcional e desativada por padrão** de sincronização diária de métricas oficiais, via Vercel Cron. Ela só funciona na produção depois de configurar `CRON_SECRET` e `DECOLAINSTA_AUTO_SYNC_ENABLED=true`; previews não executam o agendamento. As publicações reais continuam manuais e seguir/deixar de seguir continua fora dessa rotina.
+A API oficial de Instagram não fornece operações para seguir/deixar de seguir usuários arbitrários nem a coleta irrestrita de seguidores de outras contas. A automação não oficial de follow/unfollow pode violar termos de uso e causar limitações ou suspensão de contas. O antigo motor permanece em **modo demo**; ligar/desligar seu estado no painel não produz ações reais. Resultados do laboratório não são métricas do Instagram. A sincronização de contas profissionais pode registrar uma observação real da contagem de seguidores e sua variação desde a leitura anterior, sem atribuição causal. O servidor possui uma rotina **opcional e desativada por padrão** de sincronização diária de métricas oficiais, via Vercel Cron. Ela só funciona na produção depois de configurar `CRON_SECRET` e `DECOLAINSTA_AUTO_SYNC_ENABLED=true`; previews não executam o agendamento. O aplicativo também tem uma fila opcional de publicações programadas (desativada por padrão). Seguir/deixar de seguir continua fora das duas rotinas.
 
 ## Sincronização automática diária de métricas (experimental, não ativada)
 
@@ -46,6 +46,21 @@ A branch experimental contém `vercel.json` com chamada diária a `GET /api/cron
 - **Não segue perfis, não deixa de seguir, não pesquisa seguidores de terceiros, não publica conteúdo e não executa o motor de demonstração.**
 
 Para ativar futuramente, um responsável pela implantação deve: preparar o banco PostgreSQL sem alterações de schema; configurar o OAuth Meta e contas profissionais; gerar e armazenar `CRON_SECRET` no cofre de variáveis da Vercel (ambiente Production); marcar `DECOLAINSTA_AUTO_SYNC_ENABLED=true` em Production; realizar uma revisão de segurança e só então aprovar o deployment para produção. **Este commit não promove/deploya a produção e não configura segredos.** O Cron da Vercel roda apenas em produção, não no Preview. Execuções simultâneas ou atrasos na Meta podem afetar a cadência; a rotina não garante atualização exata em horário fixo nem escala ilimitadamente sem uma fila persistente.
+
+
+## Publicações programadas via Meta (experimental, ainda não ativado)
+
+A página `/scheduled-posts` permite escolher uma conta profissional autorizada, URL pública de imagem **JPEG**, legenda e um dia futuro. O backend valida os dados, exige login, verifica a posse da conta e oferece cancelamento **somente enquanto o agendamento está na fila**. A fila é persistida no modelo `ScheduledInstagramPost` do Prisma.
+
+A execução opcional `GET /api/cron/publish-scheduled` está registrada no `vercel.json`, junto à sincronização diária de métricas, para **12:00 UTC (09:00, horário de Recife)**. No plano Vercel Hobby, uma tarefa diária pode executar durante a hora programada, sem precisão de minuto. Esta versão processa **no máximo uma publicação por execução**, em uma conta que você autorizou. Ela não cria conteúdo por IA, não segue ou deixa de seguir, não coleta seguidores e não realiza qualquer envio sem que você tenha criado o agendamento. A API Meta usa a criação de contêiner, valida status FINISHED e faz **no máximo uma tentativa de publicação**. Quando o resultado é incerto, o estado vira `needs_review` e o sistema **não tenta novamente** para evitar posts duplicados.
+
+**Ativação pendente e de alto impacto — não executada nesta branch:**
+
+1. Fazer backup do banco PostgreSQL, revisar o SQL em `prisma/migrations/20261118_scheduled_instagram_posts/migration.sql` e aplicá-lo somente com aprovação explícita. Não executar `prisma db push` inadvertidamente em produção. Como o projeto não tem histórico prévio completo de migrações, planejar o baseline do Prisma antes de `prisma migrate deploy`.
+2. Verificar login oficial e permissão de publicação da Meta, imagem JPEG pública e limites da conta; configurar `CRON_SECRET` forte (pelo menos 32 caracteres) e `DECOLAINSTA_AUTO_PUBLISH_ENABLED=true` **apenas no ambiente Production da Vercel**, após revisão.
+3. Testar uma publicação de uma conta profissional de teste e confirmar no próprio Instagram antes de disponibilizar o recurso a clientes.
+
+Com a variável ausente ou `false`, tanto o endpoint de agendamento quanto o Cron bloqueiam novas publicações e não chamam a API da Meta. Preview permanece desligado. O armazenamento exige a nova tabela: a interface aparecerá no Preview, mas não permitirá criar agendamentos até a implantação aprovada em produção.
 
 ## Provas de crescimento real e testes
 

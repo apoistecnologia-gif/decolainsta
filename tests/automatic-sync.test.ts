@@ -27,7 +27,9 @@ test('cron autenticado, limitado e sem escrita de follows ou coleta de seguidore
   const source = readFileSync('app/api/cron/sync-insights/route.ts', 'utf8');
   const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
   assert.equal(AUTOMATIC_SYNC_BATCH_LIMIT, 5);
-  assert.deepEqual(config.crons, [{ path: '/api/cron/sync-insights', schedule: '0 12 * * *' }]);
+  assert.ok(config.crons.some((job: { path: string; schedule: string }) =>
+    job.path === '/api/cron/sync-insights' && job.schedule === '0 12 * * *'));
+  assert.equal(config.crons.length, 2);
   assert.match(source, /CRON_SECRET/);
   assert.match(source, /secret\.length < 32/);
   assert.match(source, /timingSafeEqual/);

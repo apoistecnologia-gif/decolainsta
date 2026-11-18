@@ -60,3 +60,13 @@ export function profileHeaderState(labels) {
   ].filter(([, pattern]) => labels.some(label => typeof label === 'string' && pattern.test(label)));
   return states.length === 1 ? states[0][0] : states.length > 1 ? 'ambiguous' : 'unknown';
 }
+
+/** Only use complete labels of one button; a substring of another control is unsafe. */
+export function buttonLabelMatches(ariaLabel, buttonText, expected) {
+  if (!(expected instanceof RegExp)) return false;
+  const normalize = value => typeof value === 'string'
+    ? value.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim() : '';
+  const aria = normalize(ariaLabel);
+  const text = normalize(buttonText);
+  return (aria.length > 0 && expected.test(aria)) || (text.length > 0 && expected.test(text));
+}

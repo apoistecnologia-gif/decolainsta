@@ -38,6 +38,14 @@ A API oficial de Instagram não fornece operações para seguir/deixar de seguir
 
 O endpoint de sincronização do Instagram registra `followers_snapshot` com fonte `meta_official_api` quando recebe `followers_count` válido. A primeira leitura sem base anterior não gera delta. Diferença de contagem não comprova que novos seguidores vieram de alguma ação específica. O laboratório segue exclusivamente fictício, e sua API declara `realFollows: 0` e `realUnfollows: 0`. Não houve desenvolvimento ou ativação de automação real de seguir/deixar de seguir.
 
+## Requisito de produto: público de contas de referência
+
+No fluxo originalmente solicitado pelo usuário, quem usa o DecolaInsta cadastra um **@ de conta referência** (por exemplo, um cartomante com audiência estabelecida), e o público pretendido são **as pessoas que realmente seguem esse @**, não perfis sugeridos apenas por um nicho. O nicho pode ser metadado opcional, nunca o critério obrigatório de origem.
+
+A branch experimental contém `labs/instagram-local/references-cli.mjs`, com `npm run refs -- add @conta` e `npm run refs -- list`. O cadastro é local e não valida a relação entre seguidores e referência.
+
+**Bloqueio técnico ainda não resolvido:** a API oficial da Meta não retorna a lista de seguidores de terceiros. Não existe no projeto um coletor real desses seguidores nem uma garantia de acesso por meios não oficiais. Acesso/coleta automatizada não autorizada pode violar os Termos do Instagram e resultar em restrições. A fila CSV opcional não deve ser vendida como coleta automática nem conter seguidores inventados.
+
 ## Laboratório experimental de follow/unfollow (isolado, NÃO publicado)
 
 Em `labs/instagram-local/` existe um protótipo **local e separado** do painel da Vercel: abre o Chrome, exige login diretamente no Instagram e confirmação no terminal para tentar **uma única** ação de seguir ou deixar de seguir em uma conta de teste. O resultado só é registrado como confirmado quando uma mudança visível na interface puder ser observada. **Não** acessa listas de seguidores, escolhe pessoas por nicho, trabalha em lote ou executa tarefas em segundo plano; não deve ser interpretado como motor de crescimento funcional. Leia `labs/instagram-local/README.md` antes de instalar. O login oficial Meta conectado ao site não substitui a sessão desse navegador local. Não rode em contas de clientes. A automação não oficial pode infringir os Termos de Uso do Instagram e ocasionar restrições.

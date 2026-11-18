@@ -76,7 +76,7 @@ test('inspect-menu é somente diagnóstico; não aceita ações em lote', () => 
   assert.throws(() => validateAction('inspect-menu-all'));
 });
 
-import { waitForSingleVisibleDialog } from '../dialog.mjs';
+import { waitForSingleVisibleDialog, waitForDialogActionText } from '../dialog.mjs';
 
 test('aguarda modal de unfollow antes de examinar o botão (corrige condição de corrida)', async () => {
   let appeared = false;
@@ -119,4 +119,39 @@ test('não confirma se modal atrasar além do limite ou houver múltiplos', asyn
     }),
   };
   assert.equal(await waitForSingleVisibleDialog(multiple), null);
+});
+
+test('espera o texto Deixar de seguir mesmo depois de a janela ficar visível', async () => {
+  let ready = false;
+  const dialog = {
+    isVisible: async () => true,
+    getByText: pattern => {
+      assert.equal(pattern.test('Deixar de seguir'), true);
+      return { first: () => ({
+        waitFor: async ({ state, timeout }) => {
+          assert.equal(state, 'visible');
+          assert.equal(timeout, 8000);
+          ready = true;
+        },
+      }) };
+    },
+  };
+  assert.equal(ready, false);
+  assert.equal(await waitForDialogActionText(dialog, STATES.unfollow), true);
+  assert.equal(ready, true);
+});
+
+test('não prossegue se a opção não apareceu, janela fechou ou entrada é inválida', async () => {
+  const missing = {
+    isVisible: async () => true,
+    getByText: () => ({ first: () => ({ waitFor: async () => { throw new Error('timeout'); } }) }),
+  };
+  const closed = {
+    isVisible: async () => false,
+    getByText: () => ({ first: () => ({ waitFor: async () => {} }) }),
+  };
+  assert.equal(await waitForDialogActionText(missing, STATES.unfollow), false);
+  assert.equal(await waitForDialogActionText(closed, STATES.unfollow), false);
+  assert.equal(await waitForDialogActionText(null, STATES.unfollow), false);
+  assert.equal(await waitForDialogActionText(missing, 'Deixar de seguir'), false);
 });

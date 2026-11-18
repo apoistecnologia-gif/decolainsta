@@ -155,3 +155,58 @@ test('não prossegue se a opção não apareceu, janela fechou ou entrada é inv
   assert.equal(await waitForDialogActionText(null, STATES.unfollow), false);
   assert.equal(await waitForDialogActionText(missing, 'Deixar de seguir'), false);
 });
+
+import { waitForProfileReady } from '../profile.mjs';
+
+test('aguarda o cabeçalho e os controles do perfil, sem clicar ou recarregar', async () => {
+  let checks = 0;
+  let clicks = 0;
+  const header = { isVisible: async () => ++checks >= 3, click: async () => { clicks++; } };
+  const page = {
+    url: () => 'https://www.instagram.com/perfil.teste/',
+    locator: selector => { assert.equal(selector, 'main header'); return { first: () => header }; },
+    waitForTimeout: async () => {},
+    reload: () => { throw new Error('recarregamento não autorizado'); },
+  };
+  const result = await waitForProfileReady(page, 'perfil.teste', async () => ['Seguindo'], 5000, 1);
+  assert.equal(result.reason, 'ready');
+  assert.equal(result.state, 'following');
+  assert.equal(result.header, header);
+  assert.ok(checks >= 3);
+  assert.equal(clicks, 0);
+});
+
+test('cabeçalho não aparece: falha segura sem inventar estado', async () => {
+  const page = {
+    url: () => 'https://www.instagram.com/contateste/',
+    locator: () => ({ first: () => ({ isVisible: async () => false }) }),
+    waitForTimeout: async () => {},
+  };
+  const result = await waitForProfileReady(page, 'contateste', async () => { throw Error('não deve ler botões'); }, 0);
+  assert.equal(result.reason, 'profile_header_missing');
+  assert.equal(result.header, null);
+  assert.deepEqual(result.buttons, []);
+});
+
+test('perfil sem botões: falha segura mesmo com cabeçalho visível', async () => {
+  const header = { isVisible: async () => true };
+  const page = {
+    url: () => 'https://www.instagram.com/contateste/',
+    locator: () => ({ first: () => header }),
+    waitForTimeout: async () => {},
+  };
+  const result = await waitForProfileReady(page, 'contateste', async () => ['Enviar mensagem'], 0);
+  assert.equal(result.reason, 'profile_buttons_missing');
+  assert.equal(result.state, 'unknown');
+});
+
+test('redirecionamento de sessão não permite interação com outro perfil', async () => {
+  const page = {
+    url: () => 'https://www.instagram.com/accounts/login/?next=contateste',
+    locator: () => ({ first: () => { throw Error('não pode acessar cabeçalho'); } }),
+  };
+  const result = await waitForProfileReady(page, 'contateste', async () => ['Seguir'], 0);
+  assert.equal(result.reason, 'unexpected_page');
+  assert.equal(result.path, '/accounts/login/');
+  assert.equal(result.header, null);
+});

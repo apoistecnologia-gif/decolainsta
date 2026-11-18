@@ -9,7 +9,8 @@
     "follow": "node cli.mjs follow",
     "unfollow": "node cli.mjs unfollow",
     "queue": "node candidates-cli.mjs",
-    "refs": "node references-cli.mjs"
+    "refs": "node references-cli.mjs",
+    "review": "node review-cli.mjs"
   },
   "devDependencies": {
     "playwright": "1.56.1"

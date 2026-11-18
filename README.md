@@ -42,7 +42,7 @@ O endpoint de sincronização do Instagram registra `followers_snapshot` com fon
 
 No fluxo originalmente solicitado pelo usuário, quem usa o DecolaInsta cadastra um **@ de conta referência** (por exemplo, um cartomante com audiência estabelecida), e o público pretendido são **as pessoas que realmente seguem esse @**, não perfis sugeridos apenas por um nicho. O nicho pode ser metadado opcional, nunca o critério obrigatório de origem.
 
-A branch experimental contém `labs/instagram-local/references-cli.mjs`, com `npm run refs -- add @conta` e `npm run refs -- list`. O cadastro é local e não valida a relação entre seguidores e referência.
+A branch experimental contém `labs/instagram-local/references-cli.mjs`, com `npm run refs -- add conta` e `npm run refs -- list`. O cadastro é local e não valida a relação entre seguidores e referência.
 
 **Bloqueio técnico ainda não resolvido:** a API oficial da Meta não retorna a lista de seguidores de terceiros. Não existe no projeto um coletor real desses seguidores nem uma garantia de acesso por meios não oficiais. Acesso/coleta automatizada não autorizada pode violar os Termos do Instagram e resultar em restrições. A fila CSV opcional não deve ser vendida como coleta automática nem conter seguidores inventados.
 

@@ -33,19 +33,22 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadAlerts = () => {
-    setLoading(true);
+  useEffect(() => {
+    let cancelled = false;
     fetch('/api/alerts')
-      .then((r) => r.json())
+      .then((response) => {
+        if (!response.ok) throw new Error('Não foi possível carregar alertas');
+        return response.json();
+      })
       .then((data) => {
-        setAlerts(data ?? []);
+        if (cancelled) return;
+        setAlerts(Array.isArray(data) ? data : []);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    loadAlerts();
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   const markRead = async (alertId: string) => {

@@ -129,7 +129,9 @@ export function AbacusDashboard({ manifest, data, dataAsOf, className }: AbacusD
   const root = useRef<HTMLDivElement>(null);
   const handle = useRef<VizHandle | null>(null);
   const latest = useRef({ data, dataAsOf });
-  latest.current = { data, dataAsOf };
+  useEffect(() => {
+    latest.current = { data, dataAsOf };
+  }, [data, dataAsOf]);
   const shown = useRef<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const manifestKey = JSON.stringify(manifest);

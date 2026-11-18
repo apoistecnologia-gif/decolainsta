@@ -1,12 +1,16 @@
 /** @type {import('next').NextConfig} */
-const path = require('path');
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   output: process.env.NEXT_OUTPUT_MODE,
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
-  outputFileTracingRoot: process.env.NEXT_OUTPUT_MODE ? path.join(__dirname, '../') : '/',
+  outputFileTracingRoot: process.env.NEXT_OUTPUT_MODE ? path.join(configDir, '../') : '/',
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -29,8 +33,7 @@ const nextConfig = {
   allowedDevOrigins: ['127.0.0.1', '73618223d.na123.preview.abacusai.app'],
 };
 
-const fs = require('fs');
-const userConfigPath = path.join(__dirname, 'next.config.user.json');
+const userConfigPath = path.join(configDir, 'next.config.user.json');
 const userConfigAllowedKeys = { skipTrailingSlashRedirect: 'boolean', trailingSlash: 'boolean' };
 if (fs.existsSync(userConfigPath)) {
   const userConfig = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'));
@@ -42,5 +45,5 @@ if (fs.existsSync(userConfigPath)) {
   }
 }
 
-module.exports = nextConfig;
+export default nextConfig;
 

@@ -1,12 +1,13 @@
 'use client'
 
-import { ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useSyncExternalStore } from 'react'
 
 /** True only after the component has mounted on the client. Use to gate browser-only values. */
+const subscribeToMount = () => () => undefined
+
 export function useMounted(): boolean {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
-  return mounted
+  // false during SSR/hydration, true after client mount; no render-triggering effect.
+  return useSyncExternalStore(subscribeToMount, () => true, () => false)
 }
 
 /**

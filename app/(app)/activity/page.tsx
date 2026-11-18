@@ -30,44 +30,61 @@ export default function ActivityPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
   const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Track completed requests by selection, so loading is derived instead of set inside an effect.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const requestKey = JSON.stringify([selectedAccount, accounts.map(a => [a?.id, a?.username])]);
+  const loading = loadedKey !== requestKey;
 
   useEffect(() => {
     fetch('/api/instagram-accounts')
       .then((r) => r.json())
-      .then((data) => setAccounts(data ?? []))
+      .then((data) => setAccounts(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    if (selectedAccount === 'all') {
-      // Load all logs from all accounts
-      Promise.all(
-        (accounts ?? []).map((a: any) =>
-          fetch(`/api/instagram-accounts/${a?.id}/logs?take=30`)
-            .then((r) => r.json())
-            .then((logs: any[]) => (logs ?? []).map((l: any) => ({ ...(l ?? {}), accountUsername: a?.username })))
-            .catch(() => [])
-        )
-      ).then((allLogs) => {
-        const merged = (allLogs ?? []).flat().sort((a: any, b: any) =>
-          new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime()
-        );
-        setLogs(merged.slice(0, 100));
-        setLoading(false);
-      });
-    } else {
-      fetch(`/api/instagram-accounts/${selectedAccount}/logs?take=100`)
-        .then((r) => r.json())
-        .then((data) => {
-          const acc = (accounts ?? []).find((a: any) => a?.id === selectedAccount);
-          setLogs((data ?? []).map((l: any) => ({ ...(l ?? {}), accountUsername: acc?.username })));
-          setLoading(false);
-        })
-        .catch(() => setLoading(false));
+    let cancelled = false;
+
+    async function loadLogs() {
+      let nextLogs: any[] = [];
+      try {
+        if (selectedAccount === 'all') {
+          const allLogs = await Promise.all(accounts.map(async (account: any) => {
+            try {
+              const response = await fetch(`/api/instagram-accounts/${account?.id}/logs?take=30`);
+              if (!response.ok) return [];
+              const entries = await response.json();
+              return Array.isArray(entries)
+                ? entries.map((log: any) => ({ ...(log ?? {}), accountUsername: account?.username }))
+                : [];
+            } catch {
+              return [];
+            }
+          }));
+          nextLogs = allLogs.flat().sort((a: any, b: any) =>
+            new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime()
+          ).slice(0, 100);
+        } else {
+          const response = await fetch(`/api/instagram-accounts/${selectedAccount}/logs?take=100`);
+          if (!response.ok) throw new Error('Não foi possível carregar o histórico');
+          const entries = await response.json();
+          const account = accounts.find((item: any) => item?.id === selectedAccount);
+          nextLogs = Array.isArray(entries)
+            ? entries.map((log: any) => ({ ...(log ?? {}), accountUsername: account?.username }))
+            : [];
+        }
+      } catch {
+        nextLogs = [];
+      }
+      if (!cancelled) {
+        setLogs(nextLogs);
+        setLoadedKey(requestKey);
+      }
     }
-  }, [selectedAccount, accounts]);
+
+    void loadLogs();
+    return () => { cancelled = true; };
+  }, [selectedAccount, accounts, requestKey]);
 
   return (
     <div className="space-y-6">

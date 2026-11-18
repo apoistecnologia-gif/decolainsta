@@ -21,7 +21,7 @@ const warnings = [];
 const read = key => (process.env[key] || '').trim();
 const placeholder = value => !value || /^(sua_|outra_|user$|password$|host$|secret$|changeme|example|seu-|test[-_]|dev[-_])/i.test(value) || /SEU-DOMINIO|MINIMO_32|EXAMPLE\.COM/i.test(value);
 
-for (const field of ['AUTH_SECRET', 'ENCRYPTION_KEY', 'INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET']) {
+for (const field of ['AUTH_SECRET', 'ENCRYPTION_KEY', 'INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'INSTAGRAM_CONFIG_ID']) {
   const value = read(field);
   if (placeholder(value)) problems.push(`${field}: não configurada`);
 }
@@ -40,6 +40,8 @@ try {
   const url = new URL(read('INSTAGRAM_REDIRECT_URI'));
   if (url.protocol !== 'https:' || !url.hostname.includes('.') || url.hostname.toLowerCase() === 'localhost' || url.pathname !== '/api/instagram/connect/callback' || url.search || url.hash || placeholder(url.hostname)) throw new Error('invalid');
 } catch { problems.push('INSTAGRAM_REDIRECT_URI: configure HTTPS e o caminho /api/instagram/connect/callback'); }
+
+if (read('INSTAGRAM_CONFIG_ID') && !/^\d+$/.test(read('INSTAGRAM_CONFIG_ID'))) problems.push('INSTAGRAM_CONFIG_ID: somente números');
 
 const version = read('INSTAGRAM_API_VERSION') || 'v24.0';
 if (!/^v\d{1,2}\.\d{1,2}$/.test(version)) problems.push('INSTAGRAM_API_VERSION: use formato v24.0');

@@ -75,3 +75,48 @@ test('inspect-menu é somente diagnóstico; não aceita ações em lote', () => 
   assert.equal(confirmationText('inspect-menu', 'perfil'), null);
   assert.throws(() => validateAction('inspect-menu-all'));
 });
+
+import { waitForSingleVisibleDialog } from '../dialog.mjs';
+
+test('aguarda modal de unfollow antes de examinar o botão (corrige condição de corrida)', async () => {
+  let appeared = false;
+  let waited = false;
+  const dialog = { isVisible: async () => appeared };
+  const page = {
+    getByRole(role) {
+      assert.equal(role, 'dialog');
+      return {
+        first: () => ({
+          waitFor: async ({ state, timeout }) => {
+            assert.equal(state, 'visible');
+            assert.equal(timeout, 8000);
+            waited = true;
+            appeared = true;
+          },
+        }),
+        count: async () => appeared ? 1 : 0,
+        nth: i => { assert.equal(i, 0); return dialog; },
+      };
+    },
+  };
+  assert.equal(await waitForSingleVisibleDialog(page), dialog);
+  assert.equal(waited, true);
+});
+
+test('não confirma se modal atrasar além do limite ou houver múltiplos', async () => {
+  const late = {
+    getByRole: () => ({ first: () => ({ waitFor: async () => { throw new Error('Timeout'); } }) }),
+  };
+  assert.equal(await waitForSingleVisibleDialog(late), null);
+
+  const dialog1 = { isVisible: async () => true };
+  const dialog2 = { isVisible: async () => true };
+  const multiple = {
+    getByRole: () => ({
+      first: () => ({ waitFor: async () => {} }),
+      count: async () => 2,
+      nth: i => [dialog1, dialog2][i],
+    }),
+  };
+  assert.equal(await waitForSingleVisibleDialog(multiple), null);
+});

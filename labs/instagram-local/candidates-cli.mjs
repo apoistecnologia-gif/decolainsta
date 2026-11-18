@@ -5,6 +5,8 @@
  */
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { validateUsername } from './guard.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -51,8 +53,11 @@ async function saveQueue(candidates) {
 function usage() {
   console.log('Uso (no laboratório local):');
   console.log('  npm run queue -- import caminho/arquivo.csv [--exclude seu_usuario]');
+  console.log('  npm run queue -- add nome_do_perfil "Nicho" [perfil_referencia]');
   console.log('  npm run queue -- list [nicho]');
   console.log('  npm run queue -- next [nicho]');
+  console.log('  npm run queue -- inspect-one [nicho]');
+  console.log('  npm run queue -- follow-one [nicho]  (1 ação após confirmação)');
   console.log('  npm run queue -- sync');
   console.log('Importe candidatos fornecidos manualmente: username;nicho;origem.');
   console.log('Nenhum comando desta fila acessa ou modifica contas do Instagram.');
@@ -78,6 +83,38 @@ async function run() {
     console.log('Importação local:', result.inserted, 'novos,', result.duplicate,
       'duplicados,', result.excluded, 'excluídos. Total:', result.candidates.length);
     console.log('A origem é referência informada por você; não prova que a conta segue aquele perfil.');
+    return;
+  }
+  if (command === 'add') {
+    if (args.length < 2 || args.length > 3) {
+      throw new Error('Uso: npm run queue -- add nome_do_perfil "Nicho" [perfil_referencia]');
+    }
+    const [username, niche, source = ''] = args;
+    const result = importCandidates(current, [{ username, nicho: niche, origem: source }]);
+    if (result.inserted) await saveQueue(result.candidates);
+    console.log('Cadastro local:', result.inserted ? 'perfil adicionado' : 'perfil já existente');
+    console.log('A origem é referência manual; nenhum dado foi coletado do Instagram.');
+    return;
+  }
+  if (command === 'inspect-one' || command === 'follow-one') {
+    if (args.length > 1) throw new Error('Informe no máximo um nicho.');
+    const candidate = reviewCandidates(current, args[0])[0];
+    if (!candidate) { console.log('Nenhum candidato pendente para esse nicho.'); return; }
+    const username = validateUsername(candidate.username);
+    const operation = command === 'inspect-one' ? 'inspect' : 'follow';
+    console.log('Candidato selecionado: @' + username + ' | nicho: ' + candidate.niche);
+    console.log('Origem apenas informada, não verificada: ' + (candidate.source || '(nenhuma)'));
+    console.log('Será executada no máximo UMA operação do laboratório local.');
+    const result = spawnSync(process.execPath, [path.join(here, 'cli.mjs'), operation, username], {
+      cwd: here, stdio: 'inherit', shell: false,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      process.exitCode = result.status || 2;
+      console.log('Operação não confirmada. A fila não foi alterada.');
+      return;
+    }
+    console.log('Verifique o Instagram. Para conciliar observações: npm run queue -- sync');
     return;
   }
   if (command === 'list' || command === 'next') {

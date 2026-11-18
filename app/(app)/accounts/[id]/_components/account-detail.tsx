@@ -59,7 +59,6 @@ export function AccountDetail({ account }: { account: any }) {
   // Targets
   const [targets, setTargets] = useState<any[]>(account?.targetAccounts ?? []);
   const [newTarget, setNewTarget] = useState('');
-  const [newNiche, setNewNiche] = useState('');
   const [addingTarget, setAddingTarget] = useState(false);
 
   // Whitelist
@@ -142,7 +141,7 @@ export function AccountDetail({ account }: { account: any }) {
       const res = await fetch(`/api/instagram-accounts/${account?.id}/targets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: newTarget, niche: newNiche || 'geral' }),
+        body: JSON.stringify({ username: newTarget }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -151,8 +150,7 @@ export function AccountDetail({ account }: { account: any }) {
       }
       setTargets((prev: any[]) => [data, ...(prev ?? [])]);
       setNewTarget('');
-      setNewNiche('');
-      toast.success('Alvo adicionado!');
+      toast.success('Conta de referência cadastrada. Seguidores ainda não identificados.');
     } catch {
       toast.error('Erro ao adicionar alvo');
     } finally {
@@ -222,7 +220,7 @@ export function AccountDetail({ account }: { account: any }) {
         <TabsList>
           <TabsTrigger value="instagram"><Link2 className="h-4 w-4 mr-1"/> Instagram real</TabsTrigger>
           <TabsTrigger value="targets">
-            <Target className="h-4 w-4 mr-1" /> Alvos (demo)
+            <Target className="h-4 w-4 mr-1" /> Contas de referência
           </TabsTrigger>
           <TabsTrigger value="settings">
             <Settings className="h-4 w-4 mr-1" /> Config. (demo)
@@ -274,22 +272,16 @@ export function AccountDetail({ account }: { account: any }) {
           <FadeIn>
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Adicionar Conta-Alvo</CardTitle>
-                <CardDescription>Defina contas-alvo para demonstrar a coleta fictícia de seguidores</CardDescription>
+                <CardTitle className="text-lg">Adicionar conta de referência</CardTitle>
+                <CardDescription>Cadastre o @ de um perfil cuja audiência interessa a você. Ainda não coletamos a lista de seguidores desse perfil.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex gap-2">
                   <Input
-                    placeholder="@username do alvo"
+                    placeholder="@ do perfil de referência"
                     value={newTarget}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewTarget(e.target.value)}
                     className="flex-1"
-                  />
-                  <Input
-                    placeholder="Nicho (ex: fitness)"
-                    value={newNiche}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewNiche(e.target.value)}
-                    className="w-40"
                   />
                   <Button onClick={addTarget} loading={addingTarget}>
                     <Plus className="h-4 w-4 mr-1" /> Adicionar
@@ -309,7 +301,7 @@ export function AccountDetail({ account }: { account: any }) {
                       <div>
                         <p className="text-sm font-medium">@{target?.username ?? '?'}</p>
                         <p className="text-xs text-muted-foreground">
-                          Nicho: {target?.niche ?? 'geral'} · {target?.followersCollected ?? 0} perfis fictícios gerados
+                          Referência cadastrada · Lista de seguidores não identificada
                         </p>
                       </div>
                     </div>
@@ -330,7 +322,7 @@ export function AccountDetail({ account }: { account: any }) {
               <Card>
                 <CardContent className="text-center py-8">
                   <Target className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Nenhuma conta-alvo cadastrada</p>
+                  <p className="text-sm text-muted-foreground">Nenhuma conta de referência cadastrada</p>
                 </CardContent>
               </Card>
             )}

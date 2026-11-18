@@ -55,7 +55,10 @@ Para cadastrar a referência localmente:
 ```powershell
 npm run refs -- add cartomante_referencia
 npm run refs -- list
+npm run refs -- inspect cartomante_referencia
 ```
+
+O comando `inspect` abre o Chrome local e solicita que você clique **manualmente** na contagem de seguidores da referência. Ele apenas verifica se a janela de seguidores ficou visível ou se há aviso de restrição. **Não lê nem armazena @ de seguidores**, não rola a lista, não interage com eles e não contorna restrições do Instagram. O resultado de `dialog_visible_manual` não significa que a lista completa esteja disponível.
 
 O cadastro funciona **sem categoria de nicho** e não requer conectar a referência à conta da pessoa que utiliza o DecolaInsta.
 

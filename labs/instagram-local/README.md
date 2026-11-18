@@ -63,18 +63,22 @@ Esses nomes são ilustrativos. Informe perfis de teste que você administra ou o
 No PowerShell, dentro de `labs/instagram-local`:
 
 ```powershell
+npm run queue -- add perfil_da_segunda_conta "Espiritualidade"
 npm run queue -- import "C:/caminho/candidatos.csv" --exclude seu_usuario_de_teste
 npm run queue -- list
 npm run queue -- next Espiritualidade
+npm run queue -- inspect-one Espiritualidade
 npm run queue -- sync
 ```
 
+- `add` cadastra um candidato por vez, sem necessidade de preparar CSV.
 - `import` importa perfis, valida nomes e nichos, evita duplicatas e exclui seu próprio usuário quando informado. Não importa credenciais.
 - `list` e `next` selecionam perfis **pendentes** por nicho, sem enviar solicitações.
+- `inspect-one` abre o Chrome para **inspecionar um único candidato** do nicho. `follow-one` seleciona um único candidato e inicia o laboratório `follow`, que ainda exige confirmação específica digitada; não há ciclos automáticos ou execução em lote. Não use contas de terceiros para testes sem autorização.
 - `sync` lê apenas o histórico `results/activity.jsonl` gerado **localmente** e associa resultados de teste `following_confirmed` / `unfollow_confirmed` aos candidatos já cadastrados. É idempotente e ignora registros simulados, ambíguos ou não correspondentes.
 - Os dados da fila são armazenados em `.data/candidates.json` e ficam fora do Git. Não os compartilhe publicamente. Nunca coloque a pasta `.session` em arquivos compartilhados.
 
-A fila ainda **não** executa ações automaticamente, não agenda um motor e não está conectada ao painel da Vercel. Isso prepara a auditoria de cada candidato e a medição sem inventar resultados ou usar listas simuladas.
+A fila seleciona no máximo um candidato para o laboratório por execução e **não** roda follows em série, não agenda um motor e não está conectada ao painel da Vercel. Isso prepara a auditoria de cada candidato e a medição sem inventar resultados ou usar listas simuladas.
 
 ## Testes
 

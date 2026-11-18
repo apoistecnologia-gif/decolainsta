@@ -1,12 +1,12 @@
 # DecolaInsta — integração oficial Instagram
 
-Projeto Next.js/React com área autenticada, várias contas profissionais conectadas por Instagram Login, consulta de dados de perfil e publicações e publicação de imagem autorizada pela Meta. O laboratório de seguir/deixar de seguir é **100% simulado** e não representa ações reais.
+Projeto Next.js/React com área autenticada, várias contas profissionais conectadas por login unificado da Meta, consulta de dados de perfil e publicações e publicação de imagem autorizada pela Meta. O laboratório de seguir/deixar de seguir é **100% simulado** e não representa ações reais.
 
 ## Requisitos
 
 - Node.js >= 20.9, npm ou Yarn
 - Banco PostgreSQL acessível (ver `.env.example`)
-- App Meta com produto Instagram Login habilitado, Instagram App ID e secret
+- App Meta com Instagram Unified Login habilitado, App ID, secret e configuration ID
 - Conta Instagram profissional (Empresa ou Criador) permitida no app da Meta
 - Domínio HTTPS e URI de redirecionamento idêntica à cadastrada na Meta
 
@@ -22,9 +22,9 @@ Projeto Next.js/React com área autenticada, várias contas profissionais conect
 
 ## Configuração no painel Meta
 
-1. Crie/configure um app da Meta e habilite *Instagram API with Instagram Login*.
+1. Crie/configure um app da Meta e habilite *Instagram Unified Login*.
 2. Cadastre a URI de redirecionamento exatamente igual à `INSTAGRAM_REDIRECT_URI`.
-3. Configure as permissões `instagram_business_basic` e `instagram_business_content_publish`. Para contas de terceiros, pode ser necessário **App Review / Advanced Access** e políticas de privacidade válidas.
+3. Configure o login unificado (Business Login), o portfólio empresarial, o `INSTAGRAM_CONFIG_ID` e as permissões da configuração, conforme a Meta. Para contas de terceiros, pode ser necessário **App Review / Advanced Access** e políticas de privacidade válidas.
 4. Faça login em `/login` ou cadastre-se em `/signup`, vá para **Contas Instagram → Conectar Instagram** e autorize uma conta profissional.
 5. Em **Instagram real** do perfil, use **Sincronizar agora** e confira o número de seguidores e os posts. Use URL pública de imagem JPEG compatível para publicar após confirmação.
 
@@ -32,7 +32,11 @@ Projeto Next.js/React com área autenticada, várias contas profissionais conect
 
 ## Limites
 
-A API oficial de Instagram não fornece operações para seguir/deixar de seguir usuários arbitrários nem a coleta irrestrita de seguidores de outras contas. O antigo motor permanece em **modo demo**; ligar/desligar seu estado no painel não produz ações reais. Resultados do laboratório não são métricas do Instagram. O aplicativo também **não executa tarefas continuamente no servidor por conta própria**. As publicações reais são feitas manualmente no painel.
+A API oficial de Instagram não fornece operações para seguir/deixar de seguir usuários arbitrários nem a coleta irrestrita de seguidores de outras contas. A automação não oficial de follow/unfollow pode violar termos de uso e causar limitações ou suspensão de contas. O antigo motor permanece em **modo demo**; ligar/desligar seu estado no painel não produz ações reais. Resultados do laboratório não são métricas do Instagram. A sincronização de contas profissionais pode registrar uma observação real da contagem de seguidores e sua variação desde a leitura anterior, sem atribuição causal. O aplicativo também **não executa tarefas continuamente no servidor por conta própria**. As publicações reais são feitas manualmente no painel.
+
+## Provas de crescimento real e testes
+
+O endpoint de sincronização do Instagram registra `followers_snapshot` com fonte `meta_official_api` quando recebe `followers_count` válido. A primeira leitura sem base anterior não gera delta. Diferença de contagem não comprova que novos seguidores vieram de alguma ação específica. O laboratório segue exclusivamente fictício, e sua API declara `realFollows: 0` e `realUnfollows: 0`. Não houve desenvolvimento ou ativação de automação real de seguir/deixar de seguir.
 
 ## Revisões de prontidão antes de publicar
 

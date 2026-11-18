@@ -73,5 +73,5 @@ export function parseReferenceAggregate(text: string): ReferenceAggregate {
       throw new Error('Verificação inválida no histórico.');
     }
   }
-  return obj as ReferenceAggregate;
+  return obj as unknown as ReferenceAggregate;
 }

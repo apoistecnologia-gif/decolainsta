@@ -38,6 +38,22 @@ A API oficial de Instagram não fornece operações para seguir/deixar de seguir
 
 O endpoint de sincronização do Instagram registra `followers_snapshot` com fonte `meta_official_api` quando recebe `followers_count` válido. A primeira leitura sem base anterior não gera delta. Diferença de contagem não comprova que novos seguidores vieram de alguma ação específica. O laboratório segue exclusivamente fictício, e sua API declara `realFollows: 0` e `realUnfollows: 0`. Não houve desenvolvimento ou ativação de automação real de seguir/deixar de seguir.
 
+## Assistente com GPT para contas de referência (experimental)
+
+O painel de cada conta Instagram oferece **Analisar com IA** nas contas de referência cadastradas. Essa ferramenta utiliza a **Responses API** da OpenAI para gerar hipóteses de interesse de público e sugestões de conteúdo original a partir de uma biografia pública ou descrição **digitada voluntariamente** pelo usuário.
+
+**Importante:** o GPT não recebe nem descobre listas de seguidores do Instagram. Esse recurso NÃO faz scraping, não identifica quem segue uma referência e não executa ações de seguir/deixar de seguir, comentários ou mensagens. Toda análise é explicitamente rotulada como hipótese baseada nos dados fornecidos, e não resultado verificado.
+
+A integração fica **desativada por padrão** até configurar **somente no servidor** as variáveis de ambiente:
+
+- `DECOLAINSTA_AI_ENABLED=true`
+- `OPENAI_API_KEY` = chave privada da OpenAI Platform no cofre de variáveis de ambiente, nunca em `NEXT_PUBLIC_*` ou no Git.
+- `OPENAI_MODEL=gpt-4.1-mini` (padrão configurável, sujeito a disponibilidade/preços da sua conta).
+
+São aplicados limites básicos de até **3 tentativas por conta Instagram e 10 por usuário em 24 h**, incluindo tentativas que falharem na API. Antes de disponibilizar a muitos usuários, configure também limites persistentes com garantia de concorrência e orçamento da OpenAI Platform. O corpo enviado à OpenAI contém apenas @ da referência e os textos públicos/objetivos informados, nunca cookies, tokens Meta ou senhas. As análises não ficam armazenadas no banco; a auditoria salva somente metadados sem os textos digitados.
+
+O fluxo GPT não foi validado com uma chamada paga real enquanto não houver chave de API configurada. Testes de contrato, validação e build não equivalem a resposta real do modelo.
+
 ## Requisito de produto: público de contas de referência
 
 No fluxo originalmente solicitado pelo usuário, quem usa o DecolaInsta cadastra um **@ de conta referência** (por exemplo, um cartomante com audiência estabelecida), e o público pretendido são **as pessoas que realmente seguem esse @**, não perfis sugeridos apenas por um nicho. O nicho pode ser metadado opcional, nunca o critério obrigatório de origem.

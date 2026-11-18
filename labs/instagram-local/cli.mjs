@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, profileHeaderState, buttonLabelMatches, STATES } from './guard.mjs';
-import { waitForSingleVisibleDialog } from './dialog.mjs';
+import { waitForSingleVisibleDialog, waitForDialogActionText } from './dialog.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const profileDir = path.join(directory, '.session');
@@ -196,11 +196,16 @@ async function run() {
       // The menu is rendered asynchronously. Wait for exactly one visible dialog;
       // do not attempt a second click if confirmation is absent or ambiguous.
       const dialog = await waitForSingleVisibleDialog(page);
-      const confirmButton = dialog
+      // The modal container may appear before its "Deixar de seguir" row is rendered.
+      // Merely seeing the dialog is not sufficient; wait for the exact label,
+      // then ensure a unique visible button inside that dialog before clicking.
+      const actionReady = dialog
+        ? await waitForDialogActionText(dialog, STATES.unfollow) : false;
+      const confirmButton = actionReady
         ? await oneVisibleButton(dialog, STATES.unfollow) : null;
       if (!confirmButton) {
         await record({ action, username, status: 'unverified_confirmation_dialog', realActions: 'unknown' });
-        console.log('Confirmação de unfollow não identificada em janela única. Verifique manualmente; não tente novamente automaticamente.');
+        console.log('A opção de unfollow não ficou visível no diálogo esperado. Nada foi confirmado; confira manualmente antes de tentar de novo.');
         return EXIT.NOT_VERIFIED;
       }
       await confirmButton.click({ timeout: 8000 });

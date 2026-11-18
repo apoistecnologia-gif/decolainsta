@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateUsername, validateAction, confirmationText, resultStatus, isRestrictedUrl, profileHeaderState, STATES } from '../guard.mjs';
+import { validateUsername, validateAction, confirmationText, resultStatus, isRestrictedUrl, profileHeaderState, buttonLabelMatches, STATES } from '../guard.mjs';
 
 test('aceita um único usuário com sintaxe válida e normaliza @', () => {
   assert.equal(validateUsername(' @perfil.teste_1 '), 'perfil.teste_1');
@@ -58,4 +58,14 @@ test('inspeção diferencia Seguir de Seguindo e Solicitação, sem inventar est
   assert.equal(profileHeaderState(['Mensagem', 'Opções']), 'unknown');
   assert.equal(profileHeaderState(['Seguir', 'Seguindo']), 'ambiguous');
   assert.equal(profileHeaderState(['Editar perfil']), 'unknown');
+});
+
+test('botão Seguindo reconhecido pelo texto mesmo com nome acessível diferente', () => {
+  assert.equal(buttonLabelMatches('Outras ações', 'Seguindo', STATES.following), true);
+  assert.equal(buttonLabelMatches(null, '  Seguindo  ', STATES.following), true);
+  assert.equal(buttonLabelMatches(null, 'Deixar de seguir', STATES.unfollow), true);
+  assert.equal(buttonLabelMatches(null, 'Seguir', STATES.following), false);
+  assert.equal(buttonLabelMatches(null, 'Seguindo o perfil errado', STATES.following), false);
+  assert.equal(buttonLabelMatches(null, 'Seguir', STATES.follow), true);
+  assert.equal(buttonLabelMatches(null, 'Seguindo', STATES.follow), false);
 });

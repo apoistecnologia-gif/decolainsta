@@ -69,6 +69,33 @@ O cadastro funciona **sem categoria de nicho** e não requer conectar a referên
 
 A fila de candidatos da seção abaixo é apenas uma ferramenta auxiliar para usuários fornecidos manualmente e cuja relação com a referência permanece **não verificada**. Ela não substitui a descoberta da audiência real da referência.
 
+## Histórico de verificações das contas de referência
+
+Esta etapa separa a prova de visualização manual das ações de seguir/deixar de seguir. O histórico é **local e independente da Vercel/Neon**, sem ligação com as contas de clientes. Não armazena nomes de terceiros em texto claro.
+
+```powershell
+# Usar uma verificação anterior já confirmada (somente CONTAGEM informada pelo usuário)
+npm run refs -- note mameto_lueji 5
+
+# Consultar o relatório local
+npm run refs -- report mameto_lueji
+
+# Em outra ocasião, conferir uma nova amostra e opcionalmente deduplicar
+npm run refs -- inspect-track mameto_lueji
+
+# Apagar o histórico da referência (pede confirmação exata)
+npm run refs -- forget mameto_lueji
+```
+
+- **`note`** registra somente que você declarou ter conferido de 0 a 5 perfis. Não recupera os @ anteriores, não cria identificadores, não soma seguidores exclusivos e não atribui resultados ao Instagram.
+- **`report`** mostra inspeções registradas, datas, quantidade de perfis pseudonimizados vistos em amostras e repetições identificadas em inspeções posteriores. **Não é o número total de seguidores** nem indica quantas pessoas passaram a seguir você.
+- **`inspect-track`** mantém a inspeção visual limitada a **cinco perfis por execução**. Você abre manualmente a janela de seguidores, confere a amostra mostrada no terminal e somente depois pode digitar **`REGISTRAR @referencia`**. Se não confirmar exatamente, o programa não registra nada. Não rola, não segue, não manda mensagens, não consulta a API GPT e não grava senhas.
+- Ao confirmar, apenas **HMAC-SHA256 dos nomes normalizados** é guardado em `.data/reference-history.json`, com uma chave aleatória local em `.data/reference-history-hmac.key`. O relatório guarda datas, contagens e procedência `manually_opened_dialog_user_confirmed`. Os identificadores são **pseudonimizados, não anonimizados**: mantenha a pasta protegida e não a compartilhe.
+- Limite local: **100 visitas** e **500 fingerprints distintos por referência**. Esse limite protege o arquivo local; não autoriza coleta em massa nem substitui as regras do Instagram.
+- **`forget`** elimina o histórico da referência selecionada, mas mantém seu cadastro e o segredo HMAC se houver outras referências. Para apagar todos os dados de histórico de uma instalação, feche o laboratório e remova os arquivos `reference-history.json` e `reference-history-hmac.key` de `.data`; isso perde a possibilidade de deduplicação anterior. Não apague `references.json` se quiser preservar as referências cadastradas.
+
+A leitura de até cinco nomes na janela aberta manualmente foi confirmada em teste local, mas o modo **`inspect-track`** ainda requer validação no Chrome. Nenhum histórico anterior foi importado automaticamente. Dados de uma referência não demonstram que uma pessoa irá seguir você ou que houve crescimento provocado por uma interação.
+
 ## Fila auxiliar de candidatos manuais (não comprova vínculo com a referência)
 
 A próxima etapa do motor de nichos é uma **fila local de perfis para revisão**, sem coleta automática nem follow em massa. As referências de origem não são verificadas na rede social. Não use listas adquiridas sem permissão ou dados privados de terceiros.

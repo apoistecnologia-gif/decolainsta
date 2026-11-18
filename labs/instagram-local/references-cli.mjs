@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
  * Reference accounts are labels chosen by the user, NOT a follower scraping API.
- * Operates locally. Does not open Instagram or start follow/unfollow automation.
+ * Operates locally. Can launch a read-only, manual Chrome inspection; never starts follow/unfollow.
  */
 import { readFile, mkdir, writeFile, rename, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { validateUsername } from './guard.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addReference } from './references.mjs';
@@ -48,6 +50,7 @@ async function main() {
   if (!command || command === 'help') {
     console.log('Uso: npm run refs -- add perfil_referencia');
     console.log('     npm run refs -- list');
+    console.log('     npm run refs -- inspect perfil_referencia');
     console.log('Este módulo NÃO lê a lista de seguidores e não executa ações.');
     return;
   }
@@ -60,6 +63,22 @@ async function main() {
     console.log('Perfil:', '@' + args[0].replace(/^@/, '').toLowerCase());
     console.log('Seguidores da referência: NÃO identificados.');
     console.log('A API oficial da Meta não fornece a lista de seguidores de outras contas.');
+    return;
+  }
+  if (command === 'inspect') {
+    if (args.length !== 1) throw new Error('Use: npm run refs -- inspect perfil_referencia');
+    const username = validateUsername(args[0]).toLowerCase();
+    const references = await load();
+    if (!references.some(ref => ref.username === username)) {
+      throw new Error('A referência não está cadastrada. Cadastre o @ antes de inspecionar.');
+    }
+    console.log('Inspeção de referência: @' + username);
+    console.log('Somente visualização. Sem coleta de perfis e sem follows.');
+    const result = spawnSync(process.execPath, [path.join(here, 'references-inspect.mjs'), username], {
+      cwd: here, stdio: 'inherit', shell: false,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) process.exitCode = result.status ?? 2;
     return;
   }
   if (command === 'list') {

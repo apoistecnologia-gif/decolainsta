@@ -243,6 +243,19 @@ export function AccountDetail({ account }: { account: any }) {
                   <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Publicações</p><p className="text-2xl font-bold">{instagramData?.profile?.media_count ?? account.profileMediaCount ?? '—'}</p></div>
                   <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Tipo</p><p className="text-base font-semibold">{instagramData?.profile?.account_type ?? 'Profissional'}</p></div>
                 </div>
+                {instagramData?.followersMeasurement && (
+                  <div className="rounded-md border p-3 space-y-1">
+                    <p className="text-sm font-medium">Variação de seguidores observada pela Meta</p>
+                    <p className="text-lg font-semibold">
+                      {instagramData.followersMeasurement.delta === null
+                        ? 'Primeira observação, sem comparação anterior'
+                        : new Intl.NumberFormat('pt-BR', { signDisplay: 'always' }).format(instagramData.followersMeasurement.delta)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Diferença desde a contagem anterior registrada. Não prova que os seguidores vieram de follow/unfollow.
+                    </p>
+                  </div>
+                )}
                 {instagramData && <div className="space-y-3"><h3 className="font-medium">Últimas publicações (dados oficiais)</h3><div className="space-y-2">{instagramData.media.map((media: any) => <div key={media.id} className="rounded-md border p-3 text-sm"><div className="font-medium">{media.media_type ?? 'Mídia'} · {media.timestamp ? new Date(media.timestamp).toLocaleDateString('pt-BR') : ''}</div><p className="text-muted-foreground line-clamp-2">{media.caption ?? 'Sem legenda'}</p>{media.permalink && <a className="text-primary underline" href={media.permalink} target="_blank" rel="noopener noreferrer">Ver no Instagram</a>}</div>)}</div></div>}
               </>}
             </CardContent>

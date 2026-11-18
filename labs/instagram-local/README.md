@@ -56,9 +56,12 @@ Para cadastrar a referência localmente:
 npm run refs -- add cartomante_referencia
 npm run refs -- list
 npm run refs -- inspect cartomante_referencia
+npm run refs -- inspect-visible cartomante_referencia
 ```
 
 O comando `inspect` abre o Chrome local e solicita que você clique **manualmente** na contagem de seguidores da referência. Ele apenas verifica se a janela de seguidores ficou visível ou se há aviso de restrição. **Não lê nem armazena @ de seguidores**, não rola a lista, não interage com eles e não contorna restrições do Instagram. O resultado de `dialog_visible_manual` não significa que a lista completa esteja disponível.
+
+Após confirmar visualmente o diálogo, o comando **`inspect-visible`** pode conferir **até 5 nomes de usuário que estejam visíveis na janela aberta manualmente**, apenas para verificar se o laboratório consegue interpretar corretamente links de perfis. Ele imprime a amostra no terminal, **sem salvá-la**, não clica, não rola a lista e não interage com essas pessoas. Não é um extrator de listas completas. Requer que a janela única de seguidores esteja visível e não haja aviso de restrição. Se aparecerem zero nomes, preserve o print do Chrome e o resultado do terminal para investigar a estrutura atual da interface; não reexecute indefinidamente. A coleta ou interação em escala pode infringir regras da plataforma e não foi implementada.
 
 O cadastro funciona **sem categoria de nicho** e não requer conectar a referência à conta da pessoa que utiliza o DecolaInsta.
 

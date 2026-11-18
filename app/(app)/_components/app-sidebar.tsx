@@ -10,11 +10,13 @@ import {
   Activity,
   Zap,
   Shield,
+  Sparkles,
 } from 'lucide-react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/accounts', label: 'Contas', icon: Instagram },
+  { href: '/reference-ai', label: 'IA · Referências', icon: Sparkles },
   { href: '/activity', label: 'Atividade', icon: Activity },
   { href: '/alerts', label: 'Alertas', icon: Bell },
   { href: '/engine', label: 'Motor', icon: Zap },
@@ -30,7 +32,7 @@ export function AppSidebar({ user }: { user: any }) {
           <Zap className="h-4 w-4 text-primary-foreground" />
         </div>
         <div>
-          <h2 className="font-display text-sm font-bold tracking-tight">InstaGrowth</h2>
+          <h2 className="font-display text-sm font-bold tracking-tight">DecolaInsta</h2>
           <p className="text-xs text-muted-foreground">Sistema de Crescimento</p>
         </div>
       </div>

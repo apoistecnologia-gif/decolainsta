@@ -10,7 +10,7 @@ test('aceita um único usuário com sintaxe válida e normaliza @', () => {
 });
 
 test('somente inspect, follow e unfollow; confirmação específica e obrigatória', () => {
-  for (const action of ['inspect','follow','unfollow']) assert.equal(validateAction(action), action);
+  for (const action of ['inspect','inspect-menu','follow','unfollow']) assert.equal(validateAction(action), action);
   assert.throws(() => validateAction('bulk-follow'));
   assert.equal(confirmationText('follow', 'test'), 'SEGUIR @test');
   assert.equal(confirmationText('unfollow', 'test'), 'DEIXAR @test');
@@ -68,4 +68,10 @@ test('botão Seguindo reconhecido pelo texto mesmo com nome acessível diferente
   assert.equal(buttonLabelMatches(null, 'Seguindo o perfil errado', STATES.following), false);
   assert.equal(buttonLabelMatches(null, 'Seguir', STATES.follow), true);
   assert.equal(buttonLabelMatches(null, 'Seguindo', STATES.follow), false);
+});
+
+test('inspect-menu é somente diagnóstico; não aceita ações em lote', () => {
+  assert.equal(validateAction('inspect-menu'), 'inspect-menu');
+  assert.equal(confirmationText('inspect-menu', 'perfil'), null);
+  assert.throws(() => validateAction('inspect-menu-all'));
 });

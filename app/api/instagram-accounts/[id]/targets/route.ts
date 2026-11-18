@@ -52,7 +52,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     data: {
       instagramAccountId: id,
       username: usernameClean,
+      // A reference is registered only; never activate simulation automatically.
       niche: niche || 'geral',
+      enabled: false,
     },
   });
 

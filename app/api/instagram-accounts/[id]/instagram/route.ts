@@ -15,7 +15,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const connected = await connectedAccount(id, userId);
     if (!connected) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 });
     const [profile, media] = await Promise.all([
-      getProfile(connected.token), getMedia(connected.token, connected.account.instagramUserId!),
+      getProfile(connected.token, connected.account.instagramUserId!), getMedia(connected.token, connected.account.instagramUserId!),
     ]);
     await prisma.instagramAccount.update({
       where: { id }, data: {

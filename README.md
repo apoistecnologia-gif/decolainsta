@@ -32,7 +32,20 @@ Projeto Next.js/React com área autenticada, várias contas profissionais conect
 
 ## Limites
 
-A API oficial de Instagram não fornece operações para seguir/deixar de seguir usuários arbitrários nem a coleta irrestrita de seguidores de outras contas. A automação não oficial de follow/unfollow pode violar termos de uso e causar limitações ou suspensão de contas. O antigo motor permanece em **modo demo**; ligar/desligar seu estado no painel não produz ações reais. Resultados do laboratório não são métricas do Instagram. A sincronização de contas profissionais pode registrar uma observação real da contagem de seguidores e sua variação desde a leitura anterior, sem atribuição causal. O aplicativo também **não executa tarefas continuamente no servidor por conta própria**. As publicações reais são feitas manualmente no painel.
+A API oficial de Instagram não fornece operações para seguir/deixar de seguir usuários arbitrários nem a coleta irrestrita de seguidores de outras contas. A automação não oficial de follow/unfollow pode violar termos de uso e causar limitações ou suspensão de contas. O antigo motor permanece em **modo demo**; ligar/desligar seu estado no painel não produz ações reais. Resultados do laboratório não são métricas do Instagram. A sincronização de contas profissionais pode registrar uma observação real da contagem de seguidores e sua variação desde a leitura anterior, sem atribuição causal. O servidor possui uma rotina **opcional e desativada por padrão** de sincronização diária de métricas oficiais, via Vercel Cron. Ela só funciona na produção depois de configurar `CRON_SECRET` e `DECOLAINSTA_AUTO_SYNC_ENABLED=true`; previews não executam o agendamento. As publicações reais continuam manuais e seguir/deixar de seguir continua fora dessa rotina.
+
+## Sincronização automática diária de métricas (experimental, não ativada)
+
+A branch experimental contém `vercel.json` com chamada diária a `GET /api/cron/sync-insights` às **12:00 UTC (09:00 em Recife)**. O endpoint:
+
+- Exige `Authorization: Bearer <CRON_SECRET>` com segredo de pelo menos 32 caracteres e falha fechado quando não configurado.
+- Exige `DECOLAINSTA_AUTO_SYNC_ENABLED=true`. Com o padrão `false`, não consulta contas nem faz chamadas Meta.
+- Consulta, no máximo, cinco contas profissionais previamente autorizadas por OAuth em cada execução, somente se a última sincronização tiver ocorrido há 23 horas ou mais.
+- Busca `followers_count` e `media_count` pela API oficial; registra apenas números válidos. A variação é um saldo entre observações, jamais prova de atribuição de seguidores.
+- Impede sobrescrever sincronizações mais novas usando atualização condicional, e não registra nomes individuais, cookies, senhas ou tokens na auditoria.
+- **Não segue perfis, não deixa de seguir, não pesquisa seguidores de terceiros, não publica conteúdo e não executa o motor de demonstração.**
+
+Para ativar futuramente, um responsável pela implantação deve: preparar o banco PostgreSQL sem alterações de schema; configurar o OAuth Meta e contas profissionais; gerar e armazenar `CRON_SECRET` no cofre de variáveis da Vercel (ambiente Production); marcar `DECOLAINSTA_AUTO_SYNC_ENABLED=true` em Production; realizar uma revisão de segurança e só então aprovar o deployment para produção. **Este commit não promove/deploya a produção e não configura segredos.** O Cron da Vercel roda apenas em produção, não no Preview. Execuções simultâneas ou atrasos na Meta podem afetar a cadência; a rotina não garante atualização exata em horário fixo nem escala ilimitadamente sem uma fila persistente.
 
 ## Provas de crescimento real e testes
 

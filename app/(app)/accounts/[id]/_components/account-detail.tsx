@@ -400,8 +400,9 @@ export function AccountDetail({ account }: { account: any }) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Dias antes de dar unfollow: {unfollowDays}</Label>
+                  <Label>Prazo do unfollow simulado: {unfollowDays} {unfollowDays === 1 ? 'dia (24 horas)' : `dias (${unfollowDays * 24} horas)`}</Label>
                   <Slider value={[unfollowDays]} onValueChange={(v: number[]) => setUnfollowDays(v?.[0] ?? 3)} min={1} max={14} step={1} />
+                  <p className="text-xs text-muted-foreground">Prazo mínimo contado a partir do follow fictício; a simulação acontece no próximo ciclo disponível, dentro do horário configurado. Nenhuma ação real de seguir/deixar de seguir é realizada no Instagram.</p>
                 </div>
               </CardContent>
             </Card>

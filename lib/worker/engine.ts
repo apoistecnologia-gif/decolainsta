@@ -2,6 +2,17 @@
 // Não interpretar falhas aleatórias como bloqueios, limites ou respostas da Meta.
 
 import { prisma } from '@/lib/db';
+import { computeUnfollowScheduledAt } from './unfollow-schedule';
+
+
+// Compare calendar days in the account's configured timezone, not the server timezone.
+function calendarDayKey(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    year: 'numeric', month: '2-digit', day: '2-digit', timeZone,
+  }).formatToParts(date);
+  const part = (type: string) => parts.find(value => value.type === type)?.value;
+  return [part('year'), part('month'), part('day')].join('-');
+}
 
 interface ActionResult {
   success: boolean;
@@ -93,7 +104,8 @@ export async function processFollowsForAccount(accountId: string): Promise<void>
 
   // Reset daily counters if needed
   const now = new Date();
-  if (!account.dayCounterResetAt || now.toDateString() !== new Date(account.dayCounterResetAt).toDateString()) {
+  const timeZone = account.settings?.timezone ?? 'America/Sao_Paulo';
+  if (!account.dayCounterResetAt || calendarDayKey(now, timeZone) !== calendarDayKey(new Date(account.dayCounterResetAt), timeZone)) {
     await prisma.instagramAccount.update({
       where: { id: accountId },
       data: { followsToday: 0, unfollowsToday: 0, dayCounterResetAt: now },
@@ -168,15 +180,15 @@ export async function processFollowsForAccount(accountId: string): Promise<void>
     const result = await simulateFollow(follower);
 
     if (result.success) {
-      const unfollowDate = new Date();
-      unfollowDate.setDate(unfollowDate.getDate() + (settings?.unfollowAfterDays ?? 3));
+      const followedAt = new Date();
+      const unfollowDate = computeUnfollowScheduledAt(followedAt, settings?.unfollowAfterDays ?? 3);
 
       await prisma.followAction.create({
         data: {
           instagramAccountId: accountId,
           targetUsername: follower,
           action: 'follow',
-          followedAt: now,
+          followedAt,
           unfollowScheduledAt: unfollowDate,
           sourceTarget: target.username,
           isDryRun: account.dryMode,
@@ -229,11 +241,21 @@ export async function processUnfollowsForAccount(accountId: string): Promise<voi
 
   if (!account || account.status !== 'active' || !account.dryMode) return;
   if (account.cooldownUntil && new Date(account.cooldownUntil) > new Date()) return;
+  if (!(await isWithinOperatingHours(accountId))) return;
+
+  const now = new Date();
+  const timeZone = account.settings?.timezone ?? 'America/Sao_Paulo';
+  // Unfollow can run without a preceding follow tick: reset counters here too.
+  if (!account.dayCounterResetAt || calendarDayKey(now, timeZone) !== calendarDayKey(new Date(account.dayCounterResetAt), timeZone)) {
+    await prisma.instagramAccount.update({
+      where: { id: accountId },
+      data: { followsToday: 0, unfollowsToday: 0, dayCounterResetAt: now },
+    });
+    account.unfollowsToday = 0;
+  }
 
   const limits = await getEffectiveLimits(accountId);
   if (account.unfollowsToday >= limits.maxUnfollows) return;
-
-  const now = new Date();
   const whitelistUsernames = (account.whitelist ?? []).map((w: any) => w?.username).filter(Boolean);
 
   // Find follows that are due for unfollow
@@ -241,12 +263,13 @@ export async function processUnfollowsForAccount(accountId: string): Promise<voi
     where: {
       instagramAccountId: accountId,
       action: 'follow',
+      isDryRun: true,
       unfollowedAt: null,
       unfollowScheduledAt: { lte: now },
       followedBack: account.settings?.neverUnfollowFollowers ? false : undefined,
       targetUsername: whitelistUsernames.length > 0 ? { notIn: whitelistUsernames } : undefined,
     },
-    take: 2,
+    take: Math.min(2, limits.maxUnfollows - account.unfollowsToday),
     orderBy: { unfollowScheduledAt: 'asc' },
   });
 

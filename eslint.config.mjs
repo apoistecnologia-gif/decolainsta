@@ -5,7 +5,8 @@ import nextVitals from 'eslint-config-next/core-web-vitals';
 import nextTs from 'eslint-config-next/typescript';
 
 export default defineConfig([
-  globalIgnores(['.next/**', '.build/**', 'node_modules/**', 'out/**', 'build/**', 'next-env.d.ts']),
+  // Vendor ECharts is a third-party minified distribution, not maintained project source.
+  globalIgnores(['.next/**', '.build/**', 'node_modules/**', 'out/**', 'build/**', 'next-env.d.ts', 'public/abacus-viz/echarts.min.js']),
   ...nextVitals,
   ...nextTs,
   {

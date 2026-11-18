@@ -40,10 +40,10 @@ export async function POST(req: Request, {
   const since = new Date(Date.now() - 24 * 3600 * 1000);
   const [accountCalls, userCalls] = await Promise.all([
     prisma.activityLog.count({
-      where: { instagramAccountId: id, action: 'ai_reference_analysis', createdAt: { gte: since } },
+      where: { instagramAccountId: id, action: 'ai_reference_request', createdAt: { gte: since } },
     }),
     prisma.activityLog.count({
-      where: { action: 'ai_reference_analysis', instagramAccount: { userId }, createdAt: { gte: since } },
+      where: { action: 'ai_reference_request', instagramAccount: { userId }, createdAt: { gte: since } },
     }),
   ]);
   if (accountCalls >= 3 || userCalls >= 10) {
@@ -51,6 +51,17 @@ export async function POST(req: Request, {
   }
 
   try {
+    // Charge each attempt against the daily budget, even if the provider errors.
+    // No user-supplied prompt or response content is written to the audit log.
+    await prisma.activityLog.create({
+      data: {
+        instagramAccountId: id,
+        action: 'ai_reference_request',
+        targetUsername: target.username,
+        details: 'opt_in_public_reference_strategy_only',
+        success: false,
+      },
+    });
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {

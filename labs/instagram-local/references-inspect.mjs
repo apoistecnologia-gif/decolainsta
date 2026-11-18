@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Read-only manual visibility diagnostic for a registered reference account.
- * Never selects followers, extracts usernames, scrolls a list or acts on accounts.
+ * Normal mode does not extract usernames; optional diagnostic reads up to 5 visible links.
+ * Never clicks, scrolls, persists a list or acts on accounts.
  * Reuses the local Chrome session created by the single-action laboratory.
  */
 import path from 'node:path';
@@ -11,6 +12,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import { mkdir } from 'node:fs/promises';
 import { validateUsername, isRestrictedUrl } from './guard.mjs';
 import { referenceFollowerVisibility } from './reference-visibility.mjs';
+import { visibleFollowerSample } from './reference-visible-sample.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sessionDir = path.join(here, '.session');
@@ -18,7 +20,10 @@ const FOLLOWER_LABEL = /seguidores|followers/i;
 
 async function run() {
   const [rawUsername, ...extra] = process.argv.slice(2);
-  if (extra.length || !rawUsername) throw new Error('Uso: node references-inspect.mjs usuario_referencia');
+  const sampleMode = extra.length === 1 && extra[0] === '--visible-sample';
+  if ((!sampleMode && extra.length) || !rawUsername) {
+    throw new Error('Uso: node references-inspect.mjs usuario_referencia [--visible-sample]');
+  }
   const username = validateUsername(rawUsername);
   const { chromium } = await import('playwright').catch(() => {
     throw new Error('Playwright não instalado. Execute npm install nesta pasta.');
@@ -68,7 +73,40 @@ async function run() {
     const restriction = /limitamos certas coisas|restringimos certas atividades|we limit certain things|we restrict certain activity|ação bloqueada|action blocked|tente novamente mais tarde|try again later/i.test(text);
     console.log('Janelas visíveis:', visible);
     console.log('Status:', referenceFollowerVisibility(headerText, visible > 0, restriction));
-    console.log('Nenhum usuário da lista foi coletado. Nenhuma ação foi executada.');
+    if (sampleMode && !restriction && visible === 1 && FOLLOWER_LABEL.test(headerText)) {
+      const visibleDialog = await dialogs.filter({ visible: true }).first();
+      const dialogLabel = (await visibleDialog.innerText().catch(() => '')).slice(0, 80);
+      if (/seguidores|followers/i.test(dialogLabel)) {
+        // Read only anchors that are physically visible inside the open dialog.
+        // Do not click, scroll, auto-discover more users or save them to a file.
+        const links = await visibleDialog.locator('a[href]').evaluateAll(elements => {
+          const container = elements[0]?.closest('[role="dialog"]');
+          if (!container) return [];
+          const boundary = container.getBoundingClientRect();
+          return elements.map(element => {
+            const box = element.getBoundingClientRect();
+            const shown = element.getClientRects().length > 0 &&
+              box.width > 0 && box.height > 0 &&
+              box.top < Math.min(boundary.bottom, window.innerHeight) &&
+              box.bottom > Math.max(boundary.top, 0) &&
+              box.left < Math.min(boundary.right, window.innerWidth) &&
+              box.right > Math.max(boundary.left, 0);
+            return { href: element.getAttribute('href') || '', visible: shown };
+          });
+        }).catch(() => []);
+        const sample = visibleFollowerSample(links, username, 5);
+        console.log('Amostra de até 5 @ visíveis, sem salvar:', sample.length);
+        for (const handle of sample) console.log('  @' + handle);
+        console.log('Amostra PARCIAL: não comprova que todos os seguidores estão disponíveis.');
+      } else {
+        console.log('Janela não identificada como lista de seguidores. Nenhum @ foi lido.');
+      }
+    } else if (sampleMode) {
+      console.log('Não houve janela única de seguidores sem restrição; nenhum @ foi lido.');
+    }
+    console.log(sampleMode
+      ? 'Nenhum usuário foi armazenado e nenhuma ação foi executada.'
+      : 'Nenhum usuário da lista foi coletado. Nenhuma ação foi executada.');
     await rl.question('Confira a janela e pressione Enter para fechar o Chrome. ');
   } finally {
     rl.close();

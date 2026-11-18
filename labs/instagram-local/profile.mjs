@@ -11,7 +11,7 @@ export async function waitForProfileReady(
   page, username, readButtons, timeout = 16000, interval = 400,
 ) {
   const expected = `/${username.toLowerCase()}/`;
-  const header = page.locator('main header').first();
+  let header = null;
   const deadline = Date.now() + Math.max(timeout, 0);
   let headerSeen = false;
   let lastButtons = [];
@@ -28,6 +28,8 @@ export async function waitForProfileReady(
       return { header: null, buttons: [], state: 'unknown', reason: 'invalid_page', path: '(invalid)' };
     }
 
+    // Resolve the profile selector only after confirming we are on its exact URL.
+    if (!header) header = page.locator('main header').first();
     if (await header.isVisible().catch(() => false)) {
       headerSeen = true;
       lastButtons = await readButtons(header).catch(() => []);

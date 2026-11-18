@@ -11,11 +11,13 @@ import {
   Zap,
   Shield,
   Sparkles,
+  ListChecks,
 } from 'lucide-react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/accounts', label: 'Contas', icon: Instagram },
+  { href: '/references', label: 'Contas de referência', icon: ListChecks },
   { href: '/reference-ai', label: 'IA · Referências', icon: Sparkles },
   { href: '/activity', label: 'Atividade', icon: Activity },
   { href: '/alerts', label: 'Alertas', icon: Bell },

@@ -146,7 +146,7 @@ async function run() {
           const item = matches.nth(i);
           if (!await item.isVisible()) continue;
           const aria = await item.getAttribute('aria-label') || '';
-          const label = (aria || await item.innerText().catch(() => '')).replace(/\\s+/g, ' ').trim();
+          const label = (aria || await item.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
           // Only report labels relevant to follow/unfollow. Never dump page content or credentials.
           if (/seguir|seguindo|follow|unfollow/i.test(label) && label.length <= 80) labels.push(label);
         }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateUsername, validateAction, confirmationText, resultStatus, isRestrictedUrl, STATES } from '../guard.mjs';
+import { validateUsername, validateAction, confirmationText, resultStatus, isRestrictedUrl, profileHeaderState, STATES } from '../guard.mjs';
 
 test('aceita um único usuário com sintaxe válida e normaliza @', () => {
   assert.equal(validateUsername(' @perfil.teste_1 '), 'perfil.teste_1');
@@ -46,4 +46,16 @@ test('CLI rejeita operação de lote e usernames malformados antes de abrir nave
     assert.equal(result.status, 3);
     assert.match(result.stderr, /Interrompido:/);
   }
+});
+
+test('inspeção diferencia Seguir de Seguindo e Solicitação, sem inventar estado', () => {
+  assert.equal(profileHeaderState(['Seguir']), 'follow_available');
+  assert.equal(profileHeaderState(['Seguir de volta']), 'follow_available');
+  assert.equal(profileHeaderState(['Seguindo']), 'following');
+  assert.equal(profileHeaderState(['Solicitado']), 'requested');
+  assert.equal(profileHeaderState(['Requested']), 'requested');
+  assert.equal(profileHeaderState([]), 'unknown');
+  assert.equal(profileHeaderState(['Mensagem', 'Opções']), 'unknown');
+  assert.equal(profileHeaderState(['Seguir', 'Seguindo']), 'ambiguous');
+  assert.equal(profileHeaderState(['Editar perfil']), 'unknown');
 });

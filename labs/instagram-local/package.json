@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "inspect": "node cli.mjs inspect",
+    "inspect-menu": "node cli.mjs inspect-menu",
     "follow": "node cli.mjs follow",
     "unfollow": "node cli.mjs unfollow"
   },

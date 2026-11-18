@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, profileHeaderState, STATES } from './guard.mjs';
+import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, profileHeaderState, buttonLabelMatches, STATES } from './guard.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const profileDir = path.join(directory, '.session');
@@ -36,11 +36,25 @@ async function visibleButtonNames(page) {
   return names;
 }
 
-async function oneVisibleButton(page, regex) {
-  const matching = page.getByRole('button', { name: regex });
-  const count = await matching.count();
-  if (count !== 1 || !await matching.first().isVisible()) return null;
-  return matching.first();
+async function oneVisibleButton(scope, regex) {
+  // Instagram may expose a different accessible name than the rendered label.
+  // Match the *same visible button elements* used by the inspector, restricted to
+  // the target profile header (or the unfollow confirmation dialog).
+  const buttons = scope.getByRole('button');
+  const count = Math.min(await buttons.count(), 200);
+  const matches = [];
+  for (let i = 0; i < count; i++) {
+    const candidate = buttons.nth(i);
+    if (!await candidate.isVisible()) continue;
+    const aria = await candidate.getAttribute('aria-label');
+    const text = await candidate.innerText().catch(() => '');
+    if (buttonLabelMatches(aria, text, regex)) matches.push(candidate);
+  }
+  if (matches.length !== 1) {
+    console.log(`Seleção inconclusiva: ${matches.length} botão(ões) correspondentes; não haverá clique.`);
+    return null;
+  }
+  return matches[0];
 }
 
 async function restrictedOrWarn(page) {
@@ -132,17 +146,25 @@ async function run() {
     await button.click({ timeout: 8000 });
     if (action === 'unfollow') {
       // Instagram shows a confirmation dialog for unfollow in many UI versions.
-      const confirmButton = await oneVisibleButton(page, STATES.unfollow);
+      const dialogs = page.getByRole('dialog');
+      const dialogCount = await dialogs.count();
+      const visibleDialogs = [];
+      for (let i = 0; i < dialogCount; i++) {
+        if (await dialogs.nth(i).isVisible()) visibleDialogs.push(dialogs.nth(i));
+      }
+      const confirmButton = visibleDialogs.length === 1
+        ? await oneVisibleButton(visibleDialogs[0], STATES.unfollow) : null;
       if (!confirmButton) {
         await record({ action, username, status: 'unverified_confirmation_dialog', realActions: 'unknown' });
-        console.log('Confirmação de unfollow não identificada. Verifique manualmente; não tente novamente automaticamente.');
+        console.log('Confirmação de unfollow não identificada em janela única. Verifique manualmente; não tente novamente automaticamente.');
         return EXIT.NOT_VERIFIED;
       }
       await confirmButton.click({ timeout: 8000 });
     }
     await page.waitForTimeout(1200);
     const restrictionAfter = await restrictedOrWarn(page);
-    const status = restrictionAfter ? 'restriction_detected' : resultStatus(action, await visibleButtonNames(page));
+    const status = restrictionAfter ? 'restriction_detected'
+      : resultStatus(action, await visibleButtonNames(header));
     await record({ action, username, status, realActions: status.endsWith('_confirmed') ? 1 : 'unknown' });
     console.log(`Resultado observado: ${status}. Verifique também no Instagram.`);
     return status.endsWith('_confirmed') || status === 'request_submitted' ? EXIT.OK : EXIT.NOT_VERIFIED;

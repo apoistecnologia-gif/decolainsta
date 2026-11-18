@@ -7,3 +7,8 @@ node_modules/
 *.log
 *.tsbuildinfo
 .DS_Store
+
+# Dedicated local Instagram test browser; may contain authenticated cookies
+labs/instagram-local/.session/
+labs/instagram-local/results/
+labs/instagram-local/node_modules/

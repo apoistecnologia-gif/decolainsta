@@ -130,6 +130,31 @@ npm run queue -- sync
 
 A fila seleciona no máximo um candidato para o laboratório por execução e **não** roda follows em série, não agenda um motor e não está conectada ao painel da Vercel. Isso prepara a auditoria de cada candidato e a medição sem inventar resultados ou usar listas simuladas.
 
+## Painel de referências — relatório agregado, sem enviar seguidores
+
+Após verificar perfis no Chrome e conferir o histórico, gere **somente os contadores e o histórico resumido**:
+
+```powershell
+npm run refs -- export-report mameto_lueji
+```
+
+O terminal retorna o caminho completo de um novo arquivo JSON em `.data`, por exemplo `resumo-mameto_lueji-xxxxxxxx.json`. A exportação NÃO contém seguidores individuais, fingerprints HMAC, cookies, senhas ou a chave local. No DecolaInsta **Preview**, abra o menu **Contas de referência** e selecione esse JSON. A leitura ocorre no próprio navegador; o arquivo não é enviado à Vercel nem salvo no banco.
+
+A interface mostra apenas verificações, perfis distintos nas amostras HMAC, contagens manuais e repetições, sempre com aviso de dados parciais. Não existe atualização automática entre o notebook e a Vercel.
+
+## Revisão individual 24 ou 72 horas após follow confirmado
+
+O objetivo de produto prevê analisar contas de referência e, quando permitido, avaliar seguimentos após 24 ou 72 horas. O módulo entregue por enquanto é **um planejador de revisão manual**, e NÃO um robô de seguir/deixar de seguir em segundo plano. Ele lê somente o arquivo local `results/activity.jsonl` e aceita apenas os eventos confirmados (`following_confirmed` ou `unfollow_confirmed`, com `realActions: 1`). Não presume que alguém seguiu de volta.
+
+```powershell
+npm run review -- 24
+npm run review -- 72
+```
+
+O relatório exibirá quais follows confirmados chegaram ao prazo de revisão. Uma conta que já recebeu unfollow confirmado sai da fila. Se tiver havido novo follow depois disso, o prazo começa novamente. **Não é necessário manter o notebook ligado** para calcular prazos, mas o sistema não envia avisos nem executa ações. Cada decisão exige avaliação manual.
+
+Os Termos de Uso do Instagram restringem a coleta automatizada e as ações não autorizadas. Intervalos maiores, IA ou tentativas de imitar uma pessoa não tornam o método isento de risco; não foi acrescentada automação de evasão, proxies, contorno de verificações, raspagem contínua nem agendamento de ações externas.
+
 ## Testes
 
 `npm test` verifica as regras de entrada, proibição de lote, checagens de login/desafio e classificação do resultado. Não se confunde com teste real da interface do Instagram. Para validação ponta a ponta é necessário executar o Chrome local e observar a conta diretamente no Instagram.

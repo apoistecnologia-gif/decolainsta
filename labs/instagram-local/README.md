@@ -46,6 +46,36 @@ npm run inspect-menu -- nome_do_perfil
 
 Com a conta de teste conectada, clique **manualmente apenas em Seguindo** no Chrome, sem selecionar **Deixar de seguir**. Pressione Enter no PowerShell. O programa informa se o Instagram abriu um diálogo/menu e quais controles de seguir/deixar de seguir encontrou, sem imprimir dados privados da página. Tire uma captura da janela do Chrome com esse menu aberto e só depois pressione Enter novamente para fechar a janela. Isso serve para adaptar a seleção ao formato observado da interface, evitando cliques incertos.
 
+## Fila local por nicho — candidatos fornecidos manualmente
+
+A próxima etapa do motor de nichos é uma **fila local de perfis para revisão**, sem coleta automática nem follow em massa. As referências de origem não são verificadas na rede social. Não use listas adquiridas sem permissão ou dados privados de terceiros.
+
+Crie um arquivo CSV UTF-8 (no Bloco de Notas ou Excel) com este formato:
+
+```csv
+username;nicho;origem
+perfil_teste_a;Espiritualidade;perfil_referencia
+perfil_teste_b;Beleza;perfil_referencia
+```
+
+Esses nomes são ilustrativos. Informe perfis de teste que você administra ou outros candidatos para revisão manual. A coluna `origem` é opcional e **não** comprova que o candidato acompanha esse perfil. A lista não é coletada do Instagram pelo programa.
+
+No PowerShell, dentro de `labs/instagram-local`:
+
+```powershell
+npm run queue -- import "C:caminhocandidatos.csv" --exclude seu_usuario_de_teste
+npm run queue -- list
+npm run queue -- next Espiritualidade
+npm run queue -- sync
+```
+
+- `import` importa perfis, valida nomes e nichos, evita duplicatas e exclui seu próprio usuário quando informado. Não importa credenciais.
+- `list` e `next` selecionam perfis **pendentes** por nicho, sem enviar solicitações.
+- `sync` lê apenas o histórico `results/activity.jsonl` gerado **localmente** e associa resultados de teste `following_confirmed` / `unfollow_confirmed` aos candidatos já cadastrados. É idempotente e ignora registros simulados, ambíguos ou não correspondentes.
+- Os dados da fila são armazenados em `.data/candidates.json` e ficam fora do Git. Não os compartilhe publicamente. Nunca coloque a pasta `.session` em arquivos compartilhados.
+
+A fila ainda **não** executa ações automaticamente, não agenda um motor e não está conectada ao painel da Vercel. Isso prepara a auditoria de cada candidato e a medição sem inventar resultados ou usar listas simuladas.
+
 ## Testes
 
 `npm test` verifica as regras de entrada, proibição de lote, checagens de login/desafio e classificação do resultado. Não se confunde com teste real da interface do Instagram. Para validação ponta a ponta é necessário executar o Chrome local e observar a conta diretamente no Instagram.

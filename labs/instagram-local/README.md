@@ -36,6 +36,16 @@ npm run follow -- @nome_da_sua_segunda_conta
 
 A execução pede confirmação digitada e clica no máximo uma vez. Para testar desfazer a ação, rode separadamente `npm run unfollow -- @nome_da_sua_segunda_conta` e confirme.
 
+## Investigar confirmação de unfollow (sem executar unfollow)
+
+Se a opção final de **Deixar de seguir** não for localizada pelo laboratório, não repita a ação às cegas. Primeiro confira manualmente se o perfil ainda mostra **Seguindo**. Para investigar o menu sem acionar o unfollow, execute:
+
+```powershell
+npm run inspect-menu -- nome_do_perfil
+```
+
+Com a conta de teste conectada, clique **manualmente apenas em Seguindo** no Chrome, sem selecionar **Deixar de seguir**. Pressione Enter no PowerShell. O programa informa se o Instagram abriu um diálogo/menu e quais controles de seguir/deixar de seguir encontrou, sem imprimir dados privados da página. Tire uma captura da janela do Chrome com esse menu aberto e só depois pressione Enter novamente para fechar a janela. Isso serve para adaptar a seleção ao formato observado da interface, evitando cliques incertos.
+
 ## Testes
 
 `npm test` verifica as regras de entrada, proibição de lote, checagens de login/desafio e classificação do resultado. Não se confunde com teste real da interface do Instagram. Para validação ponta a ponta é necessário executar o Chrome local e observar a conta diretamente no Instagram.

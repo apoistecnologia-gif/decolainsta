@@ -22,6 +22,13 @@ const labels: Record<string, string> = {
   cancelled: 'Cancelado',
 };
 
+async function fetchScheduledPosts(accountId: string): Promise<{ enabled: boolean; posts: ScheduledPost[] }> {
+  const response = await fetch(`/api/instagram-accounts/${encodeURIComponent(accountId)}/scheduled-posts`, { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error ?? 'Falha ao carregar agendamentos');
+  return { enabled: data.enabled === true, posts: Array.isArray(data.posts) ? data.posts : [] };
+}
+
 export default function ScheduledPostsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccount, setSelectedAccount] = useState('');
@@ -53,17 +60,14 @@ export default function ScheduledPostsPage() {
     return () => { alive = false; };
   }, []);
 
-  async function refresh(accountId: string, alive = () => true) {
+  async function refresh(accountId: string) {
     try {
-      const response = await fetch(`/api/instagram-accounts/${encodeURIComponent(accountId)}/scheduled-posts`, { cache: 'no-store' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? 'Falha ao carregar agendamentos');
-      if (!alive()) return;
-      setEnabled(data.enabled === true);
-      setPosts(Array.isArray(data.posts) ? data.posts : []);
+      const data = await fetchScheduledPosts(accountId);
+      setEnabled(data.enabled);
+      setPosts(data.posts);
       setLoadedAccount(accountId);
     } catch (error) {
-      if (!alive()) return;
+      setEnabled(false);
       setPosts([]);
       setLoadedAccount(accountId);
       setMessage(error instanceof Error ? error.message : 'Erro ao carregar agendamentos');
@@ -73,7 +77,24 @@ export default function ScheduledPostsPage() {
   useEffect(() => {
     if (!selectedAccount) return;
     let alive = true;
-    void refresh(selectedAccount, () => alive);
+
+    // The effect subscribes to an external fetch. State changes only on promise settlement,
+    // avoiding synchronous setState and ignoring responses for an unmounted/changed selection.
+    fetchScheduledPosts(selectedAccount)
+      .then(data => {
+        if (!alive) return;
+        setEnabled(data.enabled);
+        setPosts(data.posts);
+        setLoadedAccount(selectedAccount);
+      })
+      .catch((error: unknown) => {
+        if (!alive) return;
+        setEnabled(false);
+        setPosts([]);
+        setLoadedAccount(selectedAccount);
+        setMessage(error instanceof Error ? error.message : 'Erro ao carregar agendamentos');
+      });
+
     return () => { alive = false; };
   }, [selectedAccount]);
 

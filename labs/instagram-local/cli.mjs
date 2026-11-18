@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, profileHeaderState, buttonLabelMatches, STATES } from './guard.mjs';
+import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, buttonLabelMatches, STATES } from './guard.mjs';
 import { waitForSingleVisibleDialog, waitForDialogActionText } from './dialog.mjs';
 import { waitForProfileReady } from './profile.mjs';
 

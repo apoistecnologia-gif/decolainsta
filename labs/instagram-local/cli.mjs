@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, profileHeaderState, buttonLabelMatches, STATES } from './guard.mjs';
+import { waitForSingleVisibleDialog } from './dialog.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const profileDir = path.join(directory, '.session');
@@ -192,14 +193,11 @@ async function run() {
     await button.click({ timeout: 8000 });
     if (action === 'unfollow') {
       // Instagram shows a confirmation dialog for unfollow in many UI versions.
-      const dialogs = page.getByRole('dialog');
-      const dialogCount = await dialogs.count();
-      const visibleDialogs = [];
-      for (let i = 0; i < dialogCount; i++) {
-        if (await dialogs.nth(i).isVisible()) visibleDialogs.push(dialogs.nth(i));
-      }
-      const confirmButton = visibleDialogs.length === 1
-        ? await oneVisibleButton(visibleDialogs[0], STATES.unfollow) : null;
+      // The menu is rendered asynchronously. Wait for exactly one visible dialog;
+      // do not attempt a second click if confirmation is absent or ambiguous.
+      const dialog = await waitForSingleVisibleDialog(page);
+      const confirmButton = dialog
+        ? await oneVisibleButton(dialog, STATES.unfollow) : null;
       if (!confirmButton) {
         await record({ action, username, status: 'unverified_confirmation_dialog', realActions: 'unknown' });
         console.log('Confirmação de unfollow não identificada em janela única. Verifique manualmente; não tente novamente automaticamente.');
@@ -207,10 +205,19 @@ async function run() {
       }
       await confirmButton.click({ timeout: 8000 });
     }
-    await page.waitForTimeout(1200);
-    const restrictionAfter = await restrictedOrWarn(page);
-    const status = restrictionAfter ? 'restriction_detected'
-      : resultStatus(action, await visibleButtonNames(header));
+    // Observation-only polling after the single click: allow the page to update,
+    // without repeating a follow/unfollow when the result is uncertain.
+    let status = 'unverified';
+    for (let check = 0; check < 20; check++) {
+      await page.waitForTimeout(350);
+      const restrictionAfter = await restrictedOrWarn(page);
+      if (restrictionAfter) {
+        status = 'restriction_detected';
+        break;
+      }
+      status = resultStatus(action, await visibleButtonNames(header));
+      if (status !== 'unverified') break;
+    }
     await record({ action, username, status, realActions: status.endsWith('_confirmed') ? 1 : 'unknown' });
     console.log(`Resultado observado: ${status}. Verifique também no Instagram.`);
     return status.endsWith('_confirmed') || status === 'request_submitted' ? EXIT.OK : EXIT.NOT_VERIFIED;

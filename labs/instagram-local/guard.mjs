@@ -46,3 +46,17 @@ export function resultStatus(action, visibleLabels) {
   if (action === 'unfollow' && visibleLabels.some(label => STATES.follow.test(label))) return 'unfollow_confirmed';
   return 'unverified';
 }
+
+/**
+ * A status is meaningful only when labels come from the visited profile header,
+ * not from Instagram's suggested accounts elsewhere on the page.
+ */
+export function profileHeaderState(labels) {
+  if (!Array.isArray(labels)) return 'unknown';
+  const states = [
+    ['following', STATES.following],
+    ['requested', STATES.requested],
+    ['follow_available', STATES.follow],
+  ].filter(([, pattern]) => labels.some(label => typeof label === 'string' && pattern.test(label)));
+  return states.length === 1 ? states[0][0] : states.length > 1 ? 'ambiguous' : 'unknown';
+}

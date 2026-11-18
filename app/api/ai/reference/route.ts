@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { cleanUsername } from '@/lib/instagram/validation';
 import {
-  buildReferencePrompt, extractResponseText, parseReferenceInsight, validateReferenceContext,
+  buildReferencePrompt, extractResponseText, parseReferenceInsight, validateReferenceContext, labelReferenceInsight,
 } from '@/lib/ai/reference';
 import { countPreviewAIRequest } from '@/lib/ai/preview-limit';
 
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'A IA não retornou uma análise completa e válida.' }, { status: 502 });
     }
     return NextResponse.json({
-      ...result,
+      ...labelReferenceInsight(result, context),
       referenceUsername: username,
       source: 'analysis_of_user_supplied_text',
       followersIdentified: false,

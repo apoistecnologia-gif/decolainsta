@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
   REFERENCE_HISTORY_FORMAT, newReferenceHistory,
-  recordDeclaredCheck, recordConfirmedVisibleSample, summarizeReferenceHistory,
+  recordDeclaredCheck, recordConfirmedVisibleSample, summarizeReferenceHistory, forgetReferenceHistory,
 } from '../reference-history.mjs';
 
 const FIXED_TIME = '2026-11-18T15:00:00.000Z';
@@ -137,4 +137,34 @@ test('modo de acompanhamento só persiste após a confirmação digitada do usu�
   assert.match(inspector, /answer\.trim\(\) === expected/);
   assert.match(inspector, /saveConfirmedSample\(username, sample\)/);
   assert.doesNotMatch(inspector, /page\.click\(|\.mouse\.wheel\(|\.scroll\(/);
+});
+
+test('apagar histórico por referência preserva outras referências e formato', () => {
+  const initial = recordDeclaredCheck(
+    newReferenceHistory(), 'ref_um', 5, FIXED_TIME,
+  ).history;
+  const both = recordConfirmedVisibleSample(
+    initial, 'ref_dois', ['pessoa_b'], KEY, '2026-11-19T15:00:00.000Z',
+  ).history;
+  const erased = forgetReferenceHistory(both, 'ref_um');
+  assert.equal(erased.deleted, true);
+  assert.equal(summarizeReferenceHistory(erased.history, 'ref_um').inspections, 0);
+  assert.equal(summarizeReferenceHistory(erased.history, 'ref_dois').distinctObserved, 1);
+  assert.equal(summarizeReferenceHistory(both, 'ref_um').inspections, 1);
+  const twice = forgetReferenceHistory(erased.history, 'ref_um');
+  assert.equal(twice.deleted, false);
+});
+
+test('a exclusão exige confirmação e a ajuda mostra recursos de privacidade', () => {
+  const base = path.dirname(fileURLToPath(import.meta.url));
+  const cli = path.join(base, '..', 'references-cli.mjs');
+  const help = spawnSync(process.execPath, [cli, 'help'], {
+    encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /refs -- forget/);
+  const source = readFileSync(cli, 'utf8');
+  assert.match(source, /APAGAR @/);
+  assert.match(source, /clearReferenceHistory/);
+  assert.match(source, /answer\.trim\(\) !== 'APAGAR @' \+ username/);
 });

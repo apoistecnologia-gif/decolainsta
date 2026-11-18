@@ -10,16 +10,11 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { mkdir } from 'node:fs/promises';
 import { validateUsername, isRestrictedUrl } from './guard.mjs';
+import { referenceFollowerVisibility } from './reference-visibility.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sessionDir = path.join(here, '.session');
 const FOLLOWER_LABEL = /seguidores|followers/i;
-
-export function referenceFollowerVisibility(headerText, dialogVisible, restricted) {
-  if (restricted) return 'restricted';
-  if (!FOLLOWER_LABEL.test(headerText)) return 'follower_label_missing';
-  return dialogVisible ? 'dialog_visible_manual' : 'dialog_not_visible';
-}
 
 async function run() {
   const [rawUsername, ...extra] = process.argv.slice(2);

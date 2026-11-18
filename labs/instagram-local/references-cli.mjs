@@ -58,6 +58,7 @@ async function main() {
     console.log('     npm run refs -- inspect-track perfil_referencia');
     console.log('     npm run refs -- note perfil_referencia 5');
     console.log('     npm run refs -- report perfil_referencia');
+    console.log('     npm run refs -- export-report perfil_referencia');
     console.log('     npm run refs -- forget perfil_referencia');
     console.log('Este módulo NÃO lê a lista de seguidores e não executa ações.');
     return;
@@ -138,6 +139,46 @@ async function main() {
     }
     console.log('Nenhum @ individual é exibido ou armazenado em texto claro.');
     console.log('Nenhum resultado de followback é inferido dessas verificações.');
+    return;
+  }
+  if (command === 'export-report') {
+    if (args.length !== 1) throw new Error('Uso: npm run refs -- export-report perfil_referencia');
+    const username = validateUsername(args[0]).toLowerCase();
+    const references = await load();
+    if (!references.some(ref => ref.username === username)) throw new Error('Referência não cadastrada.');
+    const { summary, visits } = await getReferenceHistoryReport(username);
+    const payload = {
+      format: 'decolainsta-reference-aggregate-v1',
+      reference: username,
+      generatedAt: new Date().toISOString(),
+      source: 'manual_lab_aggregate',
+      verifiedFollowerList: false,
+      followbackVerified: false,
+      summary: {
+        inspections: summary.inspections,
+        distinctObserved: summary.distinctObserved,
+        manuallyReported: summary.manuallyReported,
+        repeatedSeen: summary.repeatedSeen,
+        lastSeen: summary.lastSeen,
+      },
+      visits: visits.map(v => ({
+        observedAt: v.observedAt,
+        source: v.provenance,
+        sampleSize: v.sampleSize,
+        uniqueNew: v.uniqueNew,
+        repeated: v.repeated,
+        crossReferenceOverlap: v.crossReferenceOverlap,
+      })),
+    };
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    const reportName = 'resumo-' + username + '-' + randomUUID().slice(0,8) + '.json';
+    const destination = path.join(dir, reportName);
+    await writeFile(destination, JSON.stringify(payload, null, 2) + '\n', {
+      encoding: 'utf8', flag: 'wx', mode: 0o600,
+    });
+    console.log('Relatório agregado exportado:', destination);
+    console.log('Não contém seguidores individuais, fingerprints HMAC, cookies ou senhas.');
+    console.log('Importe este arquivo manualmente no painel de referências do Preview.');
     return;
   }
   if (command === 'forget') {

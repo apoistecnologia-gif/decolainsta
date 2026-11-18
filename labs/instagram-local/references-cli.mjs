@@ -10,6 +10,7 @@ import { validateUsername } from './guard.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addReference } from './references.mjs';
+import { getReferenceHistoryReport, saveDeclaredCheck } from './reference-history-store.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = path.join(here, '.data');
@@ -52,6 +53,9 @@ async function main() {
     console.log('     npm run refs -- list');
     console.log('     npm run refs -- inspect perfil_referencia');
     console.log('     npm run refs -- inspect-visible perfil_referencia');
+    console.log('     npm run refs -- inspect-track perfil_referencia');
+    console.log('     npm run refs -- note perfil_referencia 5');
+    console.log('     npm run refs -- report perfil_referencia');
     console.log('Este módulo NÃO lê a lista de seguidores e não executa ações.');
     return;
   }
@@ -66,26 +70,71 @@ async function main() {
     console.log('A API oficial da Meta não fornece a lista de seguidores de outras contas.');
     return;
   }
-  if (command === 'inspect' || command === 'inspect-visible') {
-    if (args.length !== 1) throw new Error('Use: npm run refs -- inspect-visible perfil_referencia');
+  if (['inspect', 'inspect-visible', 'inspect-track'].includes(command)) {
+    if (args.length !== 1) throw new Error('Use: npm run refs -- ' + command + ' perfil_referencia');
     const username = validateUsername(args[0]).toLowerCase();
     const references = await load();
     if (!references.some(ref => ref.username === username)) {
       throw new Error('A referência não está cadastrada. Cadastre o @ antes de inspecionar.');
     }
     console.log('Inspeção de referência: @' + username);
-    console.log(command === 'inspect-visible'
-      ? 'Diagnóstico: até 5 @ atualmente visíveis, apenas no terminal. Sem rolar, salvar ou seguir.'
-      : 'Somente visualização. Sem coleta de perfis e sem follows.');
+    console.log(command === 'inspect-track'
+      ? 'Inspeção de até 5 @ visíveis; só salva fingerprints após confirmação no PowerShell.'
+      : command === 'inspect-visible'
+        ? 'Diagnóstico: até 5 @ atualmente visíveis, apenas no terminal. Sem rolar, salvar ou seguir.'
+        : 'Somente visualização. Sem coleta de perfis e sem follows.');
     const argsForInspection = [
       path.join(here, 'references-inspect.mjs'), username,
       ...(command === 'inspect-visible' ? ['--visible-sample'] : []),
+      ...(command === 'inspect-track' ? ['--record-confirmed'] : []),
     ];
     const result = spawnSync(process.execPath, argsForInspection, {
       cwd: here, stdio: 'inherit', shell: false,
     });
     if (result.error) throw result.error;
     if (result.status !== 0) process.exitCode = result.status ?? 2;
+    return;
+  }
+  if (command === 'note') {
+    if (args.length !== 2) {
+      throw new Error('Use: npm run refs -- note perfil_referencia numero_entre_0_e_5');
+    }
+    const username = validateUsername(args[0]).toLowerCase();
+    if (!/^[0-5]$/.test(args[1])) throw new Error('A contagem deve ser de 0 a 5.');
+    const references = await load();
+    if (!references.some(ref => ref.username === username)) {
+      throw new Error('Cadastre a referência antes de registrar a verificação.');
+    }
+    const result = await saveDeclaredCheck(username, Number(args[1]));
+    console.log('Anotação local salva: ' + result.visit.sampleSize + ' perfis conferidos manualmente.');
+    console.log('Somente número informado: não foram guardados @ nem fingerprints.');
+    console.log('Este registro NÃO comprova total de seguidores ou resultados de follow.');
+    return;
+  }
+  if (command === 'report') {
+    if (args.length !== 1) throw new Error('Use: npm run refs -- report perfil_referencia');
+    const username = validateUsername(args[0]).toLowerCase();
+    const references = await load();
+    if (!references.some(ref => ref.username === username)) {
+      throw new Error('Referência não cadastrada.');
+    }
+    const { summary, visits } = await getReferenceHistoryReport(username);
+    console.log('HISTÓRICO LOCAL @' + username + ' (amostras manuais, NÃO lista completa)');
+    console.log('Verificações registradas:', summary.inspections);
+    console.log('Perfis distintos observados em amostras com HMAC:', summary.distinctObserved);
+    console.log('Contagem declarada de testes passados (sem deduplicação):', summary.manuallyReported);
+    console.log('Repetições reconhecidas nas amostras registradas:', summary.repeatedSeen);
+    console.log('Última verificação:', summary.lastSeen ?? 'nenhuma');
+    for (const visit of visits) {
+      console.log('  ' + visit.observedAt + ' | ' +
+        (visit.provenance === 'manual_report_from_previous_check'
+          ? 'declarado manualmente: ' + visit.sampleSize
+          : 'janela confirmada: ' + visit.sampleSize + ', novos: ' + visit.uniqueNew +
+            ', repetidos: ' + visit.repeated +
+            ', vistos em outras referências: ' + visit.crossReferenceOverlap));
+    }
+    console.log('Nenhum @ individual é exibido ou armazenado em texto claro.');
+    console.log('Nenhum resultado de followback é inferido dessas verificações.');
     return;
   }
   if (command === 'list') {

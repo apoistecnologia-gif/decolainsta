@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
-import { buildReferencePrompt, extractResponseText, parseReferenceInsight, validateReferenceContext } from '@/lib/ai/reference';
+import { buildReferencePrompt, extractResponseText, parseReferenceInsight, validateReferenceContext, labelReferenceInsight } from '@/lib/ai/reference';
 
 // OFF by default. Requires explicit server-only configuration of OpenAI API key.
 export async function POST(req: Request, {
@@ -98,7 +98,7 @@ export async function POST(req: Request, {
       },
     });
     return NextResponse.json({
-      ...insight,
+      ...labelReferenceInsight(insight, context),
       referenceUsername: target.username,
       source: 'gpt_analysis_of_user_supplied_text',
       followersIdentified: false,

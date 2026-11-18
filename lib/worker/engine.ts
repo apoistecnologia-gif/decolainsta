@@ -1,5 +1,5 @@
-// Instagram Growth Engine - Worker Module
-// Runs in dry-run mode by default. When dryMode=false, would use real Instagram API calls.
+// Laboratório de simulação isolado. Este módulo nunca executa follows ou unfollows reais.
+// Não interpretar falhas aleatórias como bloqueios, limites ou respostas da Meta.
 
 import { prisma } from '@/lib/db';
 
@@ -203,26 +203,13 @@ export async function processFollowsForAccount(accountId: string): Promise<void>
         },
       });
     } else {
-      // Potential rate limit
-      await prisma.instagramAccount.update({
-        where: { id: accountId },
-        data: {
-          status: 'cooldown',
-          cooldownUntil: new Date(Date.now() + 4 * 3600000), // 4 hour cooldown
-        },
-      });
-      await prisma.alert.create({
-        data: {
-          instagramAccountId: accountId,
-          type: 'rate_limit',
-          message: `Possível limite de taxa detectado. Conta em cooldown até ${new Date(Date.now() + 4 * 3600000).toLocaleString('pt-BR', { timeZone: 'UTC' })}.`,
-        },
-      });
+      // A random demonstration failure is not evidence of an Instagram restriction.
+      // Do not alter account status or issue a real rate-limit alert.
       await prisma.activityLog.create({
         data: {
           instagramAccountId: accountId,
-          action: 'cooldown',
-          details: 'Cooldown ativado por possível limite de taxa',
+          action: 'simulation_failure',
+          details: 'Falha aleatória da demonstração. Nenhuma requisição de follow foi enviada ao Instagram.',
           success: false,
         },
       });

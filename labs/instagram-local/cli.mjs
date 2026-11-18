@@ -68,7 +68,7 @@ async function restrictedOrWarn(page) {
 
 async function run() {
   const [rawAction, rawUsername, ...extra] = process.argv.slice(2);
-  if (extra.length || !rawAction || !rawUsername) throw new Error('Uso: node cli.mjs inspect|follow|unfollow @usuario');
+  if (extra.length || !rawAction || !rawUsername) throw new Error('Uso: node cli.mjs inspect|inspect-menu|follow|unfollow @usuario');
   const action = validateAction(rawAction);
   const username = validateUsername(rawUsername);
   const expectedUrl = `https://www.instagram.com/${username}/`;
@@ -117,6 +117,52 @@ async function run() {
     }
     if (!hasHeader || profileState === 'unknown' || profileState === 'ambiguous') {
       throw new Error('Não foi possível identificar com segurança o botão do perfil. Nenhuma ação executada.');
+    }
+    if (action === 'inspect-menu') {
+      if (!alreadyFollowing) {
+        console.log('O perfil não está marcado como Seguindo. Inspeção do menu cancelada sem cliques.');
+        await record({ action, username, status: 'not_following', realActions: 0 });
+        return EXIT.NOT_VERIFIED;
+      }
+      console.log('DIAGNÓSTICO: no Chrome, clique MANUALMENTE no botão "Seguindo", sem selecionar "Deixar de seguir".');
+      await rl.question('Com o menu aberto e visível no Chrome, pressione Enter para examinar a estrutura. ');
+      const candidates = [];
+      const scopeTypes = ['dialog', 'menu', 'listbox'];
+      for (const role of scopeTypes) {
+        const group = page.getByRole(role);
+        const count = Math.min(await group.count(), 30);
+        let visibleCount = 0;
+        for (let i = 0; i < count; i++) {
+          if (await group.nth(i).isVisible()) visibleCount++;
+        }
+        if (visibleCount) candidates.push(`${role}: ${visibleCount}`);
+      }
+      console.log('Menus/janelas visíveis:', candidates.join(', ') || 'nenhum elemento com papel dialog/menu/listbox');
+      for (const role of ['button', 'menuitem', 'option']) {
+        const matches = page.getByRole(role);
+        const count = Math.min(await matches.count(), 250);
+        const labels = [];
+        for (let i = 0; i < count; i++) {
+          const item = matches.nth(i);
+          if (!await item.isVisible()) continue;
+          const aria = await item.getAttribute('aria-label') || '';
+          const label = (aria || await item.innerText().catch(() => '')).replace(/\\s+/g, ' ').trim();
+          // Only report labels relevant to follow/unfollow. Never dump page content or credentials.
+          if (/seguir|seguindo|follow|unfollow/i.test(label) && label.length <= 80) labels.push(label);
+        }
+        console.log(`Controles ${role} pertinentes:`, labels.slice(0, 12).join(' | ') || '(nenhum)');
+      }
+      const unfollowText = page.getByText(/^(Deixar de seguir|Unfollow)$/i);
+      const exactCount = Math.min(await unfollowText.count(), 100);
+      let visibleTextCount = 0;
+      for (let i = 0; i < exactCount; i++) {
+        if (await unfollowText.nth(i).isVisible()) visibleTextCount++;
+      }
+      console.log(`Textos exatos "Deixar de seguir"/"Unfollow" visíveis: ${visibleTextCount}`);
+      console.log('Nenhum clique de unfollow foi executado pelo programa. Tire um print da janela do Chrome com o menu aberto.');
+      await record({ action, username, status: 'menu_inspected', realActions: 'not_verified' });
+      await rl.question('Depois de tirar o print, pressione Enter para fechar o Chrome. ');
+      return EXIT.OK;
     }
     if (action === 'follow' && (alreadyFollowing || requested)) {
       await record({ action, username, status: 'already_following_or_requested', realActions: 0 });

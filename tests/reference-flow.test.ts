@@ -20,6 +20,6 @@ test('nova conta de referência não ativa a simulação', () => {
 
 test('o aplicativo não afirma ter coletado seguidores da referência', () => {
   const docs = readFileSync('README.md', 'utf8');
-  assert.match(docs, /seguidores de contas-referência/);
+  assert.match(docs, /Requisito de produto: público de contas de referência/);
   assert.match(docs, /não retorna a lista de seguidores de terceiros/);
 });

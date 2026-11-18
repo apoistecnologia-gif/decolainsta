@@ -10,7 +10,9 @@ import { validateUsername } from './guard.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addReference } from './references.mjs';
-import { getReferenceHistoryReport, saveDeclaredCheck } from './reference-history-store.mjs';
+import { getReferenceHistoryReport, saveDeclaredCheck, clearReferenceHistory } from './reference-history-store.mjs';
+import { createInterface } from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = path.join(here, '.data');
@@ -56,6 +58,7 @@ async function main() {
     console.log('     npm run refs -- inspect-track perfil_referencia');
     console.log('     npm run refs -- note perfil_referencia 5');
     console.log('     npm run refs -- report perfil_referencia');
+    console.log('     npm run refs -- forget perfil_referencia');
     console.log('Este módulo NÃO lê a lista de seguidores e não executa ações.');
     return;
   }
@@ -135,6 +138,25 @@ async function main() {
     }
     console.log('Nenhum @ individual é exibido ou armazenado em texto claro.');
     console.log('Nenhum resultado de followback é inferido dessas verificações.');
+    return;
+  }
+  if (command === 'forget') {
+    if (args.length !== 1) throw new Error('Use: npm run refs -- forget perfil_referencia');
+    const username = validateUsername(args[0]).toLowerCase();
+    const rl = createInterface({ input, output });
+    let answer;
+    try {
+      answer = await rl.question('Para APAGAR todo histórico da referência @' + username +
+        ' (sem excluir o cadastro), digite exatamente "APAGAR @' + username + '": ');
+    } finally {
+      rl.close();
+    }
+    if (answer.trim() !== 'APAGAR @' + username) {
+      console.log('Cancelado. Nenhuma alteração realizada.');
+      return;
+    }
+    const deleted = await clearReferenceHistory(username);
+    console.log(deleted ? 'Histórico local apagado.' : 'Nenhum histórico local encontrado.');
     return;
   }
   if (command === 'list') {

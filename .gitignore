@@ -12,3 +12,6 @@ node_modules/
 labs/instagram-local/.session/
 labs/instagram-local/results/
 labs/instagram-local/node_modules/
+
+# Local niche audience candidates (never commit personal data)
+labs/instagram-local/.data/

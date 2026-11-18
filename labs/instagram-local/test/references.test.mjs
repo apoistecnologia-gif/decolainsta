@@ -70,3 +70,53 @@ test('somente referências registradas podem iniciar diagnóstico manual; entrad
   assert.match(inspector, /clique MANUALMENTE/);
   assert.doesNotMatch(inspector, /page\.click\(|\.scroll\(|\.getByRole\('button'\)\.click/);
 });
+
+import { visibleFollowerSample } from '../reference-visible-sample.mjs';
+
+test('amostra visível: somente links diretos de perfil, sem referência, duplicatas ou rotas', () => {
+  const anchors = [
+    { href: '/usuario_visivel/', visible: true },
+    { href: '/USUARIO_VISIVEL/', visible: true },
+    { href: 'https://www.instagram.com/segunda.pessoa/', visible: true },
+    { href: '/invisivel/', visible: false },
+    { href: '/mameto_lueji/', visible: true },
+    { href: '/explore/', visible: true },
+    { href: '/p/postagem/', visible: true },
+    { href: 'https://example.org/malicioso/', visible: true },
+    { href: '/terceiro/', visible: true },
+    { href: '/quarto/', visible: true },
+    { href: '/quinto/', visible: true },
+    { href: '/sexto/', visible: true },
+  ];
+  assert.deepEqual(visibleFollowerSample(anchors, 'mameto_lueji'), [
+    'usuario_visivel', 'segunda.pessoa', 'terceiro', 'quarto', 'quinto',
+  ]);
+  assert.deepEqual(visibleFollowerSample(anchors, 'mameto_lueji', 2), [
+    'usuario_visivel', 'segunda.pessoa',
+  ]);
+});
+
+test('amostra nunca pode exceder 5 perfis nem aceitar links indevidos', () => {
+  assert.throws(() => visibleFollowerSample([], 'mameto_lueji', 50), /Limite inválido/);
+  assert.throws(() => visibleFollowerSample('links', 'mameto_lueji'), /Links inválidos/);
+  assert.deepEqual(visibleFollowerSample([
+    { href: '/bad..name/', visible: true },
+    { href: '//example.org/fake/', visible: true },
+    { href: '/accounts/', visible: true },
+    { href: '/aceito/?next=one', visible: true },
+    { href: '/name#stuff', visible: true },
+    { href: '/ok_name/', visible: true },
+  ], 'mameto_lueji'), ['ok_name']);
+});
+
+test('novo diagnóstico não usa clique nem rolagem, apenas modal aberto manualmente', () => {
+  const base = path.dirname(fileURLToPath(import.meta.url));
+  const cli = readFileSync(path.join(base, '..', 'references-cli.mjs'), 'utf8');
+  const inspect = readFileSync(path.join(base, '..', 'references-inspect.mjs'), 'utf8');
+  assert.match(cli, /command === 'inspect-visible'/);
+  assert.match(cli, /--visible-sample/);
+  assert.match(inspect, /visibleFollowerSample\(links, username, 5\)/);
+  assert.match(inspect, /visibleDialog.locator\('a\[href\]'\)\.evaluateAll/);
+  assert.doesNotMatch(inspect, /page\.click\(|\.scroll\(|\.mouse\.wheel\(|\.click\(/);
+  assert.doesNotMatch(inspect, /writeFile|appendFile|fetch\(/);
+});

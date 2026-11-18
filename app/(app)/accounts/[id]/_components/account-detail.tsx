@@ -168,21 +168,6 @@ export function AccountDetail({ account }: { account: any }) {
     }
   };
 
-  const toggleTarget = async (targetId: string, enabled: boolean) => {
-    try {
-      await checked(await fetch(`/api/instagram-accounts/${account?.id}/targets/${targetId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !enabled }),
-      }));
-      setTargets((prev: any[]) =>
-        (prev ?? []).map((t: any) => (t?.id === targetId ? { ...(t ?? {}), enabled: !enabled } : t))
-      );
-    } catch {
-      toast.error('Erro');
-    }
-  };
-
   const addWhitelistUser = async () => {
     if (!newWhitelist) return;
     try {
@@ -306,10 +291,6 @@ export function AccountDetail({ account }: { account: any }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Switch
-                        checked={target?.enabled ?? false}
-                        onCheckedChange={() => toggleTarget(target?.id, target?.enabled)}
-                      />
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeTarget(target?.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>

@@ -8,7 +8,8 @@
     "inspect-menu": "node cli.mjs inspect-menu",
     "follow": "node cli.mjs follow",
     "unfollow": "node cli.mjs unfollow",
-    "queue": "node candidates-cli.mjs"
+    "queue": "node candidates-cli.mjs",
+    "refs": "node references-cli.mjs"
   },
   "devDependencies": {
     "playwright": "1.56.1"

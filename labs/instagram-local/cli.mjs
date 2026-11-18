@@ -12,6 +12,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, profileHeaderState, buttonLabelMatches, STATES } from './guard.mjs';
 import { waitForSingleVisibleDialog, waitForDialogActionText } from './dialog.mjs';
+import { waitForProfileReady } from './profile.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const profileDir = path.join(directory, '.session');
@@ -85,18 +86,20 @@ async function run() {
     console.log('Faça login diretamente na janela do Instagram, caso seja solicitado.');
     await rl.question('Quando a conta de teste estiver aberta, pressione Enter para inspecionar o perfil. ');
     await page.goto(expectedUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(1800);
-    const restriction = await restrictedOrWarn(page);
-    if (restriction) throw new Error(restriction);
-    if (!new URL(page.url()).pathname.toLowerCase().startsWith(`/${username.toLowerCase()}/`)) {
-      throw new Error('Não foi possível confirmar o perfil de destino. Não houve clique.');
+    const initialRestriction = await restrictedOrWarn(page);
+    if (initialRestriction) throw new Error(initialRestriction);
+    // Wait for the actual target profile controls, not just DOMContentLoaded.
+    // Never substitute suggested accounts' controls for the requested profile.
+    const observed = await waitForProfileReady(page, username, visibleButtonNames);
+    const { header, buttons: before, state: profileState } = observed;
+    const hasHeader = Boolean(header);
+    if (observed.reason !== 'ready') {
+      console.log(`Inspeção incompleta: ${observed.reason}. Caminho atual: ${observed.path}`);
+      console.log('O botão do perfil não foi localizado; nenhuma ação foi executada.');
+      await record({ action, username, status: observed.reason, realActions: 0 });
+      await rl.question('Confira no Chrome se o perfil carregou e tire um print. Pressione Enter para fechar. ');
+      return EXIT.NOT_VERIFIED;
     }
-    // Only inspect controls inside the *visited profile header*.
-    // Buttons from Suggested accounts elsewhere on Instagram are unrelated.
-    const header = page.locator('main header').first();
-    const hasHeader = await header.isVisible().catch(() => false);
-    const before = hasHeader ? await visibleButtonNames(header) : [];
-    const profileState = profileHeaderState(before);
     const stateLabel = {
       following: 'seguindo esse perfil',
       requested: 'solicitação pendente',
@@ -108,7 +111,7 @@ async function run() {
     const requested = profileState === 'requested';
     console.log(`Perfil consultado: @${username}; estado: ${stateLabel}`);
     console.log(`Botões identificados no cabeçalho: ${before.slice(0, 12).join(' | ') || '(nenhum)'}`);
-    if (!hasHeader) console.log('Cabeçalho do perfil não localizado. Confira a janela do Chrome.');
+
 
     if (action === 'inspect') {
       await record({ action, username, status: `inspected_${profileState}`, realActions: 0 });

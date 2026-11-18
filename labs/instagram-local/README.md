@@ -63,7 +63,7 @@ Esses nomes são ilustrativos. Informe perfis de teste que você administra ou o
 No PowerShell, dentro de `labs/instagram-local`:
 
 ```powershell
-npm run queue -- import "C:caminhocandidatos.csv" --exclude seu_usuario_de_teste
+npm run queue -- import "C:/caminho/candidatos.csv" --exclude seu_usuario_de_teste
 npm run queue -- list
 npm run queue -- next Espiritualidade
 npm run queue -- sync

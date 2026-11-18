@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, STATES } from './guard.mjs';
+import { validateAction, validateUsername, confirmationText, isRestrictedUrl, resultStatus, profileHeaderState, STATES } from './guard.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const profileDir = path.join(directory, '.session');
@@ -76,15 +76,33 @@ async function run() {
     if (!new URL(page.url()).pathname.toLowerCase().startsWith(`/${username.toLowerCase()}/`)) {
       throw new Error('Não foi possível confirmar o perfil de destino. Não houve clique.');
     }
-    const before = await visibleButtonNames(page);
-    const alreadyFollowing = before.some(label => STATES.following.test(label));
-    const requested = before.some(label => STATES.requested.test(label));
-    console.log(`Perfil: @${username}; estado observado: ${alreadyFollowing ? 'seguindo' : requested ? 'solicitação pendente' : 'não confirmado'}`);
+    // Only inspect controls inside the *visited profile header*.
+    // Buttons from Suggested accounts elsewhere on Instagram are unrelated.
+    const header = page.locator('main header').first();
+    const hasHeader = await header.isVisible().catch(() => false);
+    const before = hasHeader ? await visibleButtonNames(header) : [];
+    const profileState = profileHeaderState(before);
+    const stateLabel = {
+      following: 'seguindo esse perfil',
+      requested: 'solicitação pendente',
+      follow_available: 'botão Seguir disponível',
+      ambiguous: 'botões conflitantes; inspeção inconclusiva',
+      unknown: 'botão não identificado; inspeção inconclusiva',
+    }[profileState];
+    const alreadyFollowing = profileState === 'following';
+    const requested = profileState === 'requested';
+    console.log(`Perfil consultado: @${username}; estado: ${stateLabel}`);
+    console.log(`Botões identificados no cabeçalho: ${before.slice(0, 12).join(' | ') || '(nenhum)'}`);
+    if (!hasHeader) console.log('Cabeçalho do perfil não localizado. Confira a janela do Chrome.');
 
     if (action === 'inspect') {
-      await record({ action, username, status: 'inspected_only', realActions: 0 });
+      await record({ action, username, status: `inspected_${profileState}`, realActions: 0 });
       console.log('Inspeção concluída. Nenhuma ação executada.');
-      return EXIT.OK;
+      return profileState === 'unknown' || profileState === 'ambiguous'
+        ? EXIT.NOT_VERIFIED : EXIT.OK;
+    }
+    if (!hasHeader || profileState === 'unknown' || profileState === 'ambiguous') {
+      throw new Error('Não foi possível identificar com segurança o botão do perfil. Nenhuma ação executada.');
     }
     if (action === 'follow' && (alreadyFollowing || requested)) {
       await record({ action, username, status: 'already_following_or_requested', realActions: 0 });
@@ -98,8 +116,8 @@ async function run() {
     }
 
     const button = action === 'follow'
-      ? await oneVisibleButton(page, STATES.follow)
-      : await oneVisibleButton(page, STATES.following);
+      ? await oneVisibleButton(header, STATES.follow)
+      : await oneVisibleButton(header, STATES.following);
     if (!button) throw new Error('Botão único e visível não encontrado; interface mudou ou acesso restrito. Nenhuma ação executada.');
 
     const phrase = confirmationText(action, username);

@@ -21,3 +21,18 @@ export async function waitForSingleVisibleDialog(page, timeout = 8000) {
   }
   return onlyVisible;
 }
+
+/**
+ * The dialog itself can become visible before Instagram renders its actions.
+ * Wait for exact visible text, without clicking anything. The caller must
+ * subsequently enforce a unique visible button within this same dialog.
+ */
+export async function waitForDialogActionText(dialog, label, timeout = 8000) {
+  if (!dialog || !(label instanceof RegExp)) return false;
+  try {
+    await dialog.getByText(label).first().waitFor({ state: 'visible', timeout });
+    return await dialog.isVisible();
+  } catch {
+    return false;
+  }
+}

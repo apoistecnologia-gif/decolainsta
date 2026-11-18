@@ -40,7 +40,7 @@ O endpoint de sincronização do Instagram registra `followers_snapshot` com fon
 
 ## Assistente com GPT para contas de referência (experimental)
 
-O painel de cada conta Instagram oferece **Analisar com IA** nas contas de referência cadastradas. Essa ferramenta utiliza a **Responses API** da OpenAI para gerar hipóteses de interesse de público e sugestões de conteúdo original a partir de uma biografia pública ou descrição **digitada voluntariamente** pelo usuário.
+A página **/reference-ai** e a opção **IA · Referências** no menu permitem solicitar uma análise **sem conectar uma conta Instagram à Meta**. Basta informar o @ da referência, uma descrição pública ou objetivo e consentir com o envio à OpenAI. O painel de uma conta Instagram já vinculada também mantém o atalho **Analisar com IA**. A ferramenta usa a **Responses API** para gerar hipóteses de interesse e sugestões de conteúdo original a partir de informações **digitadas voluntariamente** pelo usuário.
 
 **Importante:** o GPT não recebe nem descobre listas de seguidores do Instagram. Esse recurso NÃO faz scraping, não identifica quem segue uma referência e não executa ações de seguir/deixar de seguir, comentários ou mensagens. Toda análise é explicitamente rotulada como hipótese baseada nos dados fornecidos, e não resultado verificado.
 
@@ -50,9 +50,9 @@ A integração fica **desativada por padrão** até configurar **somente no serv
 - `OPENAI_API_KEY` = chave privada da OpenAI Platform no cofre de variáveis de ambiente, nunca em `NEXT_PUBLIC_*` ou no Git.
 - `OPENAI_MODEL=gpt-4.1-mini` (padrão configurável, sujeito a disponibilidade/preços da sua conta).
 
-São aplicados limites básicos de até **3 tentativas por conta Instagram e 10 por usuário em 24 h**, incluindo tentativas que falharem na API. Antes de disponibilizar a muitos usuários, configure também limites persistentes com garantia de concorrência e orçamento da OpenAI Platform. O corpo enviado à OpenAI contém apenas @ da referência e os textos públicos/objetivos informados, nunca cookies, tokens Meta ou senhas. As análises não ficam armazenadas no banco; a auditoria salva somente metadados sem os textos digitados.
+A rota existente dentro de contas vinculadas possui cotas por conta, enquanto a nova rota independente é **exclusiva do Preview**, exige login e consentimento, e possui limite **provisório em memória de 2 tentativas por usuário e 20 por instância/24 h**. Esses limites NÃO são persistentes entre instâncias/redeploys e, portanto, NÃO garantem proteção de custos. Antes de disponibilizar a muitos usuários, configure cotas persistentes com garantia de concorrência, controles de abuso e orçamento da OpenAI Platform. O corpo enviado à OpenAI contém apenas @ da referência e os textos públicos/objetivos informados, nunca cookies, tokens Meta ou senhas. As análises não ficam armazenadas no banco; a auditoria salva somente metadados sem os textos digitados.
 
-O fluxo GPT não foi validado com uma chamada paga real enquanto não houver chave de API configurada. Testes de contrato, validação e build não equivalem a resposta real do modelo.
+A rota independente não precisa de `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_CONFIG_ID` nem `INSTAGRAM_REDIRECT_URI`: esses campos são exclusivos do OAuth oficial da Meta. O fluxo GPT ainda não foi validado com uma chamada paga real. Testes de contrato, validação e build não equivalem a resposta real do modelo.
 
 ## Requisito de produto: público de contas de referência
 

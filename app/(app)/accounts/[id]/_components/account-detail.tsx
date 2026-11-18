@@ -60,6 +60,16 @@ export function AccountDetail({ account }: { account: any }) {
   const [targets, setTargets] = useState<any[]>(account?.targetAccounts ?? []);
   const [newTarget, setNewTarget] = useState('');
   const [addingTarget, setAddingTarget] = useState(false);
+  const [aiSelectedTarget, setAiSelectedTarget] = useState<string | null>(null);
+  const [aiBio, setAiBio] = useState('');
+  const [aiGoal, setAiGoal] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<{
+    resumo: string;
+    publicoHipotetico: string[];
+    ideiasConteudo: string[];
+    ressalva: string;
+  } | null>(null);
 
   // Whitelist
   const [whitelist, setWhitelist] = useState<any[]>(account?.whitelist ?? []);
@@ -155,6 +165,26 @@ export function AccountDetail({ account }: { account: any }) {
       toast.error('Erro ao adicionar alvo');
     } finally {
       setAddingTarget(false);
+    }
+  };
+
+  const analyzeReference = async () => {
+    if (!aiSelectedTarget) return;
+    setAiLoading(true);
+    setAiResult(null);
+    try {
+      const res = await fetch(`/api/instagram-accounts/${account.id}/targets/${aiSelectedTarget}/ai`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bioPublica: aiBio, objetivo: aiGoal }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Falha ao consultar IA');
+      if (data.followersIdentified !== false) throw new Error('Resposta da IA inconsistente');
+      setAiResult(data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro na análise da IA');
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -291,6 +321,12 @@ export function AccountDetail({ account }: { account: any }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => {
+                        setAiSelectedTarget(target?.id);
+                        setAiBio('');
+                        setAiGoal('');
+                        setAiResult(null);
+                      }}>Analisar com IA</Button>
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeTarget(target?.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -299,6 +335,54 @@ export function AccountDetail({ account }: { account: any }) {
                 </Card>
               </FadeIn>
             ))}
+            {aiSelectedTarget && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Análise de referência com GPT</CardTitle>
+                  <CardDescription>
+                    Descreva informações públicas observadas sobre a conta e o objetivo do seu conteúdo.
+                    A análise usa apenas o que você fornecer; não identifica os seguidores da referência.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <textarea
+                    className="w-full min-h-24 rounded-md border bg-background px-3 py-2 text-sm"
+                    placeholder="Biografia pública ou descrição do conteúdo da referência (opcional)"
+                    maxLength={700}
+                    value={aiBio}
+                    onChange={e => setAiBio(e.target.value)}
+                    aria-label="Informações públicas da conta de referência"
+                  />
+                  <Input
+                    placeholder="Objetivo do seu perfil, por exemplo: atrair clientes para consultas"
+                    maxLength={250}
+                    value={aiGoal}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAiGoal(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ao clicar, os textos digitados serão enviados à API OpenAI. Não informe senhas,
+                    informações privadas nem dados de seguidores. O recurso requer configuração
+                    do administrador e pode gerar cobrança por uso da API.
+                  </p>
+                  <Button onClick={analyzeReference} loading={aiLoading}>Gerar estratégias com IA</Button>
+                  {aiResult && (
+                    <div className="space-y-3 rounded-md border p-3 text-sm">
+                      <p className="font-semibold">Resumo baseado em hipóteses</p>
+                      <p>{aiResult.resumo}</p>
+                      <p className="font-semibold">Possíveis interesses do público</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {aiResult.publicoHipotetico.map((item, index) => <li key={index}>{item}</li>)}
+                      </ul>
+                      <p className="font-semibold">Ideias de conteúdo para atrair interesse voluntário</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {aiResult.ideiasConteudo.map((item, index) => <li key={index}>{item}</li>)}
+                      </ul>
+                      <p className="text-xs text-muted-foreground">{aiResult.ressalva}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
             {(targets?.length ?? 0) === 0 && (
               <Card>
                 <CardContent className="text-center py-8">

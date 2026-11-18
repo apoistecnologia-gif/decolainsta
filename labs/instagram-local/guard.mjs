@@ -17,8 +17,8 @@ export function validateUsername(input) {
 }
 
 export function validateAction(input) {
-  if (!['inspect', 'follow', 'unfollow'].includes(input)) {
-    throw new Error('Use inspect, follow ou unfollow.');
+  if (!['inspect', 'inspect-menu', 'follow', 'unfollow'].includes(input)) {
+    throw new Error('Use inspect, inspect-menu, follow ou unfollow.');
   }
   return input;
 }

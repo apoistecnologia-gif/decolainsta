@@ -33,3 +33,17 @@ test('redirecionamentos suspeitos, login e desafios bloqueiam o fluxo', () => {
   assert.equal(isRestrictedUrl('https://evil.example.com/test/'), true);
   assert.equal(isRestrictedUrl('https://www.instagram.com/perfil/'), false);
 });
+
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+test('CLI rejeita operação de lote e usernames malformados antes de abrir navegador', () => {
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const cli = path.join(dir, '../cli.mjs');
+  for (const args of [['bulk-follow', 'alvo'], ['follow', 'https://instagram.com/alvo'], ['inspect', 'alvo', 'segundo']]) {
+    const result = spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', timeout: 5000 });
+    assert.equal(result.status, 3);
+    assert.match(result.stderr, /Interrompido:/);
+  }
+});

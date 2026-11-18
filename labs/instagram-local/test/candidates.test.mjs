@@ -91,3 +91,29 @@ test('sincronização apenas de ações reais observadas na interface, sem inven
   assert.equal(after.candidates[0].status, 'unfollow_observed');
   assert.equal(after.candidates[0].history.length, 2);
 });
+
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+
+test('CLI da fila aceita help e rejeita ações em lote sem abrir Chrome', () => {
+  const cli = path.join(path.dirname(fileURLToPath(import.meta.url)), '../candidates-cli.mjs');
+  const help = spawnSync(process.execPath, [cli, 'help'], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /inspect-one/);
+  assert.match(help.stdout, /follow-one/);
+  const invalid = spawnSync(process.execPath, [cli, 'inspect-one', 'beleza', 'extra'], {
+    encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /no máximo um nicho/);
+
+  // Static check: the only bridge to Instagram is the preexisting single-action
+  // CLI, never a queue loop or a shell command assembled from usernames.
+  const source = readFileSync(cli, 'utf8');
+  assert.match(source, /spawnSync\(process\.execPath/);
+  assert.match(source, /shell: false/);
+  assert.match(source, /command === 'inspect-one' \|\| command === 'follow-one'/);
+  assert.doesNotMatch(source, /for\s*\([^)]*candidate[^)]*\)\s*\{[^}]*spawnSync/s);
+});

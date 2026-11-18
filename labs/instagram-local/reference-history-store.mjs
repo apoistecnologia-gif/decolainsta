@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   REFERENCE_HISTORY_FORMAT, newReferenceHistory, recordConfirmedVisibleSample,
-  recordDeclaredCheck, summarizeReferenceHistory,
+  recordDeclaredCheck, summarizeReferenceHistory, forgetReferenceHistory,
 } from './reference-history.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -89,4 +89,11 @@ export async function getReferenceHistoryReport(reference) {
   const summary = summarizeReferenceHistory(history, reference);
   const visits = (history.references[summary.reference]?.visits ?? []).slice(-10);
   return { summary, visits };
+}
+
+export async function clearReferenceHistory(reference) {
+  const history = await loadReferenceHistory();
+  const result = forgetReferenceHistory(history, reference);
+  if (result.deleted) await saveHistory(result.history);
+  return result.deleted;
 }

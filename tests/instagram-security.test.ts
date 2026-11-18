@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { encrypt, decrypt } from '../lib/encryption';
 import { cleanUsername, validateSettings } from '../lib/instagram/validation';
-import { getProfile, getMedia, instagramAuthorizationUrl, longLivedToken, exchangeCode, publishPhoto, isPublicImageUrl } from '../lib/instagram/meta';
+import { getProfile, getMedia, instagramAuthorizationUrl, getAssignedInstagramAccounts, exchangeCode, publishPhoto, isPublicImageUrl } from '../lib/instagram/meta';
 
 test('encryption rejects missing secret, roundtrip, tampering', () => {
   const old = process.env.ENCRYPTION_KEY;
@@ -36,16 +36,28 @@ test('image URLs must be public HTTPS and without credentials', () => {
   }
 });
 
-test('authorization requests only explicit professional account scopes', () => {
-  const old = { id: process.env.INSTAGRAM_APP_ID, secret: process.env.INSTAGRAM_APP_SECRET, redirect: process.env.INSTAGRAM_REDIRECT_URI };
-  process.env.INSTAGRAM_APP_ID = 'app123'; process.env.INSTAGRAM_APP_SECRET = 'secret'; process.env.INSTAGRAM_REDIRECT_URI = 'https://example.com/api/instagram/connect/callback';
-  const url = new URL(instagramAuthorizationUrl('stateABC'));
-  assert.equal(url.hostname, 'www.instagram.com');
-  assert.equal(url.searchParams.get('state'), 'stateABC');
-  assert.ok(url.searchParams.get('scope')?.includes('instagram_business_basic'));
-  if (old.id === undefined) delete process.env.INSTAGRAM_APP_ID; else process.env.INSTAGRAM_APP_ID = old.id;
-  if (old.secret === undefined) delete process.env.INSTAGRAM_APP_SECRET; else process.env.INSTAGRAM_APP_SECRET = old.secret;
-  if (old.redirect === undefined) delete process.env.INSTAGRAM_REDIRECT_URI; else process.env.INSTAGRAM_REDIRECT_URI = old.redirect;
+test('unified login requests a configuration ID and does not send legacy scopes', () => {
+  const old = { id: process.env.INSTAGRAM_APP_ID, secret: process.env.INSTAGRAM_APP_SECRET,
+    redirect: process.env.INSTAGRAM_REDIRECT_URI, config: process.env.INSTAGRAM_CONFIG_ID };
+  process.env.INSTAGRAM_APP_ID = '1734982044217816';
+  process.env.INSTAGRAM_APP_SECRET = 'test_secret';
+  process.env.INSTAGRAM_CONFIG_ID = '2676997126089732';
+  process.env.INSTAGRAM_REDIRECT_URI = 'https://example.com/api/instagram/connect/callback';
+  try {
+    const url = new URL(instagramAuthorizationUrl('stateABC'));
+    assert.equal(url.hostname, 'www.facebook.com');
+    assert.equal(url.searchParams.get('config_id'), '2676997126089732');
+    assert.equal(url.searchParams.get('client_id'), '1734982044217816');
+    assert.equal(url.searchParams.get('scope'), null);
+    assert.equal(url.searchParams.get('response_type'), 'code');
+    assert.equal(url.searchParams.get('state'), 'stateABC');
+  } finally {
+    for (const [key, value] of Object.entries({ INSTAGRAM_APP_ID: old.id,
+      INSTAGRAM_APP_SECRET: old.secret, INSTAGRAM_REDIRECT_URI: old.redirect,
+      INSTAGRAM_CONFIG_ID: old.config })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
 });
 
 test('live profile / media requests and publishing call official API using mocked network', async () => {
@@ -54,8 +66,8 @@ test('live profile / media requests and publishing call official API using mocke
   global.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input.toString());
     requests.push({ url, init });
-    assert.equal(url.hostname, 'graph.instagram.com');
-    if (url.pathname.endsWith('/me')) return Response.json({ id: '123', username: 'usuario', followers_count: 177 });
+    assert.equal(url.hostname, 'graph.facebook.com');
+    if (url.pathname.endsWith('/123')) return Response.json({ id: '123', username: 'usuario', followers_count: 177 });
     if (url.pathname.endsWith('/media')) {
       if (init?.method === 'POST') return Response.json({ id: 'container-1' });
       return Response.json({ data: [{ id: 'post-1', media_type: 'IMAGE' }] });
@@ -65,7 +77,7 @@ test('live profile / media requests and publishing call official API using mocke
     return Response.json({ access_token: 'long-token', expires_in: 3600 });
   };
   try {
-    const profile = await getProfile('fake-token');
+    const profile = await getProfile('fake-token', '123');
     assert.equal(profile.followers_count, 177);
     assert.equal(requests[0].init?.headers && (requests[0].init!.headers as any).Authorization, 'Bearer fake-token');
     const media = await getMedia('fake-token', '123');
@@ -81,37 +93,62 @@ test('live profile / media requests and publishing call official API using mocke
 test('Meta API failure becomes an error rather than a fabricated success', async () => {
   const originalFetch = global.fetch;
   global.fetch = async () => Response.json({ error: { message: 'Permissão negada' } }, { status: 403 });
-  try { await assert.rejects(getProfile('invalid-token'), /Permissão negada/); }
+  try { await assert.rejects(getProfile('invalid-token', '123'), /Permissão negada/); }
   finally { global.fetch = originalFetch; }
 });
 
 
-test('code exchange and long-lived token use designated Meta hosts, never client JS', async () => {
-  const old = { id: process.env.INSTAGRAM_APP_ID, secret: process.env.INSTAGRAM_APP_SECRET, redirect: process.env.INSTAGRAM_REDIRECT_URI };
+test('unified code exchange uses Facebook Graph and no legacy Instagram exchange', async () => {
+  const old = { id: process.env.INSTAGRAM_APP_ID, secret: process.env.INSTAGRAM_APP_SECRET,
+    redirect: process.env.INSTAGRAM_REDIRECT_URI, config: process.env.INSTAGRAM_CONFIG_ID };
   const originalFetch = global.fetch;
-  process.env.INSTAGRAM_APP_ID = 'test_app'; process.env.INSTAGRAM_APP_SECRET = 'test_secret'; process.env.INSTAGRAM_REDIRECT_URI = 'https://example.com/api/instagram/connect/callback';
-  const requests: { url: URL; init?: RequestInit }[] = [];
-  global.fetch = async (input, init) => {
-    requests.push({ url: new URL(input.toString()), init });
-    return Response.json({ access_token: 'token_from_meta', expires_in: 12345 });
+  process.env.INSTAGRAM_APP_ID = '1734982044217816';
+  process.env.INSTAGRAM_APP_SECRET = 'test_secret';
+  process.env.INSTAGRAM_CONFIG_ID = '2676997126089732';
+  process.env.INSTAGRAM_REDIRECT_URI = 'https://example.com/api/instagram/connect/callback';
+  const urls: URL[] = [];
+  global.fetch = async input => {
+    urls.push(new URL(input.toString()));
+    return Response.json({ access_token: 'system_user_token' });
   };
   try {
-    const short = await exchangeCode('once_code');
-    const long = await longLivedToken(short.access_token);
-    assert.equal(short.access_token, 'token_from_meta');
-    assert.equal(long.expires_in, 12345);
-    assert.equal(requests[0].url.host, 'api.instagram.com');
-    assert.equal(requests[0].init?.method, 'POST');
-    assert.equal(new URLSearchParams(requests[0].init?.body as string).get('client_secret'), 'test_secret');
-    assert.equal(requests[1].url.host, 'graph.instagram.com');
+    const response = await exchangeCode('single_use_code');
+    assert.equal(response.access_token, 'system_user_token');
+    assert.equal(urls.length, 1);
+    assert.equal(urls[0].hostname, 'graph.facebook.com');
+    assert.ok(urls[0].pathname.endsWith('/oauth/access_token'));
+    assert.equal(urls[0].searchParams.get('code'), 'single_use_code');
+    assert.equal(urls[0].searchParams.get('client_secret'), 'test_secret');
   } finally {
     global.fetch = originalFetch;
-    if (old.id === undefined) delete process.env.INSTAGRAM_APP_ID; else process.env.INSTAGRAM_APP_ID = old.id;
-    if (old.secret === undefined) delete process.env.INSTAGRAM_APP_SECRET; else process.env.INSTAGRAM_APP_SECRET = old.secret;
-    if (old.redirect === undefined) delete process.env.INSTAGRAM_REDIRECT_URI; else process.env.INSTAGRAM_REDIRECT_URI = old.redirect;
+    for (const [key, value] of Object.entries({ INSTAGRAM_APP_ID: old.id,
+      INSTAGRAM_APP_SECRET: old.secret, INSTAGRAM_REDIRECT_URI: old.redirect,
+      INSTAGRAM_CONFIG_ID: old.config })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
   }
 });
 
+test('unified token resolves assigned Instagram accounts, rejects empty assignments', async () => {
+  const originalFetch = global.fetch;
+  const paths: string[] = [];
+  global.fetch = async input => {
+    const url = new URL(input.toString());
+    paths.push(url.pathname);
+    if (url.pathname.endsWith('/me/assigned_instagram_accounts'))
+      return Response.json({ data: [{ id: '123' }] });
+    if (url.pathname.endsWith('/123')) return Response.json({ id: '123', username: 'perfil_teste' });
+    throw new Error('Unexpected request');
+  };
+  try {
+    const profiles = await getAssignedInstagramAccounts('system-token');
+    assert.equal(profiles[0].username, 'perfil_teste');
+    assert.equal(paths.length, 2);
+  } finally { global.fetch = originalFetch; }
+  global.fetch = async () => Response.json({ data: [] });
+  try { await assert.rejects(getAssignedInstagramAccounts('system-token'), /Nenhuma conta Instagram/); }
+  finally { global.fetch = originalFetch; }
+});
 
 test('publication refuses failed container; never calls media_publish', async () => {
   const originalFetch = global.fetch;
@@ -124,7 +161,7 @@ test('publication refuses failed container; never calls media_publish', async ()
     throw new Error('Request must not be sent');
   };
   try {
-    await assert.rejects(publishPhoto('test-token', 'account-123', 'https://example.org/image.jpg', ''), /contêiner error/);
+    await assert.rejects(publishPhoto('test-token', '123', 'https://example.org/image.jpg', ''), /Contêiner de mídia: error/);
     assert.equal(paths.some(p => p.endsWith('/media_publish')), false);
   } finally { global.fetch = originalFetch; }
 });

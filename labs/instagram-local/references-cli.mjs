@@ -46,13 +46,13 @@ async function save(references) {
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === 'help') {
-    console.log('Uso: npm run refs -- add @perfil_referencia');
+    console.log('Uso: npm run refs -- add perfil_referencia');
     console.log('     npm run refs -- list');
     console.log('Este módulo NÃO lê a lista de seguidores e não executa ações.');
     return;
   }
   if (command === 'add') {
-    if (args.length !== 1) throw new Error('Use: npm run refs -- add @perfil_referencia');
+    if (args.length !== 1) throw new Error('Use: npm run refs -- add perfil_referencia');
     const original = await load();
     const result = addReference(original, args[0]);
     if (result.inserted) await save(result.references);

@@ -18,7 +18,9 @@ export function evaluateAudienceReadiness(
 ) {
   const configured = new Set(sources.filter(source =>
     source.accountId === accountId).map(source => source.referenceId));
-  const active = references.filter(reference => reference.enabled);
+  // The legacy TargetAccount.enabled flag controls other workflows. A
+  // read-only collector requires its own explicit binding, independently.
+  const active = references;
   const assigned = active.filter(reference => configured.has(reference.id));
   const missing = active.filter(reference => !configured.has(reference.id))
     .map(reference => '@' + reference.username);

@@ -26,9 +26,9 @@ const configured = {
 test('preflight never confuses another account collector with owned references', () => {
   const result = evaluateAudienceReadiness(accountId, refs, sources, configured);
   assert.equal(result.technicalReady, false);
-  assert.equal(result.referenceCount, 2);
+  assert.equal(result.referenceCount, 3);
   assert.equal(result.assignedCollectors, 1);
-  assert.deepEqual(result.missingCollectorFor, ['@another_ref']);
+  assert.deepEqual(result.missingCollectorFor, ['@another_ref', '@disabled_ref']);
   assert.deepEqual(result.missingConfiguration, ['VINCULOS_DE_COLETORES']);
   assert.equal(result.collectorTypeVerified, false);
   assert.equal(result.collectorResultsVerified, false);
@@ -47,15 +47,17 @@ test('preflight identifies precisely which server variables are missing without 
 
 test('all account references explicitly mapped is configured, not verified collection', () => {
   const result = evaluateAudienceReadiness(accountId,
-    [refs[0], refs[2]], sources, configured);
+    [refs[0]], sources, configured);
   assert.equal(result.technicalReady, true);
   assert.equal(result.referenceCount, 1);
   assert.equal(result.assignedCollectors, 1);
   assert.deepEqual(result.missingCollectorFor, []);
   assert.equal(result.collectorResultsVerified, false);
   assert.equal(result.collectorTypeVerified, false);
-  assert.equal(evaluateAudienceReadiness(accountId,
-    [refs[2]], sources, configured).technicalReady, false);
+  const notYetBound = evaluateAudienceReadiness(accountId,
+    [refs[2]], sources, configured);
+  assert.equal(notYetBound.technicalReady, false);
+  assert.deepEqual(notYetBound.missingCollectorFor, ['@disabled_ref']);
 });
 
 test('API key shape rejects session/cookie-like values and is never returned', () => {

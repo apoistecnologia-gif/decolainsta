@@ -9,7 +9,7 @@ import { verifyConfiguredFollowerCollector } from '@/lib/providers/phantombuster
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
-  makeAudienceSourceBinding, resolveLatestAudienceBindings,
+  makeAudienceSourceBinding, resolveLatestAudienceBindings, disabledAudienceReferenceKeys,
 } from '@/lib/reference-audience-source-registry';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
@@ -122,7 +122,11 @@ export async function POST(request: Request) {
           s.referenceId === referenceId);
         if (operation === 'bind' && existing?.collectorAgentId === agentId)
           return 'unchanged' as const;
-        if (operation === 'unbind' && !existing) return 'unchanged' as const;
+        // Even without an active binding, keep the explicit unbind as a
+        // tombstone: future auto-discovery must never re-enable this reference.
+        if (operation === 'unbind' &&
+            disabledAudienceReferenceKeys(rows).has(accountId + ':' + referenceId))
+          return 'unchanged' as const;
 
         await tx.activityLog.create({
           data: {

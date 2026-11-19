@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CalendarClock, ExternalLink, Plus, RefreshCw, ShieldCheck, UserRoundCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ProviderConnectionPanel } from './provider-connection-panel';
 import { Input } from '@/components/ui/input';
 
 type Account = { id: string; username: string; connected?: boolean };
@@ -211,6 +212,8 @@ export function ReferenceWorkflowPanel() {
           {message && <p role="status" className="text-sm text-foreground">{message}</p>}
         </CardContent>
       </Card>
+
+      <ProviderConnectionPanel accountId={selectedAccount} />
 
       {ready && (
         <>

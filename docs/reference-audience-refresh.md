@@ -99,3 +99,24 @@ identificava um agente **Instagram Followers Auto Follow**. Ele **não deve ser
 associado automaticamente** a uma referência como se fosse um Follower Collector.
 Para uma nova coleta real é indispensável identificar o coletor correto,
 comprovar sua configuração para a referência e conectar a API key com segurança.
+
+## Teste manual real no Preview, sem comando nem chave no navegador
+
+O botão já existente **Atualizar dados** na área de planejamento consulta
+`POST /api/provider/phantombuster/refresh-now`, apenas no ambiente Preview.
+A rota exige login, comprova que a conta do Instagram pertence ao usuário
+autenticado, valida origem de mesma URL e limita os resultados à conta piloto
+autorizada. A mesma lógica de importação programada é reutilizada, com trava
+transacional e intervalo mínimo de 6 horas.
+
+O teste exige `PHANTOMBUSTER_READONLY_ENABLED=yes`,
+`PHANTOMBUSTER_AUDIENCE_POLL_ENABLED=yes`,
+`PHANTOMBUSTER_PILOT_USERNAME`, `PHANTOMBUSTER_API_KEY` armazenada na
+Vercel e `PHANTOMBUSTER_AUDIENCE_SOURCES_JSON` correto. O
+`CRON_SECRET` **não** é necessário para o botão autenticado no Preview;
+ele continua obrigatório para o agendador. O botão consulta somente
+resultados de **execuções finalizadas anteriormente**. Não inicia a coleta
+no PhantomBuster e não executa ações de seguir/deixar de seguir.
+
+Se faltar configuração, a área exibe aviso curto e continua exibindo os
+dados históricos já armazenados. Nenhum valor de chave é enviado ao cliente.

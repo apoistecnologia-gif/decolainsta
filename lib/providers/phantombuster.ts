@@ -14,11 +14,13 @@ export type PhantomBusterStatus =
   | 'invalid-key'
   | 'limited'
   | 'unavailable'
-  | 'unexpected-response';
+  | 'unexpected-response'
+  | 'agent-not-found';
 
 export type PhantomBusterResult = {
   status: PhantomBusterStatus;
   workspaceAgentCount?: number;
+  pilotAgentFound?: boolean;
   /** Workspace access is NOT proof of an authenticated Instagram session. */
   instagramConnectionVerified: false;
   actionsEnabled: false;
@@ -31,12 +33,20 @@ const AGENTS_URL = 'https://api.phantombuster.com/api/v2/agents/fetch-all?withAr
 export async function checkPhantomBusterWorkspace(
   apiKey: string,
   fetcher: HttpFetcher = fetch,
+  agentId?: string,
 ): Promise<PhantomBusterResult> {
   if (!apiKey.trim()) {
     return { status: 'not-configured', instagramConnectionVerified: false, actionsEnabled: false };
   }
+  // Only numeric, explicitly configured agent IDs are permitted.
+  // Never interpolate user input into a provider URL.
+  if (agentId && !/^[0-9]{10,25}$/.test(agentId)) {
+    return { status: 'unexpected-response', instagramConnectionVerified: false, actionsEnabled: false };
+  }
   try {
-    const response = await fetcher(AGENTS_URL, {
+    const url = new URL(AGENTS_URL);
+    if (agentId) url.searchParams.set('agentIds', agentId);
+    const response = await fetcher(url.toString(), {
       method: 'GET',
       headers: {
         Accept: 'application/json',
@@ -71,9 +81,18 @@ export async function checkPhantomBusterWorkspace(
     if (!Array.isArray(agents)) {
       return { status: 'unexpected-response', instagramConnectionVerified: false, actionsEnabled: false };
     }
+    const agentFound = agentId
+      ? agents.some((item: unknown) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+          const record = item as Record<string, unknown>;
+          return String(record.id ?? record._id ?? record.agentId ?? '') === agentId;
+        })
+      : undefined;
+
     return {
-      status: 'verified',
+      status: agentId && !agentFound ? 'agent-not-found' : 'verified',
       workspaceAgentCount: agents.length,
+      pilotAgentFound: agentFound,
       instagramConnectionVerified: false,
       actionsEnabled: false,
     };

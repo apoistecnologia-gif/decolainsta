@@ -3,69 +3,96 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { checkPhantomBusterWorkspace } from '../lib/providers/phantombuster';
 
-test('read-only provider check uses the official v2 endpoint and private header', async () => {
-  const requests: { url: string; init?: RequestInit }[] = [];
-  const result = await checkPhantomBusterWorkspace('server-only-key', async (url, init) => {
-    requests.push({ url, init });
-    return new Response(JSON.stringify([
-      { id: 1, name: 'collector', argument: 'PRIVATE_COOKIE_DO_NOT_RETURN' },
-      { id: 2, name: 'other' },
-    ]), { status: 200, headers: { 'content-type': 'application/json' } });
+test('provider uses single documented GET with no agent arguments', async () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const res = await checkPhantomBusterWorkspace('server-only-key', async (url, init) => {
+    calls.push({ url, init });
+    return new Response(JSON.stringify([{ id: 1, argument: 'COOKIE_SECRET' }, { id: 2 }]), { status: 200 });
   });
-  assert.equal(requests.length, 1);
-  assert.match(requests[0].url, /^https:\/\/api\.phantombuster\.com\/api\/v2\/agents\/fetch-all\?withArgument=false$/);
-  assert.equal(requests[0].init?.method, 'GET');
-  assert.equal((requests[0].init?.headers as Record<string, string>)['X-Phantombuster-Key'], 'server-only-key');
-  assert.equal(requests[0].init?.redirect, 'error');
-  assert.deepEqual(result, { status: 'verified', workspaceAgentCount: 2, instagramConnectionVerified: false, actionsEnabled: false });
-  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_COOKIE_DO_NOT_RETURN|server-only-key/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.phantombuster.com/api/v2/agents/fetch-all?withArgument=false');
+  assert.equal(calls[0].init?.method, 'GET');
+  assert.equal((calls[0].init?.headers as Record<string, string>)['X-Phantombuster-Key'], 'server-only-key');
+  assert.equal(calls[0].init?.redirect, 'error');
+  assert.deepEqual(res, {
+    status: 'verified', workspaceAgentCount: 2, pilotAgentFound: undefined,
+    instagramConnectionVerified: false, actionsEnabled: false,
+  });
+  assert.doesNotMatch(JSON.stringify(res), /COOKIE_SECRET|server-only-key/);
 });
 
-test('empty key never makes an outbound request', async () => {
-  const result = await checkPhantomBusterWorkspace(' ', async () => {
-    throw Error('request should not occur');
-  });
-  assert.equal(result.status, 'not-configured');
+test('known Phantom ID query filters metadata without launching an action', async () => {
+  const agentId = '1838046655144130';
+  const seen: string[] = [];
+  const result = await checkPhantomBusterWorkspace('example-test-key', async (url) => {
+    seen.push(url);
+    return new Response(JSON.stringify([{ id: Number(agentId), argument: 'secret sessionid' }]), { status: 200 });
+  }, agentId);
+  assert.equal(seen.length, 1);
+  const parsed = new URL(seen[0]);
+  assert.equal(parsed.searchParams.get('agentIds'), agentId);
+  assert.equal(parsed.searchParams.get('withArgument'), 'false');
+  assert.equal(result.status, 'verified');
+  assert.equal(result.pilotAgentFound, true);
+  assert.equal(result.instagramConnectionVerified, false);
+  assert.equal(result.actionsEnabled, false);
+  assert.doesNotMatch(JSON.stringify(result), /secret|sessionid/i);
 });
 
-test('provider responses are safe for unauthorized, throttled and unexpected cases', async () => {
-  for (const [http, expected] of [[401, 'invalid-key'], [403, 'invalid-key'], [429, 'limited'], [503, 'unavailable']] as const) {
-    const result = await checkPhantomBusterWorkspace('key', async () => new Response('SECRET_PAYLOAD', { status: http }));
-    assert.equal(result.status, expected);
-    assert.doesNotMatch(JSON.stringify(result), /SECRET_PAYLOAD/);
-  }
-  const malformed = await checkPhantomBusterWorkspace('key', async () => new Response(JSON.stringify({ token: 'SECRET_PAYLOAD' }), { status: 200 }));
+test('wrong or missing agent not reported as authenticated Instagram', async () => {
+  const result = await checkPhantomBusterWorkspace('key', async () =>
+    new Response(JSON.stringify([{ id: 999 }]), { status: 200 }), '1838046655144130');
+  assert.equal(result.status, 'agent-not-found');
+  assert.equal(result.pilotAgentFound, false);
+  assert.equal(result.instagramConnectionVerified, false);
+});
+
+test('empty key, malformed agent and transport failure are safe', async () => {
+  let called = false;
+  const fake = async () => { called = true; throw Error('do not contact provider'); };
+  const empty = await checkPhantomBusterWorkspace(' ', fake);
+  assert.equal(empty.status, 'not-configured');
+  const malformed = await checkPhantomBusterWorkspace('key', fake, '../../../launch');
   assert.equal(malformed.status, 'unexpected-response');
-  assert.doesNotMatch(JSON.stringify(malformed), /SECRET_PAYLOAD/);
+  assert.equal(called, false);
+  const failed = await checkPhantomBusterWorkspace('key', async () => { throw Error('leaked-secret-token'); });
+  assert.equal(failed.status, 'unavailable');
+  assert.doesNotMatch(JSON.stringify(failed), /leaked-secret-token/);
 });
 
-test('provider JSON shapes and errors cannot leak settings or cookies', async () => {
-  const wrapped = await checkPhantomBusterWorkspace('key', async () =>
-    new Response(JSON.stringify({ data: [{ id: 1, argument: { session: 'SENSITIVE' } }] }), { status: 200 }));
-  assert.deepEqual(wrapped, { status: 'verified', workspaceAgentCount: 1, instagramConnectionVerified: false, actionsEnabled: false });
-  const failure = await checkPhantomBusterWorkspace('key', async () => { throw new Error('my-private-cookie=secret'); });
-  assert.equal(failure.status, 'unavailable');
-  assert.doesNotMatch(JSON.stringify(failure), /private|cookie|secret/i);
+test('rate limit, auth error, and unexpected responses are sanitized', async () => {
+  for (const [code, expected] of [[401, 'invalid-key'], [403, 'invalid-key'], [429, 'limited'], [500, 'unavailable']] as const) {
+    const res = await checkPhantomBusterWorkspace('key', async () =>
+      new Response('PRIVATE_COOKIE', { status: code }));
+    assert.equal(res.status, expected);
+    assert.doesNotMatch(JSON.stringify(res), /PRIVATE_COOKIE/);
+  }
+  const invalid = await checkPhantomBusterWorkspace('key', async () =>
+    new Response(JSON.stringify({ secretCookie: 'PRIVATE_COOKIE' }), { status: 200 }));
+  assert.equal(invalid.status, 'unexpected-response');
 });
 
-test('route is authenticated, tenant scoped, pilot only, read-only and does not expose keys', () => {
-  const src = readFileSync('app/api/provider/phantombuster/route.ts', 'utf8');
-  assert.match(src, /const session = await auth\(\)/);
-  assert.match(src, /where: \{ id: accountId, userId \}/);
-  assert.match(src, /PHANTOMBUSTER_READONLY_ENABLED/);
-  assert.match(src, /PHANTOMBUSTER_PILOT_ACCOUNT_ID === account.id/);
-  assert.match(src, /PHANTOMBUSTER_PILOT_USERNAME/);
-  assert.match(src, /PHANTOMBUSTER_PILOT_USERNAME.toLowerCase\(\) === account.username.toLowerCase\(\)/);
-  assert.match(src, /process\.env\.PHANTOMBUSTER_API_KEY/);
-  assert.match(src, /export async function GET/);
-  assert.doesNotMatch(src, /export async function POST|agents\/launch|user_follow|user_unfollow|PRIVATE_API_IG_PASSWORD/);
+test('one-time key route requires user, ownership, same-origin, pilot gates and no writes', () => {
+  const code = readFileSync('app/api/provider/phantombuster/route.ts', 'utf8');
+  assert.match(code, /const session = await auth\(\)/);
+  assert.match(code, /where: \{ id: accountId, userId \}/);
+  assert.match(code, /PHANTOMBUSTER_READONLY_ENABLED/);
+  assert.match(code, /PHANTOMBUSTER_PILOT_USERNAME/);
+  assert.match(code, /export async function GET/);
+  assert.match(code, /export async function POST/);
+  assert.match(code, /origin !== new URL\(req.url\).origin/);
+  assert.match(code, /key.length > 512/);
+  assert.match(code, /checkPhantomBusterWorkspace\(key, fetch, pilotAgentId\(\)\)/);
+  assert.doesNotMatch(code, /agents\/launch|user_follow|user_unfollow|PRIVATE_API_IG_PASSWORD|prisma\.[a-zA-Z]+\.(create|update|upsert|delete)/);
 });
 
-test('the UI explicitly distinguishes workspace connectivity from Instagram authentication', () => {
-  const page = readFileSync('app/(app)/references/_components/provider-connection-panel.tsx', 'utf8');
-  const refPage = readFileSync('app/(app)/references/_components/reference-workflow-panel.tsx', 'utf8');
-  assert.match(page, /Instagram: não verificado/);
-  assert.match(page, /Ações automáticas: desativadas/);
-  assert.match(refPage, /ProviderConnectionPanel/);
-  assert.doesNotMatch(page, /input.*type=.password.|Cookie de sessão/);
+test('preview shows one-time secret entry, no session-cookie field and accurate status', () => {
+  const ui = readFileSync('app/(app)/references/_components/provider-connection-panel.tsx', 'utf8');
+  assert.match(ui, /autoComplete="off"/);
+  assert.match(ui, /type="password"/);
+  assert.match(ui, /setApiKey\(''\)/);
+  assert.match(ui, /Instagram: não verificado/);
+  assert.match(ui, /Ações automáticas: desativadas/);
+  assert.match(ui, /não será iniciada/);
+  assert.doesNotMatch(ui, /localStorage|sessionStorage|cookieValue|sessionid=/);
 });

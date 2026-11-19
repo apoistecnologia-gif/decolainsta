@@ -1,48 +1,45 @@
-import {
-  parseAudienceRefreshSources, type AudienceRefreshSource,
-} from './reference-audience-refresh';
+import type { AudienceRefreshSource } from './reference-audience-refresh';
 
 export type AudienceReadinessFlags = {
   readOnlyEnabled: boolean;
   pollingEnabled: boolean;
-  authorizedPilot: boolean;
   cronSecretConfigured: boolean;
   providerKeyConfigured: boolean;
 };
 
 export type AudienceReference = { id: string; username: string; enabled: boolean };
 
+/** Preflight is tenant-scoped. Never assume a particular Instagram username. */
 export function evaluateAudienceReadiness(
   accountId: string,
   references: AudienceReference[],
-  rawSources: string | undefined,
+  sources: AudienceRefreshSource[],
   flags: AudienceReadinessFlags,
 ) {
-  const sources = parseAudienceRefreshSources(rawSources);
-  const configured = new Set(sources.filter((source: AudienceRefreshSource) =>
+  const configured = new Set(sources.filter(source =>
     source.accountId === accountId).map(source => source.referenceId));
-  const active = references.filter(r => r.enabled);
-  const assigned = active.filter(r => configured.has(r.id));
-  const missing = active.filter(r => !configured.has(r.id)).map(r => '@' + r.username);
+  const active = references.filter(reference => reference.enabled);
+  const assigned = active.filter(reference => configured.has(reference.id));
+  const missing = active.filter(reference => !configured.has(reference.id))
+    .map(reference => '@' + reference.username);
   const missingConfiguration: string[] = [];
-  if (!flags.authorizedPilot) missingConfiguration.push('PHANTOMBUSTER_PILOT_USERNAME');
-  if (!flags.readOnlyEnabled) missingConfiguration.push('PHANTOMBUSTER_READONLY_ENABLED');
-  if (!flags.pollingEnabled) missingConfiguration.push('PHANTOMBUSTER_AUDIENCE_POLL_ENABLED');
+  if (!flags.readOnlyEnabled)
+    missingConfiguration.push('PHANTOMBUSTER_READONLY_ENABLED');
+  if (!flags.pollingEnabled)
+    missingConfiguration.push('PHANTOMBUSTER_AUDIENCE_POLL_ENABLED');
   if (!flags.cronSecretConfigured) missingConfiguration.push('CRON_SECRET');
   if (!flags.providerKeyConfigured) missingConfiguration.push('PHANTOMBUSTER_API_KEY');
-  if (!sources.length || missing.length)
-    missingConfiguration.push('PHANTOMBUSTER_AUDIENCE_SOURCES_JSON');
+  if (missing.length) missingConfiguration.push('VINCULOS_DE_COLETORES');
   const technicalReady = active.length > 0 && missingConfiguration.length === 0;
-  // An owner-authenticated preview test does not use the Vercel cron secret.
   const previewManualReady = active.length > 0 &&
     missingConfiguration.filter(name => name !== 'CRON_SECRET').length === 0;
   return {
-    technicalReady, previewManualReady,
+    technicalReady,
+    previewManualReady,
     referenceCount: active.length,
     assignedCollectors: assigned.length,
     missingCollectorFor: missing,
     missingConfiguration,
-    // Deliberately cannot infer from agent ID that the source is a follower collector.
     collectorTypeVerified: false,
     collectorResultsVerified: false,
     instagramActionsEnabled: false,

@@ -16,14 +16,14 @@ import {
 } from 'lucide-react';
 
 const navItems = [
+  { href: '/references', label: 'Contas de referência', icon: ListChecks },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/accounts', label: 'Contas', icon: Instagram },
-  { href: '/references', label: 'Contas de referência', icon: ListChecks },
   { href: '/reference-ai', label: 'IA · Referências', icon: Sparkles },
-  { href: '/scheduled-posts', label: 'Publicações agendadas', icon: CalendarClock },
   { href: '/activity', label: 'Atividade', icon: Activity },
   { href: '/alerts', label: 'Alertas', icon: Bell },
-  { href: '/engine', label: 'Motor', icon: Zap },
+  { href: '/engine', label: 'Simulador', icon: Zap },
+  { href: '/scheduled-posts', label: 'Publicações (secundário)', icon: CalendarClock },
 ];
 
 export function AppSidebar({ user }: { user: any }) {
@@ -74,7 +74,7 @@ export function AppSidebar({ user }: { user: any }) {
           </div>
         </div>
         <p className="px-3 py-2 text-[10px] text-muted-foreground">
-          ⚠️ Automação viola os Termos do Instagram. Use por sua conta e risco.
+          Ações reais de follow/unfollow não são executadas pela API oficial. Registros manuais ficam separados do simulador.
         </p>
       </div>
     </div>

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ProviderConnectionPanel } from './provider-connection-panel';
 import { Input } from '@/components/ui/input';
 
+const PILOT_USERNAME = 'contateste6699'; // Test-only; manual local record, never Meta OAuth.
 type Account = { id: string; username: string; connected?: boolean };
 type Reference = { id: string; username: string };
 type Lead = {
@@ -105,6 +106,36 @@ export function ReferenceWorkflowPanel() {
       ? current : (result.references[0]?.id ?? ''));
   }
 
+  async function registerPilotAccount() {
+    if (busy || accounts.some(account => account.username.toLowerCase() === PILOT_USERNAME)) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/instagram-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: PILOT_USERNAME }),
+      });
+      if (!response.ok && response.status !== 409) {
+        await readJson(response);
+      }
+      // Always reload from the authenticated owner's DB to handle an existing record.
+      const list = await readJson(await fetch('/api/instagram-accounts', { cache: 'no-store' })) as Account[];
+      const testAccount = list.find(account => account.username.toLowerCase() === PILOT_USERNAME);
+      if (!testAccount) throw new Error('A conta de teste não apareceu no cadastro.');
+      setAccounts(list);
+      setSelectedAccount(testAccount.id);
+      setData(null);
+      setLoadedAccount('');
+      setMessage('Conta @contateste6699 cadastrada apenas para o piloto local. Instagram e Meta não foram autenticados.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível cadastrar a conta de teste.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addReference(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedAccount || busy || !referenceUsername.trim()) return;
@@ -197,6 +228,20 @@ export function ReferenceWorkflowPanel() {
               Esta tela não usa cookies, senhas, scraping ou usuários fictícios. Nenhum botão aqui executa follow/unfollow no Instagram.
             </p>
           </div>
+          {!accounts.some(account => account.username.toLowerCase() === PILOT_USERNAME) && (
+            <div className="rounded-md border p-3 space-y-2 text-sm">
+              <p className="font-medium">Conta de teste ainda não cadastrada neste DECOLA INSTA</p>
+              <p className="text-muted-foreground">
+                Você conectou @contateste6699 na PhantomBuster, mas ela não entra automaticamente
+                no cadastro do DECOLA INSTA. O botão abaixo cria apenas um registro local de teste,
+                sem senha, sem acessar o Instagram e sem conectar a API oficial da Meta.
+              </p>
+              <Button type="button" variant="outline" disabled={busy} onClick={registerPilotAccount}>
+                <Plus className="h-4 w-4 mr-2" />
+                {busy ? 'Cadastrando...' : 'Cadastrar @contateste6699 no piloto'}
+              </Button>
+            </div>
+          )}
           <label htmlFor="workflow-account" className="block text-sm font-medium">Conta que você quer desenvolver</label>
           <select id="workflow-account" disabled={busy} className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             value={selectedAccount}

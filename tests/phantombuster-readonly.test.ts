@@ -86,6 +86,18 @@ test('one-time key route requires user, ownership, same-origin, pilot gates and 
   assert.doesNotMatch(code, /agents\/launch|user_follow|user_unfollow|PRIVATE_API_IG_PASSWORD|prisma\.[a-zA-Z]+\.(create|update|upsert|delete)/);
 });
 
+test('reference screen can register the exact pilot username locally without Instagram login', () => {
+  const source = readFileSync('app/(app)/references/_components/reference-workflow-panel.tsx', 'utf8');
+  assert.match(source, /const PILOT_USERNAME = 'contateste6699'/);
+  assert.match(source, /async function registerPilotAccount\(\)/);
+  assert.match(source, /method: 'POST'/);
+  assert.match(source, /fetch\('\/api\/instagram-accounts'/);
+  assert.match(source, /body: JSON.stringify\(\{ username: PILOT_USERNAME \}\)/);
+  assert.match(source, /Cadastrar @contateste6699 no piloto/);
+  assert.doesNotMatch(source, /PASSWORD|sessionid=|api\/instagram\/connect|agents\/launch/);
+  assert.match(source, /onClick=\{registerPilotAccount\}/);
+});
+
 test('preview shows one-time secret entry, no session-cookie field and accurate status', () => {
   const ui = readFileSync('app/(app)/references/_components/provider-connection-panel.tsx', 'utf8');
   assert.match(ui, /autoComplete="off"/);

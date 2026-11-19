@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import {
   AUDIENCE_REFRESH_ACTION, MAX_REFRESH_SOURCES, MAX_REFRESHES_PER_TICK,
-  MIN_REFRESH_INTERVAL_MS, newAudienceNames, parseAudienceRefreshSources, refreshIsDue,
+  MIN_REFRESH_INTERVAL_MS, boundAudienceDelta, dueRefreshSources,
+  newAudienceNames, parseAudienceRefreshSources, refreshIsDue,
 } from '../lib/reference-audience-refresh';
 
 const valid = [
@@ -65,4 +66,51 @@ test('agendamento só lê execução finalizada e mantém ações sociais deslig
   assert.match(route, /newAudienceNames/);
   assert.match(route, /instagramActionsExecuted: 0/);
   assert.doesNotMatch(route, /agents\/launch|user_follow|user_unfollow|followAction\.(create|update|delete)|api\.instagram\.com/);
+});
+
+test('agendamento justo alcança a quarta referência e respeita backoff', () => {
+  const now = new Date('2026-11-19T20:00:00Z');
+  const list = [1,2,3,4,5].map(n => ({
+    accountId: 'owner_1', referenceId: 'ref_' + n,
+    collectorAgentId: String(1234567890123400 + n),
+  }));
+  const attempts = list.slice(0,3).map(source => ({
+    accountId: source.accountId, referenceId: source.referenceId,
+    lastAttemptAt: new Date('2026-11-19T12:00:00Z'),
+  }));
+  // Two never-attempted sources must get a turn before repeated sources.
+  const due = dueRefreshSources(list, attempts, now);
+  assert.deepEqual(due.map(s => s.referenceId), ['ref_4','ref_5','ref_1']);
+  const recent = [
+    ...attempts, {accountId:'owner_1', referenceId:'ref_4',
+      lastAttemptAt: new Date('2026-11-19T19:00:00Z')},
+  ];
+  assert.deepEqual(dueRefreshSources(list,recent,now).map(s=>s.referenceId),
+    ['ref_5','ref_1','ref_2']);
+  assert.deepEqual(dueRefreshSources(list, recent, new Date('invalid')), []);
+});
+
+test('importação parcial ocupa o último lote e contabiliza nomes adiados', () => {
+  const names = Array.from({length: 45},(_,i)=>'user'+i);
+  assert.deepEqual(boundAudienceDelta(names, 59), {
+    importable: names.slice(0,10), deferred: 35,
+  });
+  assert.deepEqual(boundAudienceDelta(names, 60), {
+    importable: [], deferred: 45,
+  });
+  assert.deepEqual(boundAudienceDelta(names, 55), {
+    importable: names, deferred: 0,
+  });
+  assert.deepEqual(boundAudienceDelta(names, -1), {
+    importable: [], deferred: 45,
+  });
+});
+
+test('cron faz seleção pelo último claim em vez da ordem fixa do JSON', () => {
+  const route = readFileSync('app/api/cron/refresh-reference-audiences/route.ts','utf8');
+  assert.match(route,/prisma\.activityLog\.groupBy/);
+  assert.match(route,/dueRefreshSources\(sources, lastAttempts/);
+  assert.match(route,/boundAudienceDelta\(/);
+  assert.match(route,/deferredByHistoryLimit/);
+  assert.doesNotMatch(route,/for \(const source of sources\)/);
 });

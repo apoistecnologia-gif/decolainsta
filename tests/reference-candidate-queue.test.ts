@@ -97,3 +97,12 @@ test('queue endpoint uses account scoped serializable transaction, no actions/cr
   assert.match(ui,/Índice persistente de candidatos/);
   assert.doesNotMatch(ui,/sessionStorage|localStorage|agents\/launch/);
 });
+
+
+test('deleting saved snapshot prunes candidates linked to that source in a serializable transaction', () => {
+  const code = readFileSync('app/api/provider/phantombuster/audience-history/route.ts', 'utf8');
+  assert.match(code, /parseCandidateEvidence\(row.details\)\?\.snapshotId === p.historyId/);
+  assert.match(code, /AUDIENCE_CANDIDATE_ACTION/);
+  assert.match(code, /tx.activityLog.deleteMany\(/);
+  assert.match(code, /Prisma.TransactionIsolationLevel.Serializable/);
+});

@@ -9,7 +9,7 @@ import { verifyFollowerCollectorTemplate } from '@/lib/providers/phantombuster-c
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
-  makeAudienceSourceBinding, resolveActiveAudienceSources,
+  makeAudienceSourceBinding, resolveLatestAudienceBindings,
 } from '@/lib/reference-audience-source-registry';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
         });
         if (rows.length > MAX_SOURCE_BINDING_LOGS)
           return 'registry-capacity' as const;
-        const current = resolveActiveAudienceSources(rows);
+        const current = resolveLatestAudienceBindings(rows);
         if (operation === 'bind' && current.some(s =>
           s.collectorAgentId === agentId &&
           (s.accountId !== accountId || s.referenceId !== referenceId)))

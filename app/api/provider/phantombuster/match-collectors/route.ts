@@ -11,6 +11,7 @@ import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
   makeAudienceSourceBinding, resolveLatestAudienceBindings,
+  disabledAudienceReferenceKeys,
 } from '@/lib/reference-audience-source-registry';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
@@ -106,9 +107,10 @@ export async function POST(request: Request) {
         if (rows.length > MAX_SOURCE_BINDING_LOGS) return null;
         // Protect against deleted/renamed refs and concurrent binds.
         const active = resolveLatestAudienceBindings(rows);
-        const mapped = currentRefs.map(ref => ({
-          id: ref.id, username: ref.username, accountId,
-        }));
+        const suppressed = disabledAudienceReferenceKeys(rows);
+        const mapped = currentRefs
+          .filter(ref => !suppressed.has(accountId + ':' + ref.id))
+          .map(ref => ({ id: ref.id, username: ref.username, accountId }));
         const plan = planExactReadOnlyCollectorBindings(
           mapped, discovered.collectors, active, 3);
         if (plan.candidates.length) await tx.activityLog.createMany({
@@ -124,7 +126,8 @@ export async function POST(request: Request) {
           alreadyBound: plan.alreadyBound,
           unmatched: plan.unmatched,
           ambiguousOrInUse: plan.ambiguousOrInUse,
-          deferred: plan.deferred, referencesExamined: mapped.length };
+          deferred: plan.deferred, referencesExamined: mapped.length,
+          excludedByOwner: currentRefs.length - mapped.length };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       if (!summary) return NextResponse.json({ error: 'Registro de vínculos atingiu o limite' },
         { status: 409, headers: HEADERS });

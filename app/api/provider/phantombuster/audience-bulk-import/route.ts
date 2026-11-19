@@ -7,7 +7,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { readCollectorAudience } from '@/lib/providers/phantombuster-audience';
 import { MAX_HISTORY_BATCHES, AUDIENCE_HISTORY_ACTION,
-  makeAudienceSnapshot, parseAudienceSnapshot } from '@/lib/reference-audience-history';
+  makeAudienceSnapshot, parseAudienceSnapshot, type AudienceSnapshot } from '@/lib/reference-audience-history';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
 
   // Stable ordering makes repeated imports idempotent even if provider row order changes.
   const names = [...new Set(output.usernames)].sort();
-  const batches = [];
+  const batches: AudienceSnapshot[] = [];
   for (let offset = 0; offset < names.length; offset += 10) {
     const snapshot = makeAudienceSnapshot(reference.id, reference.username.toLowerCase(),
       input.collectorAgentId, names.slice(offset, offset + 10), output.resultLocation);

@@ -38,3 +38,13 @@ python -m unittest discover -s experimental/private-instagram-worker/tests -v
 Requer Python 3.12+, `pip install -r experimental/private-instagram-worker/requirements.txt`, segredos no cofre do worker e `PRIVATE_API_RESEARCH_APPROVED=yes`. `python experimental/private-instagram-worker/cli.py probe` consulta apenas a quantidade de resultados retornados da referência (máximo 5 perfis, sem divulgar usuários). Outros comandos exigem um segundo opt-in `PRIVATE_API_SINGLE_ACTION_APPROVED=yes` e `PRIVATE_API_APPROVED_TARGET` igual exatamente ao destino. Isso não constitui implantação de autopilot.
 
 O DECOLA INSTA original continua em modo manual/simulado, independente deste protótipo.
+
+## Serviço passivo preparado para Railway
+
+Os arquivos `Dockerfile`, `railway.json` e `health_service.py` preparam um serviço Docker isolado. Ele escuta `GET /health`, devolve apenas `ready` e os estados `disabled`, não possui rota de escrita e **não inicia o login no Instagram**. O CLI experimental de pesquisa é independente do processo de saúde.
+
+Para implantar **apenas o serviço passivo**, use um novo serviço Railway com origem no repositório `apoistecnologia-gif/decolainsta`, branch `experiment/local-instagram-one-action-20261118` e **Root Directory** `/experimental/private-instagram-worker`. Se exigir Config File Path separado, use `/experimental/private-instagram-worker/railway.json`, conforme [documentação de monorepo](https://docs.railway.com/deployments/monorepo).
+
+Verifique o healthcheck `/health` e **não adicione domínio público** ao serviço: não existe interface do cliente nele. O contêiner permanece ativo e poderá gerar cobrança de infraestrutura; não o deixe rodando sem necessidade. A aplicação Next.js permanece na Vercel, o banco continua na Neon e não há sincronização entre o serviço passivo e o DECOLA INSTA.
+
+A instalação da integração Railway no ChatGPT, por si só, não cria serviço ou deploy. Este commit **não cria qualquer recurso da Railway nem altera segredos**. Um piloto privado autenticado e qualquer execução real exigem avaliação e autorização específicas.

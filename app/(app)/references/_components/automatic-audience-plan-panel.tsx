@@ -16,6 +16,21 @@ type QueueResult = {
   actionsEnabled: false;
   instagramActionsExecuted: 0;
 };
+type CandidateIndexSummary = {
+  persistedCandidates: number;
+  referencesRepresented: number;
+  capacity: number;
+  lastIndexedAt: string | null;
+  duplicateRecords: number;
+  byReference: { referenceId: string; referenceUsername: string; candidates: number }[];
+};
+async function fetchIndex(accountId: string, signal?: AbortSignal): Promise<CandidateIndexSummary> {
+  const response = await fetch('/api/reference-candidate-queue?accountId=' + encodeURIComponent(accountId),
+    { cache: 'no-store', credentials: 'same-origin', signal });
+  if (!response.ok) throw new Error('Não foi possível consultar os candidatos salvos.');
+  return response.json() as Promise<CandidateIndexSummary>;
+}
+
 type Plan = {
   source: 'saved_snapshots_unverified';
   readOnly: true;
@@ -40,6 +55,7 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [queue, setQueue] = useState<QueueResult | null>(null);
+  const [index, setIndex] = useState<CandidateIndexSummary | null>(null);
   const [queueError, setQueueError] = useState('');
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!accountId) return;
@@ -47,6 +63,8 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
       const data = await fetchPlan(accountId, signal);
       if (signal?.aborted) return;
       setPlan(data);
+      const persisted = await fetchIndex(accountId, signal);
+      if (!signal?.aborted) setIndex(persisted);
     } catch (err) {
       if (!signal?.aborted) setError(err instanceof Error ? err.message : 'Consulta indisponível');
     } finally {
@@ -68,6 +86,9 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
       const data = await response.json() as QueueResult & { error?: string };
       if (!response.ok) throw new Error(data.error || 'Sincronização indisponível');
       if (!controller.signal.aborted) setQueue(data);
+      return fetchIndex(accountId, controller.signal).then(persisted => {
+        if (!controller.signal.aborted) setIndex(persisted);
+      });
     }).catch(err => {
       if (!controller.signal.aborted)
         setQueueError(err instanceof Error ? err.message : 'Fila indisponível');
@@ -111,9 +132,40 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
               {queue.total} candidato(s) distintos registrados no banco,
               {' '}{queue.synced} novo(s) nesta sincronização, a partir de históricos já salvos.
             </p>
+            {index && (
+              <div className="space-y-2 border-t pt-2">
+                <p className="font-medium">
+                  Confirmado no banco: {index.persistedCandidates} candidatos
+                  em {index.referencesRepresented} referência(s).
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Capacidade experimental: {index.capacity}. Estado: identificado, não verificado.
+                </p>
+                {index.byReference.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Distribuição por referência</p>
+                    {index.byReference.map(item => (
+                      <div key={item.referenceId} className="flex justify-between gap-2 border-b py-1 text-xs">
+                        <span>@{item.referenceUsername}</span>
+                        <span>{item.candidates} nomes</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {index.lastIndexedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Último registro: {new Date(index.lastIndexedAt).toLocaleString('pt-BR')}
+                  </p>
+                )}
+                {index.duplicateRecords > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Atenção: {index.duplicateRecords} duplicidade(s) legadas no índice.
+                  </p>
+                )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
-              Estado: identificado, não verificado. Nenhum follow ou unfollow executado.
-              O índice não é uma fila de execução do Instagram.
+              Nenhum follow ou unfollow executado. O índice não é uma fila de execução do Instagram.
             </p>
             {queue.historyTruncated && <p className="text-xs text-muted-foreground">
               Histórico extenso: somente as últimas consultas dentro do limite foram processadas.

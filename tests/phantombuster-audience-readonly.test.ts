@@ -61,3 +61,14 @@ test('collector route authenticates, checks account ownership and references, pe
   assert.match(route,/previewCollectorResult/);
   assert.doesNotMatch(route,/agents\/launch|prisma\.[a-zA-Z]+\.(create|update|upsert|delete)|user_follow|user_unfollow/);
 });
+
+test('references page adds explicitly labeled read-only audience preview', () => {
+  const main = readFileSync('app/(app)/references/_components/reference-workflow-panel.tsx', 'utf8');
+  const component = readFileSync('app/(app)/references/_components/reference-audience-panel.tsx', 'utf8');
+  assert.match(main, /ReferenceAudiencePanel/);
+  assert.match(component, /Ler resultados anteriores \(sem executar coletor\)/);
+  assert.match(component, /setApiKey\(''\)/);
+  assert.match(component, /no máximo 10 nomes/);
+  assert.match(component, /onClick=\{\(\) => void check\(\)\}/);
+  assert.doesNotMatch(component, /localStorage|sessionStorage|agents\/launch|user_follow|user_unfollow/);
+});

@@ -5,6 +5,7 @@ import { CalendarClock, ExternalLink, Plus, RefreshCw, ShieldCheck, UserRoundChe
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ProviderConnectionPanel } from './provider-connection-panel';
+import { ReferenceAudiencePanel } from './reference-audience-panel';
 import { Input } from '@/components/ui/input';
 
 const PILOT_USERNAME = 'contateste6699'; // Test-only; manual local record, never Meta OAuth.
@@ -259,6 +260,7 @@ export function ReferenceWorkflowPanel() {
       </Card>
 
       <ProviderConnectionPanel key={selectedAccount} accountId={selectedAccount} />
+      <ReferenceAudiencePanel key={`audience-${selectedAccount}`} accountId={selectedAccount} references={data?.references ?? []} />
 
       {ready && (
         <>

@@ -79,7 +79,7 @@ test('registry reader pulls database bindings, never hardcodes pilot account', (
   assert.match(route,/verifyFollowerCollectorTemplate/);
   assert.match(route,/confirmReadOnlyCollector/);
   assert.match(route,/operation === 'unbind'/);
-  assert.match(target,/enabled: true/);
+  assert.match(target,/enabled: false/);
   assert.doesNotMatch(runner+manual,/PHANTOMBUSTER_PILOT_USERNAME|PHANTOMBUSTER_AUDIENCE_SOURCES_JSON/);
   assert.doesNotMatch(route+runner,/agents\/launch|user_follow|user_unfollow|api\.instagram\.com/);
 });

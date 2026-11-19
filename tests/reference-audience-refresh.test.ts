@@ -109,7 +109,7 @@ test('importação parcial ocupa o último lote e contabiliza nomes adiados', ()
 test('cron faz seleção pelo último claim em vez da ordem fixa do JSON', () => {
   const route = readFileSync('app/api/cron/refresh-reference-audiences/route.ts','utf8');
   assert.match(route,/prisma\.activityLog\.groupBy/);
-  assert.match(route,/dueRefreshSources\(sources, lastAttempts/);
+  assert.match(route,/dueRefreshSources\(eligible, lastAttempts/);
   assert.match(route,/boundAudienceDelta\(/);
   assert.match(route,/deferredByHistoryLimit/);
   assert.match(route,/skippedConfiguration: sources.length - eligible.length/);

@@ -76,7 +76,7 @@ test('registry reader pulls database bindings, never hardcodes pilot account', (
   assert.match(route,/admin\?\.role !== 'admin'/);
   assert.match(route,/where: \{ id: referenceId, instagramAccountId: accountId \}/);
   assert.match(route,/Prisma\.TransactionIsolationLevel\.Serializable/);
-  assert.match(route,/checkPhantomBusterWorkspace/);
+  assert.match(route,/verifyFollowerCollectorTemplate/);
   assert.match(route,/confirmReadOnlyCollector/);
   assert.match(route,/operation === 'unbind'/);
   assert.match(target,/enabled: true/);

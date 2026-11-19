@@ -89,7 +89,7 @@ test('manual preview polling is owner-authenticated, origin-checked and never la
   assert.match(route, /where: \{ id: input\.accountId, userId \}/);
   assert.match(route, /request\.headers\.get\('origin'\) !== new URL\(request\.url\)\.origin/);
   assert.match(route, /runReadOnlyAudienceRefresh\(account\.id\)/);
-  assert.match(runner, /filter\(source => !onlyAccountId \|\| source\.accountId === onlyAccountId\)/);
+  assert.match(runner, /loadActiveAudienceSources\(onlyAccountId\)/);
   assert.match(runner, /result\.resultLocation !== 'completed_run'/);
   assert.match(runner, /MAX_REFRESHES_PER_TICK|dueRefreshSources/);
   assert.match(ui, /\/api\/provider\/phantombuster\/refresh-now/);

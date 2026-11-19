@@ -243,3 +243,30 @@ test('bulk import is explicit, scoped, idempotent, serializable and never launch
   assert.match(ui, /confirmBulkImport: true/);
   assert.match(ui, /setApiKey\(''\)/);
 });
+
+test('completed-run timestamp is normalized for safe post-binding ingestion', async () => {
+  const { readCollectorAudience, collectorRunCompletedAt } =
+    await import('../lib/providers/phantombuster-audience');
+  assert.equal(collectorRunCompletedAt('not-a-date'),null);
+  assert.equal(collectorRunCompletedAt(100),null);
+  const ended = '2026-11-19T15:00:00.000Z';
+  assert.equal(collectorRunCompletedAt(Date.parse(ended)/1000),ended);
+  assert.equal(collectorRunCompletedAt(String(Date.parse(ended))),ended);
+  const value = await readCollectorAudience('test-key','1234567890123456',[],
+    async url => url.includes('/fetch-all')
+      ? new Response(JSON.stringify([{id:'1111111111111111',
+        endedAt:Date.parse(ended)/1000}]), {status:200})
+      : new Response(JSON.stringify({resultObject:[{username:'sample.follower'}]}),
+        {status:200}));
+  assert.equal(value.status,'found');
+  assert.equal(value.resultLocation,'completed_run');
+  assert.equal(value.completedAt,ended);
+  assert.equal(value.referenceVerified,false);
+  const unknown = await readCollectorAudience('test-key','1234567890123456',[],
+    async url => url.includes('/fetch-all')
+      ? new Response(JSON.stringify([{id:'1111111111111111'}]), {status:200})
+      : new Response(JSON.stringify({resultObject:[{username:'sample.follower'}]}),
+        {status:200}));
+  assert.equal(unknown.status,'found');
+  assert.equal(unknown.completedAt,undefined);
+});

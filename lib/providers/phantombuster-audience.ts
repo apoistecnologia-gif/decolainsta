@@ -14,15 +14,34 @@ export type AudiencePreview = {
   savedToDatabase: false;
   actionsEnabled: false;
   resultLocation?: 'completed_run' | 'latest_agent_file';
+  completedAt?: string; // finalized container end, if the provider supplies it
 };
 
 function result(
   status: AudiencePreview['status'], usernames: string[] = [],
   resultLocation?: AudiencePreview['resultLocation'],
+  completedAt?: string | null,
 ): AudiencePreview {
   return { status, usernames, referenceVerified: false,
     source: 'operator_assigned_collector_result', savedToDatabase: false, actionsEnabled: false,
-    ...(resultLocation ? { resultLocation } : {}) };
+    ...(resultLocation ? { resultLocation } : {}),
+    ...(resultLocation === 'completed_run' && completedAt ? { completedAt } : {}) };
+}
+
+/** Normalize provider end timestamps without guessing an unknown date format. */
+export function collectorRunCompletedAt(value: unknown): string | null {
+  let ms: number;
+  if (typeof value === 'number') ms = value;
+  else if (typeof value === 'string' && /^\d{10,13}$/.test(value))
+    ms = Number(value);
+  else if (typeof value === 'string' && /^\d{4}-\d\d-\d\dT/.test(value))
+    ms = Date.parse(value);
+  else return null;
+  if (!Number.isFinite(ms)) return null;
+  if (ms >= 1_500_000_000 && ms < 100_000_000_000) ms *= 1000;
+  if (ms < Date.parse('2020-01-01T00:00:00Z') ||
+      ms > Date.now() + 24 * 60 * 60 * 1000) return null;
+  return new Date(ms).toISOString();
 }
 
 function record(v: unknown): Record<string, unknown> | null {
@@ -148,7 +167,9 @@ async function readCollectorResult(
       !!item && /^\d{10,25}$/.test(String(item.id ?? '')));
     if (!valid.length) return result('unsupported-result');
     const newest = [...valid].sort((a, b) =>
-      (Number(b.endedAt ?? 0) || 0) - (Number(a.endedAt ?? 0) || 0))[0];
+      (Date.parse(collectorRunCompletedAt(b.endedAt) ?? '') || 0) -
+      (Date.parse(collectorRunCompletedAt(a.endedAt) ?? '') || 0))[0];
+    const completedAt = collectorRunCompletedAt(newest.endedAt);
 
     const resultUrl = new URL('https://api.phantombuster.com/api/v2/containers/fetch-result-object');
     resultUrl.searchParams.set('id', String(newest.id));
@@ -196,7 +217,8 @@ async function readCollectorResult(
       if (username && !excluded.has(username)) unique.add(username);
       if (unique.size >= maxNames) break;
     }
-    return unique.size ? result('found', [...unique], location) : result('no-results');
+    return unique.size ? result('found', [...unique], location,
+      completedAt) : result('no-results');
   } catch { return result('unavailable'); }
 }
 

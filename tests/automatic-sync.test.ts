@@ -29,7 +29,7 @@ test('cron autenticado, limitado e sem escrita de follows ou coleta de seguidore
   assert.equal(AUTOMATIC_SYNC_BATCH_LIMIT, 5);
   assert.ok(config.crons.some((job: { path: string; schedule: string }) =>
     job.path === '/api/cron/sync-insights' && job.schedule === '0 12 * * *'));
-  assert.equal(config.crons.length, 2);
+  assert.equal(config.crons.length, 3);
   assert.match(source, /CRON_SECRET/);
   assert.match(source, /secret\.length < 32/);
   assert.match(source, /timingSafeEqual/);

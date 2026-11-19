@@ -56,7 +56,7 @@ export function parseAudienceSourceBinding(raw: string | null): AudienceSourceBi
 }
 
 /** The latest event wins. Malformed latest records disable that binding (fail closed). */
-export function resolveActiveAudienceSources(rows: AudienceSourceBindingRow[]): AudienceRefreshSource[] {
+export function resolveLatestAudienceBindings(rows: AudienceSourceBindingRow[]): AudienceRefreshSource[] {
   const latest = [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() ||
     b.id.localeCompare(a.id));
   const visited = new Set<string>();
@@ -75,8 +75,12 @@ export function resolveActiveAudienceSources(rows: AudienceSourceBindingRow[]): 
       collectorAgentId: binding.collectorAgentId,
     });
   }
-  // A single collector cannot be automatically read for two distinct refs.
-  // Conflicts are quarantined instead of assigning its data to the wrong tenant.
+  return active;
+}
+
+/** Do not read ambiguous agent identities across different client accounts. */
+export function resolveActiveAudienceSources(rows: AudienceSourceBindingRow[]): AudienceRefreshSource[] {
+  const active = resolveLatestAudienceBindings(rows);
   const count = new Map<string, number>();
   for (const source of active)
     count.set(source.collectorAgentId, (count.get(source.collectorAgentId) ?? 0) + 1);

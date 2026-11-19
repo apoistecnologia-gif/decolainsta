@@ -108,3 +108,60 @@ test('preview shows one-time secret entry, no session-cookie field and accurate 
   assert.match(ui, /nenhuma execução de follow\/unfollow será iniciada/);
   assert.doesNotMatch(ui, /localStorage|sessionStorage|cookieValue|sessionid=/);
 });
+
+test('read-only Profile Scraper result is scoped to the exact pilot profile and never leaks raw provider data', async () => {
+  const { getLatestTestProfile } = await import('../lib/providers/phantombuster-profile-result');
+  const urls: string[] = [];
+  const result = await getLatestTestProfile('private-server-key', '3648918782366739', 'contateste6699', async (url, init) => {
+    urls.push(url);
+    assert.equal(init?.method, 'GET');
+    assert.equal(init?.redirect, 'error');
+    assert.equal((init?.headers as Record<string, string>)['X-Phantombuster-Key'], 'private-server-key');
+    if (url.includes('/containers/fetch-all')) {
+      return new Response(JSON.stringify([{ id: '7777777777777777', endedAt: 1795098800000 }]), { status: 200 });
+    }
+    return new Response(JSON.stringify({ resultObject: JSON.stringify([
+      { profileName: 'contateste6699', followersCount: 0, followingCount: '0', email: 'secret@example.com', sessionid: 'secret-cookie' },
+    ]) }), { status: 200 });
+  });
+  assert.equal(urls.length, 2);
+  assert.equal(new URL(urls[0]).searchParams.get('agentId'), '3648918782366739');
+  assert.equal(new URL(urls[0]).searchParams.get('mode'), 'finalized');
+  assert.equal(new URL(urls[1]).searchParams.get('id'), '7777777777777777');
+  assert.deepEqual(result, {
+    status: 'found',
+    profile: { username: 'contateste6699', followersCount: 0, followingCount: 0 },
+    source: 'phantombuster-profile-scraper',
+    savedToDatabase: false,
+    instagramSessionForActionsVerified: false,
+    actionsEnabled: false,
+  });
+  assert.doesNotMatch(JSON.stringify(result), /secret|example.com|cookie|private-server-key/i);
+});
+
+test('unknown target, no run or invalid response cannot import a different person', async () => {
+  const { getLatestTestProfile } = await import('../lib/providers/phantombuster-profile-result');
+  const noRun = await getLatestTestProfile('key', '3648918782366739', 'contateste6699', async () =>
+    new Response(JSON.stringify({ containers: [] }), { status: 200 }));
+  assert.equal(noRun.status, 'no-launch');
+  const mismatched = await getLatestTestProfile('key', '3648918782366739', 'contateste6699', async (url) =>
+    url.includes('fetch-all')
+      ? new Response(JSON.stringify([{ id: '7777777777777777' }]), { status: 200 })
+      : new Response(JSON.stringify({ resultObject: [{ profileName: 'someone_else', followersCount: 999 }] }), { status: 200 }));
+  assert.equal(mismatched.status, 'profile-not-found');
+  assert.equal(mismatched.profile, undefined);
+});
+
+test('profile result integration is read-only, backend scoped and UI never stores API keys', () => {
+  const route = readFileSync('app/api/provider/phantombuster/route.ts', 'utf8');
+  const adapter = readFileSync('lib/providers/phantombuster-profile-result.ts', 'utf8');
+  const ui = readFileSync('app/(app)/references/_components/provider-connection-panel.tsx', 'utf8');
+  assert.match(route, /PHANTOMBUSTER_PROFILE_AGENT_ID/);
+  assert.match(route, /pilot.username/);
+  assert.match(route, /getLatestTestProfile/);
+  assert.match(route, /await authorizePilot\(obj.accountId\)/);
+  assert.match(ui, /Ler resultado anterior de @contateste6699/);
+  assert.match(ui, /setApiKey\(''\)/);
+  assert.doesNotMatch(route + adapter, /agents\/launch|\.create\(|\.update\(|\.upsert\(/);
+  assert.doesNotMatch(ui, /localStorage|sessionStorage|sessionid=/);
+});

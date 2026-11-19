@@ -4,6 +4,7 @@ export const runtime = 'nodejs';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { checkPhantomBusterWorkspace, type PhantomBusterResult } from '@/lib/providers/phantombuster';
+import { getLatestTestProfile } from '@/lib/providers/phantombuster-profile-result';
 import { NextResponse } from 'next/server';
 
 function reply(data: PhantomBusterResult, status = 200) {
@@ -14,7 +15,7 @@ function reply(data: PhantomBusterResult, status = 200) {
 }
 
 type PilotAuth =
-  | { ok: true }
+  | { ok: true; username: string }
   | { ok: false; status: number; error: string };
 
 async function authorizePilot(accountId: unknown): Promise<PilotAuth> {
@@ -37,7 +38,7 @@ async function authorizePilot(accountId: unknown): Promise<PilotAuth> {
   if (process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes' || !(pilotById || pilotByUsername)) {
     return { ok: false, status: 403, error: 'Diagnóstico indisponível para esta conta' };
   }
-  return { ok: true };
+  return { ok: true, username: account.username };
 }
 
 /**
@@ -56,6 +57,15 @@ export async function GET(req: Request) {
   // Optional backend-only credential. Absent in the initial pilot preview.
   const key = process.env.PHANTOMBUSTER_API_KEY;
   if (!key) return reply({ status: 'not-configured', instagramConnectionVerified: false, actionsEnabled: false });
+  if (obj.mode === 'profile-summary') {
+    const id = process.env.PHANTOMBUSTER_PROFILE_AGENT_ID;
+    if (!id || !/^\d{10,25}$/.test(id)) {
+      return NextResponse.json({ error: 'Automação de leitura ainda não configurada' }, { status: 503 });
+    }
+    return NextResponse.json(await getLatestTestProfile(key, id, pilot.username), {
+      headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+    });
+  }
   return reply(await checkPhantomBusterWorkspace(key, fetch, pilotAgentId()));
 }
 
@@ -83,7 +93,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 });
   }
   const obj = payload as Record<string, unknown>;
-  if (Object.keys(obj).some(key => key !== 'accountId' && key !== 'apiKey')) {
+  if (Object.keys(obj).some(key => key !== 'accountId' && key !== 'apiKey' && key !== 'mode') ||
+      (obj.mode !== undefined && obj.mode !== 'verify' && obj.mode !== 'profile-summary')) {
     return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 });
   }
 

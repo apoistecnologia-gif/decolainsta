@@ -57,3 +57,9 @@ Evidência enviada pelo proprietário (tela de resultados da própria PhantomBus
 **O que ainda falta:** implementar/testar ingestão de resultados do provedor em escopo de leitura, validar integridade e limites; planejar conscientemente qualquer ação social com aprovação separada, respeitando os termos da plataforma. A consulta de perfil **não é** autorização para mutações.
 
 A parte técnica de follow/unfollow e revisão 24/72h permanece pendente, sem implementação de mutação via PhantomBuster ou agendamento ativo.
+
+## Consulta controlada do resultado já produzido
+
+O proprietário executou uma vez o Instagram Profile Scraper e visualizou 1 resultado em sua workspace. Uma nova opção do Preview consulta somente **resultados previamente gerados**, sem relançar Phantom ou coletar dados novos. A biblioteca `phantombuster-profile-result.ts` consulta a API do provedor em dois passos: `GET /containers/fetch-all?agentId=<id>&mode=finalized&limit=3` e, para um container finalizado, `GET /containers/fetch-result-object?id=<container id>`. Ambas as chamadas são somente leitura. Fonte: https://hub.phantombuster.com/reference/get_containers-fetch-all e https://hub.phantombuster.com/reference/get_containers-fetch-result-object
+
+A nova configuração opcional `PHANTOMBUSTER_PROFILE_AGENT_ID=3648918782366739` no Vercel Preview se refere exclusivamente ao Phantom de leitura criado pelo titular. O backend autentica o usuário do DECOLA INSTA e verifica se `@contateste6699` é o perfil de teste permitido; a chave temporária deve ser digitada diretamente no Preview para o teste e nunca é armazenada. Retorna somente username, followersCount e followingCount se a linha realmente pertencer à conta de teste. Sem migração de banco, dados de terceiros, extração de cookie, follows ou unfollows. A interface explicita que consulta anterior não é prova de autenticação válida para ações sociais.

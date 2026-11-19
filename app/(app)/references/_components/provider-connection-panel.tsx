@@ -10,6 +10,27 @@ type ProviderStatus =
   | 'verified' | 'not-configured' | 'disabled' | 'invalid-key'
   | 'limited' | 'unavailable' | 'unexpected-response' | 'agent-not-found';
 
+type ProfileLookup = {
+  status: 'found' | 'no-launch' | 'no-result' | 'profile-not-found'
+    | 'invalid-key' | 'limited' | 'unavailable' | 'unexpected-response';
+  profile?: { username: string; followersCount: number | null; followingCount: number | null };
+  source: 'phantombuster-profile-scraper';
+  savedToDatabase: false;
+  instagramSessionForActionsVerified: false;
+  actionsEnabled: false;
+};
+
+const PROFILE_MESSAGES: Record<ProfileLookup['status'], string> = {
+  found: 'Consulta recuperada da PhantomBuster. São dados do seu próprio perfil, sem novo acesso ao Instagram.',
+  'no-launch': 'A PhantomBuster não encontrou uma execução finalizada dessa ferramenta.',
+  'no-result': 'A execução não trouxe linhas de resultado para importar.',
+  'profile-not-found': 'O retorno não corresponde à conta de teste. Nenhum dado foi importado.',
+  'invalid-key': 'A chave não foi autorizada. Não envie a chave em mensagens.',
+  limited: 'A API indicou limite. O DECOLA INSTA não repetirá a solicitação.',
+  unavailable: 'Não foi possível buscar o resultado da execução já realizada.',
+  'unexpected-response': 'O formato dos dados não foi reconhecido. Nenhum dado foi importado.',
+};
+
 type ProviderResult = {
   status: ProviderStatus;
   workspaceAgentCount?: number;
@@ -32,22 +53,28 @@ const MESSAGES: Record<ProviderStatus, string> = {
 export function ProviderConnectionPanel({ accountId }: { accountId: string }) {
   const [apiKey, setApiKey] = useState('');
   const [status, setStatus] = useState<ProviderResult | null>(null);
+  const [profile, setProfile] = useState<ProfileLookup | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
-  async function check() {
+  async function check(mode: 'verify' | 'profile-summary' = 'verify') {
     if (!accountId || busy) return;
     const key = apiKey.trim();
+    if (mode === 'profile-summary' && !key) {
+      setMessage('Para ler os resultados, informe sua chave API no campo acima. Ela não será salva.');
+      return;
+    }
     setBusy(true);
     setMessage('');
     setStatus(null);
+    setProfile(null);
     setApiKey(''); // Clear the UI immediately: no persistent local/browser storage.
     try {
       const response = await fetch(key ? '/api/provider/phantombuster' :
         `/api/provider/phantombuster?accountId=${encodeURIComponent(accountId)}`, {
         method: key ? 'POST' : 'GET',
         headers: key ? { 'Content-Type': 'application/json' } : undefined,
-        body: key ? JSON.stringify({ accountId, apiKey: key }) : undefined,
+        body: key ? JSON.stringify({ accountId, apiKey: key, mode }) : undefined,
         cache: 'no-store',
         credentials: 'same-origin',
         redirect: 'error',
@@ -58,6 +85,14 @@ export function ProviderConnectionPanel({ accountId }: { accountId: string }) {
           ? String((data as { error: unknown }).error)
           : 'Falha na verificação';
         throw new Error(error);
+      }
+      if (mode === 'profile-summary') {
+        const result = data as ProfileLookup;
+        if (!Object.prototype.hasOwnProperty.call(PROFILE_MESSAGES, result.status)) {
+          throw new Error('Resposta do resultado não reconhecida');
+        }
+        setProfile(result);
+        return;
       }
       const result = data as ProviderResult;
       if (!Object.prototype.hasOwnProperty.call(MESSAGES, result.status)) {
@@ -110,10 +145,34 @@ export function ProviderConnectionPanel({ accountId }: { accountId: string }) {
           ou no navegador. Quem tiver essa chave pode acessar a sua workspace;
           use uma chave exclusiva para testes e revogue-a depois.
         </p>
-        <Button type="button" variant="outline" disabled={!accountId || busy} onClick={check}>
+        <Button type="button" variant="outline" disabled={!accountId || busy} onClick={() => void check('verify')}>
           <RefreshCw className="h-4 w-4 mr-2" />
           {busy ? 'Verificando...' : 'Verificar acesso à PhantomBuster (sem executar)'}
         </Button>
+        <div className="rounded-md border p-3 space-y-2">
+          <p className="font-medium">Última consulta do seu perfil (somente leitura)</p>
+          <p className="text-xs text-muted-foreground">
+            Recupera os dados da execução anterior do Instagram Profile Scraper.
+            Não executa o Phantom e não grava resultados no banco.
+          </p>
+          <Button type="button" variant="outline" disabled={!accountId || busy}
+            onClick={() => void check('profile-summary')}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {busy ? 'Consultando...' : 'Ler resultado anterior de @contateste6699'}
+          </Button>
+          {profile && (
+            <div role="status" className="space-y-1 text-sm">
+              <p>{PROFILE_MESSAGES[profile.status]}</p>
+              {profile.status === 'found' && profile.profile && (
+                <p>
+                  @{profile.profile.username} · Seguidores: {profile.profile.followersCount ?? 'não informado'}
+                  {' · '}Seguindo: {profile.profile.followingCount ?? 'não informado'}.
+                  {' '}Consulta somente leitura, não armazenada.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
         {!accountId && <p>Escolha uma conta de teste no painel acima.</p>}
         {status && <p role="status">{MESSAGES[status.status]}</p>}
         {status?.status === 'verified' && (

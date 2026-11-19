@@ -10,6 +10,7 @@ import {
   AUDIENCE_HISTORY_ACTION, MAX_HISTORY_BATCHES,
   makeAudienceSnapshot, parseAudienceSnapshot,
 } from '@/lib/reference-audience-history';
+import { AUDIENCE_CANDIDATE_ACTION, parseCandidateEvidence } from '@/lib/reference-candidate-queue';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
@@ -161,16 +162,45 @@ export async function DELETE(req: Request) {
   if (rejection) return rejection;
   if ('error' in ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  const entry = await prisma.activityLog.findFirst({
-    where: { id: p.historyId, instagramAccountId: ctx.account.id,
-      action: AUDIENCE_HISTORY_ACTION, targetUsername: ctx.reference.username },
-    select: { details: true },
-  });
-  if (!entry || parseAudienceSnapshot(entry.details)?.referenceId !== ctx.reference.id)
-    return NextResponse.json({ error: 'Registro não encontrado' }, { status: 404, headers: HEADERS });
-  const removed = await prisma.activityLog.deleteMany({
-    where: { id: p.historyId, instagramAccountId: ctx.account.id,
-      action: AUDIENCE_HISTORY_ACTION, targetUsername: ctx.reference.username },
-  });
-  return NextResponse.json({ success: removed.count === 1 }, { headers: HEADERS });
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // Do not retain indexed candidates whose sole recorded evidence was deleted.
+      const result = await prisma.$transaction(async tx => {
+        const entry = await tx.activityLog.findFirst({
+          where: { id: p.historyId, instagramAccountId: ctx.account.id,
+            action: AUDIENCE_HISTORY_ACTION, targetUsername: ctx.reference.username },
+          select: { details: true },
+        });
+        if (!entry || parseAudienceSnapshot(entry.details)?.referenceId !== ctx.reference.id)
+          return { success: false, missing: true, prunedCandidates: 0 };
+        const indexed = await tx.activityLog.findMany({
+          where: { instagramAccountId: ctx.account.id, action: AUDIENCE_CANDIDATE_ACTION },
+          select: { id: true, details: true }, take: 501,
+        });
+        const derivedIds = indexed.filter(row =>
+          parseCandidateEvidence(row.details)?.snapshotId === p.historyId).map(row => row.id);
+        const removed = await tx.activityLog.deleteMany({
+          where: { id: p.historyId, instagramAccountId: ctx.account.id,
+            action: AUDIENCE_HISTORY_ACTION, targetUsername: ctx.reference.username },
+        });
+        if (removed.count === 1 && derivedIds.length) {
+          await tx.activityLog.deleteMany({
+            where: { instagramAccountId: ctx.account.id, action: AUDIENCE_CANDIDATE_ACTION,
+              id: { in: derivedIds } },
+          });
+        }
+        return { success: removed.count === 1, missing: false,
+          prunedCandidates: removed.count === 1 ? derivedIds.length : 0 };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      if (result.missing)
+        return NextResponse.json({ error: 'Registro não encontrado' }, { status: 404, headers: HEADERS });
+      return NextResponse.json({ success: result.success, prunedCandidates: result.prunedCandidates },
+        { headers: HEADERS });
+    } catch (err) {
+      if ((err as { code?: string })?.code !== 'P2034' || attempt === 2)
+        return NextResponse.json({ error: 'Falha ao excluir consulta' }, { status: 503, headers: HEADERS });
+    }
+  }
+  return NextResponse.json({ error: 'Conflito ao excluir consulta' }, { status: 503, headers: HEADERS });
 }

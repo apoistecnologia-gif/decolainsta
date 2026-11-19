@@ -52,10 +52,36 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   return NextResponse.json(updated);
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; targetId: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string; targetId: string }> }) {
   const { id, targetId } = await params;
+  if (req.headers.get('origin') !== new URL(req.url).origin)
+    return NextResponse.json({ error: 'Origem inválida' }, { status: 403 });
   const status = await verify(id, targetId);
   if (status !== 200) return NextResponse.json({ error: 'Não autorizado ou alvo não encontrado' }, { status });
-  await prisma.targetAccount.delete({ where: { id: targetId } });
+  // Revoke any read-only collector binding before deleting the reference.
+  // Historical candidates remain audit records, but are no longer active.
+  await prisma.$transaction(async tx => {
+    const last = await tx.activityLog.findFirst({
+      where: {
+        instagramAccountId: id, targetUsername: targetId,
+        action: AUDIENCE_SOURCE_BINDING_ACTION,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { details: true },
+    });
+    const active = parseAudienceSourceBinding(last?.details ?? null);
+    if (active?.enabled) {
+      const revoked = makeAudienceSourceBinding(targetId, null, false);
+      if (!revoked) throw Error('invalid-collector-revocation');
+      await tx.activityLog.create({
+        data: {
+          instagramAccountId: id, targetUsername: targetId,
+          action: AUDIENCE_SOURCE_BINDING_ACTION,
+          success: true, details: JSON.stringify(revoked),
+        },
+      });
+    }
+    await tx.targetAccount.delete({ where: { id: targetId, instagramAccountId: id } });
+  });
   return NextResponse.json({ success: true });
 }

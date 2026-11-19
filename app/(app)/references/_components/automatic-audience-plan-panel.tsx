@@ -82,8 +82,23 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!accountId) return;
     try {
-      // Existing refresh button can test the real completed-run reader on Preview.
-      // This request never starts a collector and never carries an API key.
+      // On Preview, a signed-in administrator can associate existing
+      // correctly configured Follower Collectors with all saved references.
+      // Regular customers receive a harmless 403; no agent ID is requested.
+      const matched = await fetch('/api/provider/phantombuster/match-collectors', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+        body: JSON.stringify({ accountId, operation: 'match-existing' }), signal,
+      });
+      if (matched.ok) {
+        const summary = await matched.json() as {
+          matched?: number; unmatched?: number; ambiguousOrInUse?: number;
+        };
+        if (!signal?.aborted && (summary.matched ?? 0) > 0)
+          setCollectorNotice(`${summary.matched} coletor(es) de leitura associados automaticamente às referências.`);
+      }
+      // Existing refresh button reads only previously finalized collector
+      // results. Never launches a Phantom or carries a client API key.
       const providerResponse = await fetch('/api/provider/phantombuster/refresh-now', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin', cache: 'no-store', redirect: 'error',
@@ -94,9 +109,13 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
           enabled?: boolean; examined?: number; indexed?: number;
           newCandidatesObserved?: number;
         };
-        if (!signal?.aborted) setCollectorNotice(status.enabled
-          ? `Leitura de resultados anteriores: ${status.examined ?? 0} referência(s) verificadas; ${status.indexed ?? 0} candidato(s) novos no índice.`
-          : 'Coleta automática ainda não configurada. Dados já salvos permanecem disponíveis.');
+        if (!signal?.aborted) setCollectorNotice(previous => {
+          const readStatus = status.enabled
+            ? `Leitura de resultados anteriores: ${status.examined ?? 0} referência(s) verificadas; ${status.indexed ?? 0} candidato(s) novos no índice.`
+            : 'Coleta automática ainda não configurada. Dados já salvos permanecem disponíveis.';
+          return previous.startsWith('Leitura') ? readStatus :
+            previous ? previous + ' ' + readStatus : readStatus;
+        });
       } else if (providerResponse.status !== 403 && !signal?.aborted) {
         setCollectorNotice('Leitura externa indisponível; mostrando os dados já salvos.');
       }

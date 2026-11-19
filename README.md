@@ -1,4 +1,4 @@
-# DecolaInsta — integração oficial Instagram
+# DecolaInsta — acompanhamento de contas de referência e integração oficial Instagram
 
 Projeto Next.js/React com área autenticada, várias contas profissionais conectadas por login unificado da Meta, consulta de dados de perfil e publicações e publicação de imagem autorizada pela Meta. O laboratório de seguir/deixar de seguir é **100% simulado** e não representa ações reais.
 
@@ -116,3 +116,22 @@ O publicador confirma o status `FINISHED` do contêiner na API da Meta antes de 
 
 - [Instagram Platform](https://developers.facebook.com/docs/instagram-platform/)
 - [Workspace oficial da Meta no Postman](https://www.postman.com/meta/instagram/overview)
+
+
+## Prioridade: contas de referência e revisão de follows declarados (experimental)
+
+O **objetivo do produto** é entender a audiência de contas de referência e acompanhar crescimento real. O painel **/references** é agora o primeiro item do menu. A fila de publicações continua secundária e desativada por padrão.
+
+A implementação disponível utiliza as tabelas existentes `TargetAccount` e `FollowAction`, sem migração adicional:
+
+1. Selecione a conta que deseja desenvolver e cadastre referências (@perfil de interesse).
+2. Registre individualmente um @perfil que você **identificou manualmente** como seguidor da referência. O sistema não verifica essa condição e não extrai listas.
+3. Abra o perfil pelo link do Instagram. Se você seguiu por iniciativa própria, clique **Confirmei que segui**; a aplicação salva uma declaração do operador com revisão para 24 ou 72 horas depois.
+4. Ao chegar o prazo, o painel sinaliza a revisão. Você pode registrar que a pessoa seguiu de volta, manter a relação ou confirmar que deixou de seguir manualmente. Contas protegidas pela whitelist e pessoas com follow-back declarado não são elegíveis a revisão de unfollow.
+5. O histórico permanece na **Neon** mesmo com o navegador fechado. Não há cron para seguir/deixar de seguir, nem acionamento oculto da conta.
+
+**Limites verificados em novembro de 2026:** a API oficial da Meta não disponibiliza a lista nominal de seguidores de terceiros nem métodos para seguir/deixar de seguir outros perfis. Este módulo **não automatiza** essas ações, não tenta contornar restrições de plataforma e não pede senha de Instagram. Todos os indicadores dessa tela são **declarações manuais** e não métricas confirmadas pela Meta. O histórico real de contagem agregada da conta conectada permanece separado na sincronização oficial de insights.
+
+Os registros manuais usam o prefixo `reference_manual:` e ações `reference_candidate`, `reference_followed`, `reference_kept` e `reference_unfollowed`, separados do motor de simulação. O endpoint `/api/reference-workflow` valida sessão, posse da conta, origem e estado de cada transição, limita a 500 pessoas por conta e não altera os contadores de follows demonstrativos.
+
+O repositório possui validação automática no GitHub Actions da branch experimental, sem depender de comandos no Windows. A implantação no Vercel continua em **Preview**, sem promoção à produção.

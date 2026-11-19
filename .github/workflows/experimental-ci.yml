@@ -1,0 +1,33 @@
+name: DecolaInsta — validação da branch experimental
+
+on:
+  push:
+    branches:
+      - experiment/local-instagram-one-action-20261118
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, TypeScript e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/decolainsta_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar dependências no runner do GitHub (não no computador do usuário)
+        run: npm install --no-audit --no-fund
+      - name: Gerar cliente Prisma sem conectar ao banco
+        run: npx prisma generate
+      - name: ESLint
+        run: npm run lint -- --quiet
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Testes
+        run: npm run test:smoke

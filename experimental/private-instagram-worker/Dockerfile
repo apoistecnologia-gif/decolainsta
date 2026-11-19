@@ -1,4 +1,5 @@
 FROM python:3.12-slim-bookworm
+LABEL org.opencontainers.image.description="DecolaInsta passive pilot authentication diagnostic"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

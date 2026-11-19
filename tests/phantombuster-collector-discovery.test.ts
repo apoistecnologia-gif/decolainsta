@@ -47,7 +47,7 @@ test('discover via documented agent inventory then inspect exact agent details',
     assert.equal((init?.headers as Record<string,string>)['X-Phantombuster-Key'],
       'valid-server-key');
     if (url.includes('fetch-all')) {
-      assert.equal(new URL(url).searchParams.has('withArgument'),false);
+      assert.equal(new URL(url).searchParams.get('withArgument'),'true');
       // The actual inventory may OMIT argument.
       return new Response(JSON.stringify(items.map(({id,script})=>({id,script}))),
         {status:200});
@@ -64,6 +64,23 @@ test('discover via documented agent inventory then inspect exact agent details',
     {collectorAgentId:'2222222222222222',referenceUsername:'reference_b'},
   ]);
   assert.doesNotMatch(JSON.stringify(result),/SECRET|sessionCookie|profileUrl|valid-server-key/);
+});
+
+test('documented inventory with argument returns matching collectors in one provider call',async () => {
+  let calls = 0;
+  const result = await discoverFollowerCollectors('server-key',async (url) => {
+    calls++;
+    assert.match(url,/fetch-all/);
+    assert.equal(new URL(url).searchParams.get('withArgument'),'true');
+    return new Response(JSON.stringify([
+      agent('1111111111111111','reference_a'),
+      agent('2222222222222222','reference_b'),
+    ]),{status:200});
+  });
+  assert.equal(calls,1);
+  assert.equal(result.status,'ok');
+  assert.equal(result.collectors.length,2);
+  assert.doesNotMatch(JSON.stringify(result),/SECRET-SESSION-COOKIE|server-key/);
 });
 
 test('a failed detail read cannot silently return incomplete matches',async () => {

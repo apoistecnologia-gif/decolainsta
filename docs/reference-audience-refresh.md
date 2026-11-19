@@ -151,8 +151,8 @@ administrativo restrito ao **Preview**:
 - `{"operation":"plan","accountId":"ID"}` fornece apenas contagens
   de referências, vínculos, rascunhos já tentados e elegibilidade.
   Não chama a API do provedor nem grava dados.
-- `{"operation":"create-draft","accountId":"ID",
-  "referenceId":"ID","confirmCreateUnconfiguredDraft":true}`
+- `{"operation":"create-next-draft","accountId":"ID",
+  "confirmCreateUnconfiguredDraft":true}`
   fica **bloqueado** até
   `PHANTOMBUSTER_DRAFT_CREATION_ENABLED=yes` ser configurada
   expressamente no Preview. Não configurar essa variável por padrão.
@@ -178,3 +178,10 @@ podem reconhecer o coletor.
 slot, execução externa ou ativação de conta neste desenvolvimento.**
 A implementação prepara a capacidade, não substitui a validação
 operacional por um teste real autorizado.
+
+A operação `create-next-draft` seleciona **a primeira referência elegível
+da conta**, em ordem estável de cadastro, sem pedir ao cliente ou ao
+administrador que escolha cada referência individualmente. O limite de
+uma criação por solicitação e a confirmação administrativa permanecem
+por precaução com os slots do provedor. Não há criação em lote nem
+agendamento de lançamentos nesta etapa.

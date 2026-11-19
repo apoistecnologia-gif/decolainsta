@@ -8,6 +8,7 @@ import { AUDIENCE_REFRESH_ACTION } from '@/lib/reference-audience-refresh';
 import {
   evaluateAudienceReadiness, isConfiguredPhantomBusterKey,
 } from '@/lib/reference-audience-readiness';
+import { loadActiveAudienceSources } from '@/lib/server/reference-audience-source-store';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
@@ -28,12 +29,12 @@ export async function GET(request: Request) {
 
   const account = await prisma.instagramAccount.findFirst({
     where: { id: accountId, userId },
-    select: { id: true, username: true },
+    select: { id: true },
   });
   if (!account) return NextResponse.json({ error: 'Conta não encontrada' },
     { status: 404, headers: HEADERS });
 
-  const [references, lastAttempt, lastSuccessfulRead] = await Promise.all([
+  const [references, lastAttempt, lastSuccessfulRead, sources] = await Promise.all([
     prisma.targetAccount.findMany({
       where: { instagramAccountId: account.id },
       select: { id: true, username: true, enabled: true },
@@ -48,13 +49,11 @@ export async function GET(request: Request) {
         success: true },
       select: { createdAt: true }, orderBy: { createdAt: 'desc' },
     }),
+    loadActiveAudienceSources(account.id),
   ]);
   const readiness = evaluateAudienceReadiness(
-    account.id, references,
-    process.env.PHANTOMBUSTER_AUDIENCE_SOURCES_JSON,
+    account.id, references, sources,
     {
-      authorizedPilot: account.username.toLowerCase() ===
-        process.env.PHANTOMBUSTER_PILOT_USERNAME?.toLowerCase(),
       readOnlyEnabled: process.env.PHANTOMBUSTER_READONLY_ENABLED === 'yes',
       pollingEnabled: process.env.PHANTOMBUSTER_AUDIENCE_POLL_ENABLED === 'yes',
       cronSecretConfigured: (process.env.CRON_SECRET?.length ?? 0) >= 32,

@@ -41,7 +41,9 @@ test('fila tem isolamento por usuário, cancelamento e execução protegida e se
   assert.match(schema, /model ScheduledInstagramPost/);
   const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
   assert.deepEqual(config.crons.map((job: { path: string; schedule: string }) => job.path).sort(), [
-    '/api/cron/publish-scheduled', '/api/cron/sync-insights',
+    '/api/cron/publish-scheduled', '/api/cron/refresh-reference-audiences', '/api/cron/sync-insights',
   ]);
-  assert.ok(config.crons.every((job: { schedule: string }) => job.schedule === '0 12 * * *'));
+  assert.ok(config.crons.filter((job: {path: string}) =>
+    job.path !== '/api/cron/refresh-reference-audiences')
+    .every((job: { schedule: string }) => job.schedule === '0 12 * * *'));
 });

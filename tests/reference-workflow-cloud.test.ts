@@ -96,3 +96,16 @@ test('follow-back tracking keeps 48h review semantics without automating Instagr
   assert.match(preview, /quem não seguiu de volta não entra nessa regra/);
   assert.doesNotMatch(panel, /onClick=\{\(\) => void (?:follow|unfollow)\(/);
 });
+
+
+test('simple refresh synchronizes saved reference history explicitly and only after user clicks', () => {
+  const ui = readFileSync('app/(app)/references/_components/simple-references-panel.tsx', 'utf8');
+  assert.match(ui, /async function refresh\(\)/);
+  assert.match(ui, /method: 'POST'/);
+  assert.match(ui, /operation: 'sync-saved-history'/);
+  assert.match(ui, /if \(index !== null\)/);
+  assert.match(ui, /onClick=\{\(\) => void refresh\(\)\}/);
+  assert.match(ui, /Os históricos salvos já estão sincronizados/);
+  assert.match(ui, /Não inicia uma nova coleta no Instagram/);
+  assert.doesNotMatch(ui, /apiKey|sessionid|agents\/launch|user_follow|user_unfollow|followAction\.create/);
+});

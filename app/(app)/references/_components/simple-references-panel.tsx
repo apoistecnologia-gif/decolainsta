@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 type Account = { id: string; username: string; connected?: boolean };
 type Reference = { id: string; username: string };
 type Workflow = { references: Reference[] };
+type SyncResult = { status: 'synced' | 'capacity-reached'; synced?: number; total?: number };
 type Index = {
   persistedCandidates: number;
   byReference: { referenceId: string; referenceUsername: string; candidates: number }[];
@@ -123,15 +124,40 @@ export function SimpleReferencesPanel() {
   }
 
   async function refresh() {
-    if (!accountId || busy) return;
+    if (!accountId || busy || loading) return;
     setBusy(true);
     setError('');
+    setMessage('');
     try {
+      let syncResult: SyncResult | null = null;
+      // Synchronize only stored, operator-approved history when the experimental
+      // index is available. This never starts a collector or Instagram operation.
+      if (index !== null) {
+        const response = await fetch('/api/reference-candidate-queue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          credentials: 'same-origin',
+          redirect: 'error',
+          body: JSON.stringify({ accountId, operation: 'sync-saved-history' }),
+        });
+        syncResult = await readJson<SyncResult>(response);
+      }
       const updated = await loadAccount(accountId);
       setReferences(updated.references);
       setIndex(updated.index);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Falha na atualização'); }
-    finally { setBusy(false); }
+      if (syncResult?.status === 'capacity-reached') {
+        setMessage('Índice de candidatos no limite de capacidade do piloto.');
+      } else if (syncResult && (syncResult.synced ?? 0) > 0) {
+        setMessage(`${syncResult.synced} novo(s) candidato(s) dos históricos salvos foram adicionados. Nenhuma ação no Instagram.`);
+      } else if (syncResult) {
+        setMessage('Os históricos salvos já estão sincronizados. Nenhuma ação no Instagram.');
+      } else {
+        setMessage('Referências atualizadas. A sincronização de candidatos não está disponível nesta conta.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha na atualização');
+    } finally { setBusy(false); }
   }
 
   const byReference = new Map(index?.byReference.map(item => [item.referenceId, item.candidates]) ?? []);
@@ -213,12 +239,16 @@ export function SimpleReferencesPanel() {
               ))}
             </div>
           )}
-          <Button type="button" variant="outline" disabled={!accountId || busy} onClick={() => void refresh()}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Atualizar dados
+          <Button type="button" variant="outline" disabled={!accountId || busy || loading}
+            onClick={() => void refresh()}>
+            <RefreshCw className="mr-2 h-4 w-4" /> {busy ? 'Atualizando...' : 'Atualizar dados'}
           </Button>
+          <p className="text-xs text-muted-foreground">
+            Atualiza os registros já importados. Não inicia uma nova coleta no Instagram.
+          </p>
           {index?.lastIndexedAt && (
             <p className="text-xs text-muted-foreground">
-              Última importação registrada: {new Date(index.lastIndexedAt).toLocaleDateString('pt-BR')}
+              Última atualização do índice: {new Date(index.lastIndexedAt).toLocaleDateString('pt-BR')}
             </p>
           )}
         </CardContent>

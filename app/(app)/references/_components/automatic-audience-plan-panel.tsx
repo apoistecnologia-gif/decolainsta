@@ -81,6 +81,7 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
   const [collectorNotice, setCollectorNotice] = useState('');
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!accountId) return;
+    setCollectorNotice('');
     try {
       // On Preview, a signed-in administrator can associate existing
       // correctly configured Follower Collectors with all saved references.
@@ -121,6 +122,39 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
       }
     } catch {
       if (!signal?.aborted) setCollectorNotice('Leitura externa indisponível; mostrando os dados já salvos.');
+    }
+    // The server makes one actual read-only workspace request using its
+    // securely stored key. Clients never enter or see a PhantomBuster key.
+    try {
+      const response = await fetch(
+        '/api/provider/phantombuster/connection-status?accountId=' + encodeURIComponent(accountId),
+        { method: 'GET', cache: 'no-store', credentials: 'same-origin', signal },
+      );
+      if (response.ok) {
+        const connection = await response.json() as {
+          status: string; providerReached: boolean;
+          references: number; linkedCollectors: number; waitingForCollectors: number;
+        };
+        const info = connection.providerReached
+          ? (connection.waitingForCollectors > 0
+            ? 'API conectada. ' + connection.waitingForCollectors +
+              ' referência(s) aguardando coletor de leitura.'
+            : 'API conectada. ' + connection.linkedCollectors +
+              ' coletor(es) vinculado(s).')
+          : connection.status === 'not-configured'
+            ? 'Chave da API ainda não configurada no servidor.'
+            : connection.status === 'invalid-key'
+              ? 'A chave API cadastrada não foi autorizada pelo PhantomBuster.'
+              : connection.status === 'limited'
+                ? 'PhantomBuster indicou limite temporário; nenhuma execução iniciada.'
+                : connection.status === 'disabled'
+                  ? 'Leitura externa ainda desativada neste ambiente.'
+                  : 'A conexão externa não pôde ser confirmada nesta consulta.';
+        if (!signal?.aborted) setCollectorNotice(previous =>
+          previous ? previous + ' ' + info : info);
+      }
+    } catch {
+      // The historical candidate panel still works without the provider.
     }
     try {
       const data = await fetchPlan(accountId, signal);

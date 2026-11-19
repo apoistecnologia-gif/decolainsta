@@ -11,6 +11,28 @@ export type CollectorDraft = Readonly<{
   idempotencyKey: string;
 }>;
 
+async function limitedJson(response: Response, maxBytes: number): Promise<unknown> {
+  if (Number(response.headers.get('content-length') ?? 0) > maxBytes ||
+      !response.body) return null;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0, text = '';
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > maxBytes) { await reader.cancel(); return null; }
+      text += decoder.decode(part.value, { stream: true });
+    }
+    return JSON.parse(text + decoder.decode()) as unknown;
+  } catch {
+    return null;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 const validId = (value: string) => /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const validUsername = (value: string) => /^[a-z0-9._]{1,30}$/.test(value);
 
@@ -77,11 +99,8 @@ export async function createUnconfiguredCollectorDraft(
     if (response.status === 400 || response.status === 412)
       return { status: 'rejected' };
     if (!response.ok) return { status: 'unavailable' };
-    if (Number(response.headers.get('content-length') ?? 0) > 5000)
-      return { status: 'unconfirmed-id' };
-    const raw = await response.text();
-    if (raw.length > 5000) return { status: 'unconfirmed-id' };
-    const data: unknown = JSON.parse(raw) as unknown;
+    const data: unknown = await limitedJson(response, 5000);
+    if (data === null) return { status: 'unconfirmed-id' };
     const payload = data && typeof data === 'object' && !Array.isArray(data)
       ? data as Record<string, unknown> : null;
     const result = payload?.data && typeof payload.data === 'object' &&
@@ -120,12 +139,9 @@ export async function findExistingCollectorDraft(
       cache: 'no-store', redirect: 'error', credentials: 'omit',
       signal: AbortSignal.timeout(8000),
     });
-    if (!response.ok ||
-        Number(response.headers.get('content-length') ?? 0) > 400_000)
-      return { status: 'unavailable' };
-    const text = await response.text();
-    if (text.length > 400_000) return { status: 'unavailable' };
-    const raw: unknown = JSON.parse(text) as unknown;
+    if (!response.ok) return { status: 'unavailable' };
+    const raw: unknown = await limitedJson(response, 400_000);
+    if (raw === null) return { status: 'unavailable' };
     const wrapped = raw && typeof raw === 'object' && !Array.isArray(raw)
       ? raw as Record<string, unknown> : null;
     const agents = Array.isArray(raw) ? raw :
@@ -138,7 +154,8 @@ export async function findExistingCollectorDraft(
     if (matching.length !== 1) return { status: 'ambiguous' };
     const record = matching[0] as Record<string, unknown>;
     const id = record.id ?? record._id;
-    if (record.script !== draft.script || !/^\d{10,25}$/.test(String(id ?? '')))
+    if (record.script !== draft.script || record.launchType !== 'manually' ||
+        !/^\d{10,25}$/.test(String(id ?? '')))
       return { status: 'ambiguous' };
     return { status: 'found', agentId: String(id) };
   } catch {

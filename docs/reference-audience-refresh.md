@@ -127,3 +127,54 @@ dimensionar o worker e o agendamento, tratar a capacidade do histórico,
 criar/provisionar coletores de forma autorizada para cada referência e
 demonstrar uma importação real isolada por cliente. O banco de dados
 mantém dados legados sem migração ou exclusão nesta etapa.
+
+## Provisionamento seguro de rascunhos — inativo por padrão
+
+A API oficial da PhantomBuster suporta `POST /api/v2/agents/save` com
+`org=phantombuster`, `script=Instagram Follower Collector.js`,
+`branch=master`, `name`, `launchType=manually` e uma
+`idempotencyKey` para criações. Referências oficiais:
+- https://hub.phantombuster.com/reference/post_agents-save
+- https://support.phantombuster.com/hc/en-us/articles/32397676422546-How-to-create-a-Phantom-via-API
+- https://support.phantombuster.com/hc/en-us/articles/26971109041170-How-to-Use-the-Instagram-Follower-Collector
+
+O módulo `lib/providers/phantombuster-collector-drafts.ts` prepara um
+rascunho **inativo, sem argumentos nem sessão Instagram**. Nomes e
+chaves de idempotência determinísticos são calculados exclusivamente
+a partir de IDs internos. A consulta somente leitura
+`findExistingCollectorDraft` evita solicitar um segundo agente com o
+mesmo nome. O módulo **não lança**, **não agenda** e não define
+`wasSetupValidWhenSubmittedByTheFrontend=true`.
+
+`POST /api/provider/phantombuster/collector-drafts` é um endpoint
+administrativo restrito ao **Preview**:
+- `{"operation":"plan","accountId":"ID"}` fornece apenas contagens
+  de referências, vínculos, rascunhos já tentados e elegibilidade.
+  Não chama a API do provedor nem grava dados.
+- `{"operation":"create-draft","accountId":"ID",
+  "referenceId":"ID","confirmCreateUnconfiguredDraft":true}`
+  fica **bloqueado** até
+  `PHANTOMBUSTER_DRAFT_CREATION_ENABLED=yes` ser configurada
+  expressamente no Preview. Não configurar essa variável por padrão.
+  Criar um agente na workspace pode consumir um slot ou demandar plano pago.
+
+Antes de qualquer criação, o backend exige conta/referência reais,
+ausência de vínculo ou revogação e ausência de tentativa anterior.
+Uma reivindicação é persistida sob transação serializável em
+`ActivityLog` com ação `reference_collector_draft_v1`.
+Mesmo um timeout deixa a referência bloqueada para uma segunda criação
+automática, evitando duplicatas/cobranças inesperadas. A reconciliação
+de uma execução incerta é manual pela administração, sem revelar
+cookies ou dados brutos.
+
+**O rascunho não serve para coletar dados até que o provedor tenha uma
+conexão legítima e os argumentos exatos do Follower Collector.**
+O DECOLA INSTA não deve inferir o formato do cookie, copiar sessões de
+outra conta ou inventar os parâmetros. Após configuração e uma execução
+finalizada posterior à associação, a descoberta e leitura existentes
+podem reconhecer o coletor.
+
+**Não houve criação de Phantom, chamada de `/agents/save`, consumo de
+slot, execução externa ou ativação de conta neste desenvolvimento.**
+A implementação prepara a capacidade, não substitui a validação
+operacional por um teste real autorizado.

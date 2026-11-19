@@ -93,6 +93,6 @@ test('preview shows one-time secret entry, no session-cookie field and accurate 
   assert.match(ui, /setApiKey\(''\)/);
   assert.match(ui, /Instagram: não verificado/);
   assert.match(ui, /Ações automáticas: desativadas/);
-  assert.match(ui, /nenhuma execução de follow\\/unfollow será iniciada/);
+  assert.match(ui, /nenhuma execução de follow\/unfollow será iniciada/);
   assert.doesNotMatch(ui, /localStorage|sessionStorage|cookieValue|sessionid=/);
 });

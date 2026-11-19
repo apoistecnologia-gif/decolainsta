@@ -12,7 +12,8 @@ contas Instagram, cada uma com várias referências.
   nunca é enviada ao browser nem incluída na resposta.
 - `PHANTOMBUSTER_READONLY_ENABLED=yes` e
   `PHANTOMBUSTER_AUDIENCE_POLL_ENABLED=yes` são flags independentes;
-  sem ambas, nenhuma consulta agendada acontece.
+  sem ambas, nenhuma consulta agendada acontece. A segunda foi habilitada
+  **somente no Preview**, em 19/11/2026, para testes de leitura já finalizada.
 - O endpoint de atualização manual exige login, propriedade da conta e origem
   de mesmo site, e funciona **somente no Preview**.
 - O agendador `GET /api/cron/refresh-reference-audiences` exige
@@ -58,12 +59,42 @@ Exemplo de corpo de configuração (IDs ilustrativos, sem credenciais):
 Para revogar: `{"operation":"unbind","accountId":"ID_DA_CONTA","referenceId":"ID_DA_REFERENCIA"}`.
 Nunca colar chaves, cookies ou tokens nesse corpo.
 
-Referências novas permanecem com `enabled=false` para não alterar
-inadvertidamente a semântica de ativação de recursos existentes. Um
-administrador só pode vincular referências habilitadas.
-A habilitação legítima deve ser feita no próprio cadastro.
-A lista global fixa de coletores no ambiente deixou de ser utilizada,
-mas a **criação e configuração automática de novos Phantoms ainda não existe**.
+Referências novas permanecem com `enabled=false` para preservar as
+restrições dos recursos legados. **A leitura externa possui um vínculo
+independente**: o simples cadastro não permite agir no Instagram.
+Desativar explicitamente uma referência pela API `PATCH /targets/[targetId]`
+também revoga seu vínculo de leitura. A revogação gera uma lápide persistida;
+a descoberta automática não pode reativar silenciosamente a referência.
+
+### Descoberta automática dos agentes existentes
+
+A rota administrativa `POST /api/provider/phantombuster/match-collectors`
+recebe somente `{"accountId":"ID","operation":"match-existing"}`.
+Nenhum cliente precisa conhecer um ID de coletor. O sistema consulta
+`GET /agents/fetch-all?withArgument=true` no servidor e **descarta**
+os argumentos completos (podem conter cookies). Só considera agentes cujo
+`script` seja exatamente `Instagram Follower Collector.js` e cuja
+configuração contenha uma única referência Instagram inequívoca em um dos
+campos suportados. Perfis em planilhas, campos contraditórios e associações
+ambíguas são recusados.
+
+A criação dos vínculos é transacional, isolada por conta, e limitada a
+três novas referências por chamada. Dois clientes jamais devem utilizar
+o mesmo agente. O botão **Atualizar dados** solicita essa descoberta
+automaticamente quando o usuário autenticado é administrador; os demais
+usuários continuam com acesso à leitura de suas próprias contas, não
+à gestão da workspace compartilhada.
+
+Antes de importar qualquer resultado, o backend consulta novamente a
+configuração do coletor e exige o mesmo `script` e perfil de destino.
+**Isso não comprova** que a execução histórica representa seguidores
+reais daquela referência; o resultado continua rotulado como não
+verificado pela Meta. Nenhum agente é criado ou iniciado nessa etapa.
+
+A lista global fixa de coletores no ambiente deixou de ser utilizada.
+A **criação automática de Phantoms novos ainda não existe**; exige validação
+do modelo de parâmetros, disponibilidade de slots e autorização explícita
+para executar operações que podem consumir créditos.
 
 ## Execução e verificação
 

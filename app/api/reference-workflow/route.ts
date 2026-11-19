@@ -6,10 +6,8 @@ import { prisma } from '@/lib/db';
 import { cleanUsername } from '@/lib/instagram/validation';
 import {
   MANUAL_SOURCE_PREFIX,
-  COLLECTOR_SOURCE_PREFIX,
   REFERENCE_ACTIONS,
   referenceFromSource,
-  referenceProvenance,
   referenceSource,
   reviewIsDue,
   reviewTime,
@@ -54,10 +52,7 @@ export async function GET(req: Request) {
       where: {
         instagramAccountId: ctx.accountId,
         isDryRun: false,
-        OR: [
-          { sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX } },
-          { sourceTarget: { startsWith: COLLECTOR_SOURCE_PREFIX } },
-        ],
+        sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX },
         action: { in: [...REFERENCE_ACTIONS] },
       },
       select: {
@@ -77,7 +72,6 @@ export async function GET(req: Request) {
       id: lead.id,
       username: lead.targetUsername,
       reference: referenceFromSource(lead.sourceTarget),
-      provenance: referenceProvenance(lead.sourceTarget),
       status: lead.action,
       followedAt: lead.followedAt,
       followedBack: lead.followedBack,
@@ -122,21 +116,14 @@ export async function POST(req: Request) {
       prisma.instagramAccount.findUnique({ where: { id: ctx.accountId }, select: { username: true } }),
       prisma.followAction.count({
         where: {
-          instagramAccountId: ctx.accountId,
-          OR: [
-            { sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX } },
-            { sourceTarget: { startsWith: COLLECTOR_SOURCE_PREFIX } },
-          ],
+          instagramAccountId: ctx.accountId, sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX },
           action: { in: [...REFERENCE_ACTIONS] }, isDryRun: false,
         },
       }),
       prisma.followAction.findFirst({
         where: {
           instagramAccountId: ctx.accountId, targetUsername: username,
-          OR: [
-            { sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX } },
-            { sourceTarget: { startsWith: COLLECTOR_SOURCE_PREFIX } },
-          ],
+          sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX },
           action: { in: [...REFERENCE_ACTIONS] }, isDryRun: false,
         },
       }),
@@ -163,11 +150,7 @@ export async function POST(req: Request) {
 
   const where = {
     id: input.leadId, instagramAccountId: ctx.accountId,
-    isDryRun: false,
-    OR: [
-      { sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX } },
-      { sourceTarget: { startsWith: COLLECTOR_SOURCE_PREFIX } },
-    ],
+    isDryRun: false, sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX },
   };
   const now = new Date();
 

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { ProviderConnectionPanel } from './provider-connection-panel';
 import { ReferenceAudiencePanel } from './reference-audience-panel';
+import { AutomaticAudiencePlanPanel } from './automatic-audience-plan-panel';
 import { Input } from '@/components/ui/input';
 
 const PILOT_USERNAME = 'contateste6699'; // Test-only; manual local record, never Meta OAuth.
@@ -22,7 +23,6 @@ type Lead = {
   reviewAt: string | null;
   due: boolean;
   protected: boolean;
-  provenance: 'operator_assigned_collector_result' | 'user_reported_not_meta_verified';
 };
 type WorkflowData = {
   account: { id: string; username: string; connected: boolean } | null;
@@ -261,8 +261,8 @@ export function ReferenceWorkflowPanel() {
       </Card>
 
       <ProviderConnectionPanel key={selectedAccount} accountId={selectedAccount} />
-      <ReferenceAudiencePanel key={`audience-${selectedAccount}`} accountId={selectedAccount}
-        references={data?.references ?? []} onCandidateAdded={() => refresh(selectedAccount)} />
+      <ReferenceAudiencePanel key={`audience-${selectedAccount}`} accountId={selectedAccount} references={data?.references ?? []} />
+      <AutomaticAudiencePlanPanel key={`automatic-plan-${selectedAccount}`} accountId={selectedAccount} />
 
       {ready && (
         <>
@@ -304,8 +304,8 @@ export function ReferenceWorkflowPanel() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">2. Registrar perfil identificado</CardTitle>
-                <CardDescription>Informe manualmente o perfil que você observou como seguidor de uma referência.</CardDescription>
+                <CardTitle className="text-base">Registro manual (opcional)</CardTitle>
+                <CardDescription>Alternativa antiga: você não precisa escolher nomes individualmente para usar a prévia do planejamento automático.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form className="space-y-3" onSubmit={addLead}>
@@ -361,11 +361,7 @@ export function ReferenceWorkflowPanel() {
                         className="font-medium text-sm underline underline-offset-2">
                         @{lead.username} <ExternalLink className="inline-block h-3 w-3" />
                       </a>
-                      <p className="text-xs text-muted-foreground">
-                        Referência indicada: @{lead.reference ?? 'não identificada'} · {lead.provenance === 'operator_assigned_collector_result'
-                          ? 'Candidato escolhido do histórico PhantomBuster, não verificado pela Meta'
-                          : 'Cadastro manual informado pelo operador'}
-                      </p>
+                      <p className="text-xs text-muted-foreground">Origem informada: @{lead.reference ?? 'não identificada'}</p>
                     </div>
                     <span className="rounded-md bg-muted px-2 py-1 text-xs">
                       {lead.status === 'reference_candidate' ? 'Pendente de ação' :

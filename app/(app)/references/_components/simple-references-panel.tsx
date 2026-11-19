@@ -49,10 +49,7 @@ export function SimpleReferencesPanel() {
     // The candidate index is pilot-only. A 403 means no index for another account,
     // not a failure to list or register that account's references.
     const summary = indexResponse.ok ? await readJson<Index>(indexResponse) : null;
-    if (signal?.aborted) return;
-    setReferences(workflow.references);
-    setIndex(summary);
-    setLoading(false);
+    return { references: workflow.references, index: summary };
   }, []);
 
   useEffect(() => {
@@ -83,12 +80,20 @@ export function SimpleReferencesPanel() {
   useEffect(() => {
     if (!accountId) return;
     const controller = new AbortController();
-    void loadAccount(accountId, controller.signal).catch(err => {
-      if (!controller.signal.aborted) {
-        setError(err instanceof Error ? err.message : 'Falha ao carregar referências');
-        setLoading(false);
-      }
-    });
+    void loadAccount(accountId, controller.signal)
+      .then(result => {
+        if (!controller.signal.aborted) {
+          setReferences(result.references);
+          setIndex(result.index);
+          setLoading(false);
+        }
+      })
+      .catch(err => {
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : 'Falha ao carregar referências');
+          setLoading(false);
+        }
+      });
     return () => controller.abort();
   }, [accountId, loadAccount]);
 
@@ -106,7 +111,9 @@ export function SimpleReferencesPanel() {
       });
       await readJson<Reference>(response);
       setReferenceUsername('');
-      await loadAccount(accountId);
+      const updated = await loadAccount(accountId);
+      setReferences(updated.references);
+      setIndex(updated.index);
       setMessage('Referência cadastrada. Nenhuma coleta ou ação foi iniciada.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível cadastrar a referência');
@@ -119,8 +126,11 @@ export function SimpleReferencesPanel() {
     if (!accountId || busy) return;
     setBusy(true);
     setError('');
-    try { await loadAccount(accountId); }
-    catch (err) { setError(err instanceof Error ? err.message : 'Falha na atualização'); }
+    try {
+      const updated = await loadAccount(accountId);
+      setReferences(updated.references);
+      setIndex(updated.index);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Falha na atualização'); }
     finally { setBusy(false); }
   }
 

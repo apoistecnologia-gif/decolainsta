@@ -166,9 +166,13 @@ async function readCollectorResult(
     const valid = containers.map(record).filter((item): item is Record<string, unknown> =>
       !!item && /^\d{10,25}$/.test(String(item.id ?? '')));
     if (!valid.length) return result('unsupported-result');
+    // Keep legacy preview selection for malformed test fixtures, but never
+    // consider a missing/invalid completion time verified for cron ingest.
+    const endSort = (value: unknown) =>
+      Date.parse(collectorRunCompletedAt(value) ?? '') ||
+      (Number(value) || 0);
     const newest = [...valid].sort((a, b) =>
-      (Date.parse(collectorRunCompletedAt(b.endedAt) ?? '') || 0) -
-      (Date.parse(collectorRunCompletedAt(a.endedAt) ?? '') || 0))[0];
+      endSort(b.endedAt) - endSort(a.endedAt))[0];
     const completedAt = collectorRunCompletedAt(newest.endedAt);
 
     const resultUrl = new URL('https://api.phantombuster.com/api/v2/containers/fetch-result-object');

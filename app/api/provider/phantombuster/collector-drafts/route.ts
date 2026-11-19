@@ -25,7 +25,7 @@ const BAD = (error: string, status: number) =>
 
 /**
  * Internal Preview-only draft provisioning.
- * 'plan' is local read-only. 'create-draft' requires ANOTHER disabled-by-default
+ * 'plan' is local read-only. 'create-next-draft' requires ANOTHER disabled-by-default
  * server flag and explicit admin confirmation. No customer sees agent IDs.
  * No launch, Instagram cookies, input arguments, schedule or account actions.
  */
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   if (!request.headers.get('content-type')?.startsWith('application/json'))
     return BAD('Formato inválido', 415);
   const raw = await request.text().catch(() => '');
-  if (!raw || raw.length > 350) return BAD('Parâmetros inválidos', 400);
+  if (!raw || raw.length > 250) return BAD('Parâmetros inválidos', 400);
   let parsed: unknown;
   try { parsed = JSON.parse(raw) as unknown; } catch { parsed = null; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
@@ -51,17 +51,14 @@ export async function POST(request: Request) {
   const body = parsed as Record<string, unknown>;
   const operation = body.operation;
   if (Object.keys(body).some(k => ![
-    'operation', 'accountId', 'referenceId', 'confirmCreateUnconfiguredDraft',
+    'operation', 'accountId', 'confirmCreateUnconfiguredDraft',
   ].includes(k)) ||
-      (operation !== 'plan' && operation !== 'create-draft') ||
+      (operation !== 'plan' && operation !== 'create-next-draft') ||
       typeof body.accountId !== 'string' ||
       !/^[a-zA-Z0-9_-]{1,100}$/.test(body.accountId) ||
-      (operation === 'plan' && (body.referenceId !== undefined ||
-        body.confirmCreateUnconfiguredDraft !== undefined)) ||
-      (operation === 'create-draft' && (
-        typeof body.referenceId !== 'string' ||
-        !/^[a-zA-Z0-9_-]{1,100}$/.test(body.referenceId) ||
-        body.confirmCreateUnconfiguredDraft !== true)))
+      (operation === 'plan' && body.confirmCreateUnconfiguredDraft !== undefined) ||
+      (operation === 'create-next-draft' &&
+        body.confirmCreateUnconfiguredDraft !== true))
     return BAD('Parâmetros inválidos', 400);
 
   const accountId = body.accountId as string;
@@ -73,6 +70,7 @@ export async function POST(request: Request) {
   const references = await prisma.targetAccount.findMany({
     where: { instagramAccountId: account.id },
     select: { id: true, username: true }, take: 101,
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
   if (references.length > 100)
     return BAD('Limite de referências do Preview excedido', 409);
@@ -103,11 +101,11 @@ export async function POST(request: Request) {
   const assigned = new Set(existing.filter(item => item.accountId === accountId)
     .map(item => item.referenceId));
   const prior = new Set(attempts.map(row => row.targetUsername));
+  const eligible = references.filter(ref =>
+    !assigned.has(ref.id) && !prior.has(ref.id) &&
+    !suppressed.has(accountId + ':' + ref.id) &&
+    prepareCollectorDraft(accountId, ref.id, ref.username));
   if (operation === 'plan') {
-    const eligible = references.filter(ref =>
-      !assigned.has(ref.id) && !prior.has(ref.id) &&
-      !suppressed.has(accountId + ':' + ref.id) &&
-      prepareCollectorDraft(accountId, ref.id, ref.username));
     return NextResponse.json({
       references: references.length,
       alreadyBound: references.filter(ref => assigned.has(ref.id)).length,
@@ -126,8 +124,10 @@ export async function POST(request: Request) {
   // INERT unless the operator deliberately enables this separate flag.
   if (process.env.PHANTOMBUSTER_DRAFT_CREATION_ENABLED !== 'yes')
     return BAD('Criação externa de rascunhos não autorizada', 403);
-  const ref = references.find(item => item.id === body.referenceId);
-  if (!ref) return BAD('Referência fora da conta selecionada', 404);
+  // Pick the first eligible saved reference; admins do not type agent IDs
+  // or choose one reference manually. One slot request per explicit action.
+  const ref = eligible[0];
+  if (!ref) return BAD('Nenhuma referência elegível para rascunho', 409);
   const draft = prepareCollectorDraft(accountId, ref.id, ref.username);
   if (!draft) return BAD('Referência inválida', 400);
   if (assigned.has(ref.id) || prior.has(ref.id) ||
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
   for (let retry = 0; retry < 3; retry++) {
     try {
       const outcome = await prisma.$transaction(async tx => {
-        const [latestBinding, latestClaim] = await Promise.all([
+        const [latestBinding, latestClaim, stillRegistered] = await Promise.all([
           tx.activityLog.findFirst({
             where: { instagramAccountId: accountId,
               targetUsername: ref.id, action: AUDIENCE_SOURCE_BINDING_ACTION },
@@ -153,9 +153,14 @@ export async function POST(request: Request) {
               targetUsername: ref.id, action: COLLECTOR_DRAFT_ACTION },
             select: { targetUsername: true, details: true }, take: 1,
           }),
+          tx.targetAccount.findFirst({
+            where: { id: ref.id, instagramAccountId: accountId, username: ref.username },
+            select: { id: true },
+          }),
         ]);
         // Also honor previously loaded global and account-local checks.
-        if (latestBinding || collectorDraftAlreadyAttempted(latestClaim, ref.id))
+        if (!stillRegistered || latestBinding ||
+            collectorDraftAlreadyAttempted(latestClaim, ref.id))
           return null;
         const record = makeCollectorDraftEvent(ref.id, 'claimed');
         if (!record) throw new Error('invalid-claim');

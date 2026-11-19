@@ -80,3 +80,28 @@ test('readiness HTTP route is authenticated, scoped, readonly, no provider opera
   assert.doesNotMatch(route,
     /api\.phantombuster\.com|fetch\(|agents\/launch|followAction\.|\.(create|update|delete|upsert)\(/);
 });
+
+test('manual preview polling is owner-authenticated, origin-checked and never launches agents', () => {
+  const route = readFileSync('app/api/provider/phantombuster/refresh-now/route.ts', 'utf8');
+  const runner = readFileSync('lib/server/reference-audience-refresh-runner.ts', 'utf8');
+  const ui = readFileSync('app/(app)/references/_components/automatic-audience-plan-panel.tsx','utf8');
+  assert.match(route, /process\.env\.VERCEL_ENV !== 'preview'/);
+  assert.match(route, /const session = await auth\(\)/);
+  assert.match(route, /where: \{ id: input\.accountId, userId \}/);
+  assert.match(route, /request\.headers\.get\('origin'\) !== new URL\(request\.url\)\.origin/);
+  assert.match(route, /runReadOnlyAudienceRefresh\(account\.id\)/);
+  assert.match(runner, /filter\(source => !onlyAccountId \|\| source\.accountId === onlyAccountId\)/);
+  assert.match(runner, /result\.resultLocation !== 'completed_run'/);
+  assert.match(runner, /MAX_REFRESHES_PER_TICK|dueRefreshSources/);
+  assert.match(ui, /\/api\/provider\/phantombuster\/refresh-now/);
+  assert.match(ui, /Atualizar dados/);
+  assert.doesNotMatch(route + runner, /agents\/launch|api\.instagram\.com|followAction\.(create|update|delete)/);
+});
+
+test('manual readiness does not require cron secret, but scheduled polling does', () => {
+  const flags = { ...configured, cronSecretConfigured: false };
+  const status = evaluateAudienceReadiness(accountId, [refs[0]], sources, flags);
+  assert.equal(status.technicalReady, false);
+  assert.equal(status.previewManualReady, true);
+  assert.deepEqual(status.missingConfiguration, ['CRON_SECRET']);
+});

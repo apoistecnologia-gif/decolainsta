@@ -22,6 +22,7 @@ type Lead = {
   reviewAt: string | null;
   due: boolean;
   protected: boolean;
+  provenance: 'operator_assigned_collector_result' | 'user_reported_not_meta_verified';
 };
 type WorkflowData = {
   account: { id: string; username: string; connected: boolean } | null;
@@ -260,7 +261,8 @@ export function ReferenceWorkflowPanel() {
       </Card>
 
       <ProviderConnectionPanel key={selectedAccount} accountId={selectedAccount} />
-      <ReferenceAudiencePanel key={`audience-${selectedAccount}`} accountId={selectedAccount} references={data?.references ?? []} />
+      <ReferenceAudiencePanel key={`audience-${selectedAccount}`} accountId={selectedAccount}
+        references={data?.references ?? []} onCandidateAdded={() => refresh(selectedAccount)} />
 
       {ready && (
         <>
@@ -359,7 +361,11 @@ export function ReferenceWorkflowPanel() {
                         className="font-medium text-sm underline underline-offset-2">
                         @{lead.username} <ExternalLink className="inline-block h-3 w-3" />
                       </a>
-                      <p className="text-xs text-muted-foreground">Origem informada: @{lead.reference ?? 'não identificada'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Referência indicada: @{lead.reference ?? 'não identificada'} · {lead.provenance === 'operator_assigned_collector_result'
+                          ? 'Candidato escolhido do histórico PhantomBuster, não verificado pela Meta'
+                          : 'Cadastro manual informado pelo operador'}
+                      </p>
                     </div>
                     <span className="rounded-md bg-muted px-2 py-1 text-xs">
                       {lead.status === 'reference_candidate' ? 'Pendente de ação' :

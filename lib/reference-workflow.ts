@@ -3,6 +3,7 @@
  * Prefix and statuses keep the cloud tracker isolated from the legacy fake engine.
  */
 export const MANUAL_SOURCE_PREFIX = 'reference_manual:';
+export const COLLECTOR_SOURCE_PREFIX = 'reference_collector:';
 export const REFERENCE_ACTIONS = [
   'reference_candidate',
   'reference_followed',
@@ -17,10 +18,20 @@ export function referenceSource(username: string): string {
   return `${MANUAL_SOURCE_PREFIX}${username}`;
 }
 
+export function referenceCollectorSource(username: string): string {
+  return `${COLLECTOR_SOURCE_PREFIX}${username}`;
+}
+
 export function referenceFromSource(value: string | null): string | null {
-  return value?.startsWith(MANUAL_SOURCE_PREFIX)
-    ? value.slice(MANUAL_SOURCE_PREFIX.length)
-    : null;
+  if (value?.startsWith(MANUAL_SOURCE_PREFIX)) return value.slice(MANUAL_SOURCE_PREFIX.length);
+  if (value?.startsWith(COLLECTOR_SOURCE_PREFIX)) return value.slice(COLLECTOR_SOURCE_PREFIX.length);
+  return null;
+}
+
+export function referenceProvenance(value: string | null):
+  'operator_assigned_collector_result' | 'user_reported_not_meta_verified' {
+  return value?.startsWith(COLLECTOR_SOURCE_PREFIX)
+    ? 'operator_assigned_collector_result' : 'user_reported_not_meta_verified';
 }
 
 export function reviewTime(from: Date, hours: unknown): Date | null {

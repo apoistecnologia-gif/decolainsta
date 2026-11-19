@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RefreshCw, ExternalLink, History, Trash2 } from 'lucide-react';
+import { RefreshCw, ExternalLink, History, Trash2, Plus } from 'lucide-react';
 import { summarizeAudienceHistory } from '@/lib/reference-audience-metrics';
 
 type Reference = { id: string; username: string };
@@ -38,9 +38,11 @@ const MESSAGES: Record<PreviewStatus, string> = {
 export function ReferenceAudiencePanel({
   accountId,
   references,
+  onCandidateAdded,
 }: {
   accountId: string;
   references: Reference[];
+  onCandidateAdded: () => Promise<void>;
 }) {
   const [referenceId, setReferenceId] = useState('');
   const [collectorAgentId, setCollectorAgentId] = useState('');
@@ -118,6 +120,34 @@ export function ReferenceAudiencePanel({
       await reloadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao registrar histórico');
+    } finally { setBusy(false); }
+  }
+
+  async function addCandidate(historyId: string, username: string) {
+    if (!accountId || !selected || busy ||
+        !window.confirm(`Registrar @${username} como candidato para acompanhamento? Isso não segue nem interage com o perfil no Instagram.`)) return;
+    setBusy(true);
+    setError('');
+    setHistoryMessage('');
+    try {
+      const response = await fetch('/api/provider/phantombuster/audience-candidate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store', credentials: 'same-origin', redirect: 'error',
+        body: JSON.stringify({
+          accountId, referenceId: selected, historyId, username, confirmAdd: true,
+        }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) {
+        const reason = data && typeof data === 'object' && 'error' in data
+          ? String((data as { error: unknown }).error)
+          : 'Falha ao registrar candidato';
+        throw Error(reason);
+      }
+      await onCandidateAdded();
+      setHistoryMessage(`@${username} adicionado ao acompanhamento. Nenhuma ação foi executada no Instagram.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao registrar candidato');
     } finally { setBusy(false); }
   }
 
@@ -276,6 +306,12 @@ export function ReferenceAudiencePanel({
               Dados fornecidos pela PhantomBuster, sem verificação independente da Meta.
             </p>
             {history.length === 0 && <p className="text-muted-foreground text-xs">Nenhuma consulta registrada ainda.</p>}
+            {history.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Para acompanhar um perfil, clique em Acompanhar ao lado do nome escolhido e confirme.
+                Isso registra somente um candidato, não segue pessoas no Instagram.
+              </p>
+            )}
             {history.map(entry => (
               <div key={entry.id} className="rounded border p-2 space-y-1">
                 <div className="flex items-center justify-between gap-2">
@@ -295,10 +331,17 @@ export function ReferenceAudiencePanel({
                     ? 'Arquivo mais recente do coletor' : 'Execução finalizada'} · Origem indicada, não verificada
                 </p>
                 <div className="flex flex-wrap gap-1">
-                  {entry.usernames.map(name => <a key={name}
-                    href={`https://www.instagram.com/${encodeURIComponent(name)}/`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="border rounded px-2 py-1 text-xs underline">@{name}</a>)}
+                  {entry.usernames.map(name => (
+                    <div key={name} className="inline-flex items-center gap-1 border rounded px-1 py-1">
+                      <a href={`https://www.instagram.com/${encodeURIComponent(name)}/`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="px-1 text-xs underline">@{name}</a>
+                      <Button type="button" size="sm" variant="outline" disabled={busy}
+                        onClick={() => void addCandidate(entry.id, name)}>
+                        <Plus className="h-3 w-3 mr-1" /> Acompanhar
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}

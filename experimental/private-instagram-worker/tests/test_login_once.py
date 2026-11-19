@@ -50,7 +50,7 @@ class LoginOnceTests(unittest.TestCase):
         class ChallengeRequired(Exception):
             pass
 
-        for error, expected in [(ChallengeRequired("top-secret challenge url"), "STOPPED_CHALLENGE_OR_2FA"), (RuntimeError("top-secret"), "STOPPED_RUNTIME_ERROR")]:
+        for error, expected in [(ChallengeRequired("top-secret challenge url"), "STOPPED_CHALLENGE_OR_2FA"), (RuntimeError("top-secret"), "STOPPED_RUNTIME_ERROR_DURING_LOGIN")]:
             fake = FakeClient(exc=error)
             with patch.dict(os.environ, {"PRIVATE_API_LOGIN_ONCE_APPROVED": "yes", "PRIVATE_API_IG_USERNAME": "isolated", "PRIVATE_API_IG_PASSWORD": "top-secret"}, clear=True):
                 out = io.StringIO()
@@ -61,9 +61,9 @@ class LoginOnceTests(unittest.TestCase):
 
     def test_transport_dependency_and_unknown_are_classified_without_leaking_details(self):
         for error, expected in [
-            (ConnectionError("password and private endpoint"), "STOPPED_TRANSPORT_ERROR"),
-            (ModuleNotFoundError("private missing secret"), "STOPPED_DEPENDENCY_ERROR"),
-            (Exception("password and account ID"), "STOPPED_OTHER_ERROR"),
+            (ConnectionError("password and private endpoint"), "STOPPED_TRANSPORT_ERROR_DURING_LOGIN"),
+            (ModuleNotFoundError("private missing secret"), "STOPPED_DEPENDENCY_ERROR_DURING_LOGIN"),
+            (Exception("password and account ID"), "STOPPED_OTHER_ERROR_DURING_LOGIN"),
         ]:
             fake = FakeClient(exc=error)
             with patch.dict(os.environ, {
@@ -76,6 +76,40 @@ class LoginOnceTests(unittest.TestCase):
                     self.assertEqual(login_once.attempt_once(client_factory=lambda: fake), expected)
                 self.assertEqual(len(fake.calls), 1)
                 self.assertEqual(out.getvalue(), "")
+
+    def test_error_before_login_is_distinguished_from_error_during_login(self):
+        with patch.dict(os.environ, {
+            "PRIVATE_API_LOGIN_ONCE_APPROVED": "yes",
+            "PRIVATE_API_IG_USERNAME": "isolated",
+            "PRIVATE_API_IG_PASSWORD": "top-secret",
+        }, clear=True):
+            output = io.StringIO()
+            def broken_factory():
+                raise RuntimeError("private credential")
+            with redirect_stdout(output):
+                self.assertEqual(
+                    login_once.attempt_once(client_factory=broken_factory),
+                    "STOPPED_RUNTIME_ERROR_DURING_CLIENT_CREATION",
+                )
+            self.assertEqual(output.getvalue(), "")
+
+    def test_logger_restored_even_when_login_fails(self):
+        import logging
+        old = logging.root.manager.disable
+        try:
+            logging.disable(logging.WARNING)
+            with patch.dict(os.environ, {
+                "PRIVATE_API_LOGIN_ONCE_APPROVED": "yes",
+                "PRIVATE_API_IG_USERNAME": "isolated",
+                "PRIVATE_API_IG_PASSWORD": "top-secret",
+            }, clear=True):
+                self.assertEqual(
+                    login_once.attempt_once(client_factory=lambda: FakeClient(exc=RuntimeError("hidden"))),
+                    "STOPPED_RUNTIME_ERROR_DURING_LOGIN",
+                )
+            self.assertEqual(logging.root.manager.disable, logging.WARNING)
+        finally:
+            logging.disable(old)
 
     def test_false_login_is_not_reported_as_success(self):
         fake = FakeClient(result=False)

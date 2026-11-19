@@ -23,18 +23,23 @@ def attempt_once(*, client_factory=None) -> str:
 
     # Do not install automatic challenge, OTP, password-reset, or retry handlers.
     # Print nothing originating from the library, including exception messages.
+    phase = "CLIENT_CREATION"
     try:
         with open(os.devnull, "w", encoding="utf-8") as silent:
             with contextlib.redirect_stdout(silent), contextlib.redirect_stderr(silent):
-                if client_factory is None:
-                    from instagrapi import Client
-                    client_factory = lambda: Client(with_challenge_flow=False)
+                previous_logging_disable = logging.root.manager.disable
                 logging.disable(logging.CRITICAL)
                 try:
+                    if client_factory is None:
+                        phase = "IMPORT"
+                        from instagrapi import Client
+                        client_factory = lambda: Client(with_challenge_flow=False)
+                    phase = "CLIENT_CREATION"
                     client = client_factory()
+                    phase = "LOGIN"
                     ok = client.login(username, password)
                 finally:
-                    logging.disable(logging.NOTSET)
+                    logging.disable(previous_logging_disable)
         return "AUTHENTICATED" if ok is True else "NOT_AUTHENTICATED"
     except Exception as error:
         # Only print allowlisted class names. No message, trace, response, or URL.
@@ -48,15 +53,15 @@ def attempt_once(*, client_factory=None) -> str:
         # Only allowlisted categories are emitted. Never print exception text,
         # request URLs, response bodies, headers, sessions, usernames or passwords.
         if isinstance(error, (ImportError, ModuleNotFoundError)):
-            return "STOPPED_DEPENDENCY_ERROR"
+            return f"STOPPED_DEPENDENCY_ERROR_DURING_{phase}"
         if name in {"ConnectionError", "ConnectError", "Timeout", "ConnectTimeout",
                     "ReadTimeout", "SSLError", "ProxyError", "RequestException",
                     "RequestsError", "CurlError", "NetworkError", "ConnectionResetError"}:
-            return "STOPPED_TRANSPORT_ERROR"
+            return f"STOPPED_TRANSPORT_ERROR_DURING_{phase}"
         if name in {"TypeError", "ValueError", "AttributeError", "KeyError",
                     "RuntimeError", "AssertionError"}:
-            return "STOPPED_RUNTIME_ERROR"
-        return "STOPPED_OTHER_ERROR"
+            return f"STOPPED_RUNTIME_ERROR_DURING_{phase}"
+        return f"STOPPED_OTHER_ERROR_DURING_{phase}"
 
 
 def main() -> int:

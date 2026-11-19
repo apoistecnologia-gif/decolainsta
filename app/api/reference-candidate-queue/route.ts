@@ -49,13 +49,41 @@ export async function GET(req: Request) {
   const candidates = saved.flatMap(item => {
     const evidence = parseCandidateEvidence(item.details);
     return evidence && item.targetUsername
-      ? [{ id: item.id, username: item.targetUsername, referenceUsername: evidence.referenceUsername,
-        status: evidence.status, createdAt: item.createdAt }] : [];
+      ? [{ id: item.id, username: item.targetUsername, referenceId: evidence.referenceId,
+        referenceUsername: evidence.referenceUsername, status: evidence.status,
+        createdAt: item.createdAt }] : [];
   });
+  const byReference = new Map<string, {
+    referenceId: string; referenceUsername: string; candidates: number;
+  }>();
+  const seen = new Set<string>();
+  let lastIndexedAt: string | null = null;
+  let duplicateRecords = 0;
+  for (const candidate of candidates) {
+    if (seen.has(candidate.username.toLowerCase())) {
+      duplicateRecords++;
+      continue;
+    }
+    seen.add(candidate.username.toLowerCase());
+    const existing = byReference.get(candidate.referenceId);
+    if (existing) existing.candidates++;
+    else byReference.set(candidate.referenceId, {
+      referenceId: candidate.referenceId,
+      referenceUsername: candidate.referenceUsername, candidates: 1,
+    });
+    const timestamp = candidate.createdAt.toISOString();
+    if (!lastIndexedAt || timestamp > lastIndexedAt) lastIndexedAt = timestamp;
+  }
+  const counts = [...byReference.values()].sort((a,b) =>
+    b.candidates - a.candidates || a.referenceUsername.localeCompare(b.referenceUsername));
   return NextResponse.json({
-    persistedCandidates: candidates.length,
+    persistedCandidates: seen.size,
+    referencesRepresented: counts.length,
+    byReference: counts,
+    lastIndexedAt, duplicateRecords,
     capacity: MAX_CANDIDATES_PER_ACCOUNT,
-    candidates: candidates.slice(0, 20),
+    candidates: candidates.slice(0, 10),
+    status: 'identified_unverified',
     provenance: 'operator_assigned_collector_result',
     verifiedByMeta: false, followbackVerified: false,
     actionsEnabled: false, instagramActionsExecuted: 0,

@@ -20,6 +20,8 @@ import {
 } from '@/lib/reference-audience-refresh';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import { loadActiveAudienceSources } from '@/lib/server/reference-audience-source-store';
+import { AUDIENCE_SOURCE_BINDING_ACTION, parseAudienceSourceBinding }
+  from '@/lib/reference-audience-source-registry';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
@@ -90,6 +92,23 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
     if (result.status !== 'found' || result.resultLocation !== 'completed_run') {
       await finish(claimId, result.resultLocation === 'latest_agent_file'
         ? 'latest-file-not-audited' : result.status);
+      return { status: 'failed', newNames: 0, indexed: 0 };
+    }
+    // A current agent configuration does NOT establish which target produced
+    // an older result. Require the completed run to postdate the latest approved
+    // account/reference binding; missing/invalid end timestamp fails closed.
+    const latestBinding = await prisma.activityLog.findFirst({
+      where: { instagramAccountId: source.accountId,
+        targetUsername: source.referenceId, action: AUDIENCE_SOURCE_BINDING_ACTION },
+      select: { createdAt: true, details: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    const approved = parseAudienceSourceBinding(latestBinding?.details ?? null);
+    const completed = result.completedAt ? Date.parse(result.completedAt) : NaN;
+    if (!approved?.enabled || approved.collectorAgentId !== source.collectorAgentId ||
+        !Number.isFinite(completed) || !latestBinding ||
+        completed < latestBinding.createdAt.getTime()) {
+      await finish(claimId, 'unverified-container-timestamp-or-binding');
       return { status: 'failed', newNames: 0, indexed: 0 };
     }
 

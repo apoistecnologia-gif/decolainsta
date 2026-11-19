@@ -88,7 +88,7 @@ test('existing draft lookup prevents re-creating a previously provisioned agent'
     assert.equal(new URL(url).searchParams.get('withArgument'),'false');
     assert.equal(init?.method,'GET');
     return new Response(JSON.stringify([
-      {id:ID,name:draft.name,script:draft.script},
+      {id:ID,name:draft.name,script:draft.script,launchType:'manually'},
       {id:'2222222222222222',name:'unrelated',script:'Other.js'},
     ]));
   });

@@ -32,7 +32,9 @@ somente no ambiente expressamente autorizado:
 
 IDs acima são ilustrativos: o parser exige IDs alfanuméricos, sem espaços.
 Limite: 20 fontes configuradas, máximo 3 atualizações por execução,
-uma referência por coletor. O operador deve conferir a associação antes
+uma referência por coletor. Fontes vencidas são priorizadas pela data da
+última tentativa (as nunca consultadas vêm primeiro), evitando o bloqueio
+das referências após a terceira. O operador deve conferir a associação antes
 de permitir a ingestão. A configuração inválida desativa a execução.
 
 ## Agendamento e execução
@@ -62,7 +64,10 @@ Se a leitura cair no `latest_agent_file`, a atualização programada **não
 ingere** os dados: esse arquivo pode não corresponder à execução finalizada.
 Isso difere da importação manual experimental existente, que sinaliza
 claramente sua proveniência. Histórico no limite não é truncado
-automaticamente.
+automaticamente. Havendo apenas parte da capacidade, os usernames novos são
+importados até preencher o espaço restante; a resposta informa
+`deferredByHistoryLimit`, o total adiado por falta de capacidade. Nenhum
+nome adiado é considerado persistido.
 
 ## Limitações importantes
 

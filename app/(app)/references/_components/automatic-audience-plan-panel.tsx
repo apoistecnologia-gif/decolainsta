@@ -17,6 +17,13 @@ type Plan = {
   candidates: { username: string; referenceUsername: string }[];
 };
 
+async function fetchPlan(accountId: string, signal?: AbortSignal): Promise<Plan> {
+  const response = await fetch(`/api/reference-auto-plan?accountId=${encodeURIComponent(accountId)}`,
+    { cache: 'no-store', credentials: 'same-origin', signal });
+  if (!response.ok) throw new Error('Não foi possível consultar os históricos salvos.');
+  return response.json() as Promise<Plan>;
+}
+
 export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string }) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState('');
@@ -24,10 +31,7 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!accountId) return;
     try {
-      const response = await fetch(`/api/reference-auto-plan?accountId=${encodeURIComponent(accountId)}`,
-        { cache: 'no-store', credentials: 'same-origin', signal });
-      if (!response.ok) throw new Error('Não foi possível consultar os históricos salvos.');
-      const data = await response.json() as Plan;
+      const data = await fetchPlan(accountId, signal);
       if (signal?.aborted) return;
       setPlan(data);
     } catch (err) {
@@ -38,10 +42,23 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
   }, [accountId]);
 
   useEffect(() => {
+    if (!accountId) return;
     const controller = new AbortController();
-    void load(controller.signal);
+    void fetchPlan(accountId, controller.signal)
+      .then(data => {
+        if (!controller.signal.aborted) {
+          setPlan(data);
+          setLoading(false);
+        }
+      })
+      .catch(err => {
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : 'Consulta indisponível');
+          setLoading(false);
+        }
+      });
     return () => controller.abort();
-  }, [load]);
+  }, [accountId]);
 
   return (
     <Card>

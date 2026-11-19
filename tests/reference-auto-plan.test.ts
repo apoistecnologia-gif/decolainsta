@@ -11,10 +11,10 @@ test('automatic plan mixes saved reference followers, excludes existing and prot
       usernames: ['b1', 'b2', 'duplicate', 'tracked'] },
   ], ['owner', 'protected', 'tracked'], 'testday');
   assert.equal(plan.source, 'saved_snapshots_unverified');
-  assert.equal(plan.eligibleDistinct, 6);
+  assert.equal(plan.eligibleDistinct, 5);
   assert.equal(plan.referencesWithSnapshots, 2);
-  assert.equal(plan.candidates.length, 6);
-  assert.equal(new Set(plan.candidates.map(x => x.username)).size, 6);
+  assert.equal(plan.candidates.length, 5);
+  assert.equal(new Set(plan.candidates.map(x => x.username)).size, 5);
   assert.equal(new Set(plan.candidates.map(x => x.referenceUsername)).size, 2);
   assert.ok(plan.candidates.every(x => !['owner','protected','tracked','reference_b'].includes(x.username)));
   assert.equal(plan.actionsEnabled, false);

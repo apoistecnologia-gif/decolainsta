@@ -70,7 +70,7 @@ test('references main screen is simple and manual diagnostics remain separately 
   assert.match(page, /SimpleReferencesPanel/);
   assert.doesNotMatch(page, /ReferenceWorkflowPanel|ReferenceAudiencePanel|AutomaticAudiencePlanPanel/);
   assert.match(simple, /Contas de referência/);
-  assert.match(simple, /Candidatos identificados/);
+  assert.match(simple, /Nomes salvos \(não verificados\)/);
   assert.match(simple, /\/references\/diagnostics/);
   assert.match(simple, /Adicionar referência/);
   assert.doesNotMatch(simple, /agents\/launch|user_follow|user_unfollow|audience-bulk-import|confirm-follow|confirm-unfollow|sessionid/);

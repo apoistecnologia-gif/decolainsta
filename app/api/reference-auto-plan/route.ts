@@ -27,8 +27,8 @@ export async function GET(req: Request) {
     where: { id: accountId, userId }, select: { id: true, username: true },
   });
   if (!account) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404, headers: NO_STORE });
-  if (process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes' ||
-      process.env.PHANTOMBUSTER_PILOT_USERNAME?.toLowerCase() !== account.username.toLowerCase())
+  if (process.env.VERCEL_ENV !== 'preview' ||
+      process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes')
     return NextResponse.json({ error: 'Planejamento experimental indisponível' },
       { status: 403, headers: NO_STORE });
 

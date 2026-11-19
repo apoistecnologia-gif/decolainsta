@@ -49,7 +49,7 @@ export function evaluateAudienceReadiness(
   };
 }
 
-export function isConfiguredPhantomBusterKey(value: string | undefined): boolean {
+export function isConfiguredPhantomBusterKey(value: string | undefined): value is string {
   return !!value && value.length >= 12 && value.length <= 512 &&
     /^[\x21-\x7e]+$/.test(value) && !/sessionid|instagram|%3a|[;\s]/i.test(value);
 }

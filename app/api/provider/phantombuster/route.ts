@@ -57,15 +57,6 @@ export async function GET(req: Request) {
   // Optional backend-only credential. Absent in the initial pilot preview.
   const key = process.env.PHANTOMBUSTER_API_KEY;
   if (!key) return reply({ status: 'not-configured', instagramConnectionVerified: false, actionsEnabled: false });
-  if (obj.mode === 'profile-summary') {
-    const id = process.env.PHANTOMBUSTER_PROFILE_AGENT_ID;
-    if (!id || !/^\d{10,25}$/.test(id)) {
-      return NextResponse.json({ error: 'Automação de leitura ainda não configurada' }, { status: 503 });
-    }
-    return NextResponse.json(await getLatestTestProfile(key, id, pilot.username), {
-      headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
-    });
-  }
   return reply(await checkPhantomBusterWorkspace(key, fetch, pilotAgentId()));
 }
 
@@ -106,6 +97,15 @@ export async function POST(req: Request) {
   if (typeof key !== 'string' || key.length < 12 || key.length > 512 ||
       !/^[\x21-\x7E]+$/.test(key) || /sessionid|instagram|%3a|[;\s]/i.test(key)) {
     return NextResponse.json({ error: 'Chave API da PhantomBuster inválida' }, { status: 400 });
+  }
+  if (obj.mode === 'profile-summary') {
+    const id = process.env.PHANTOMBUSTER_PROFILE_AGENT_ID;
+    if (!id || !/^\d{10,25}$/.test(id)) {
+      return NextResponse.json({ error: 'Automação de leitura ainda não configurada' }, { status: 503 });
+    }
+    return NextResponse.json(await getLatestTestProfile(key, id, pilot.username), {
+      headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+    });
   }
   return reply(await checkPhantomBusterWorkspace(key, fetch, pilotAgentId()));
 }

@@ -133,6 +133,6 @@ test('route is admin+Preview only and external writes require separate OFF-by-de
   assert.match(route,/collectorDraftAlreadyAttempted/);
   assert.match(route,/findExistingCollectorDraft/);
   assert.match(route,/createUnconfiguredCollectorDraft/);
-  assert.match(route,/autoLaunchEnabled/);
+  assert.match(route,/automaticallyScheduled: false/);
   assert.doesNotMatch(route,/agents\/launch|user_follow|user_unfollow|api\.instagram\.com/);
 });

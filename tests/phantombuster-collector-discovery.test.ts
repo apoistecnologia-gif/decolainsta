@@ -30,24 +30,33 @@ test('extract only unique explicit Instagram target, never login or spreadsheet 
   assert.equal(configuredFollowerCollectorReference('not-json'),null);
 });
 
-test('discover only configured follower collectors and never expose raw argument secrets', async () => {
+test('discover via documented agent inventory then inspect exact agent details', async () => {
   const seen: string[] = [];
+  const items = [
+    agent('1111111111111111','reference_a'),
+    agent('2222222222222222','reference_b'),
+    agent('3333333333333333','reference_a','Instagram Followers Auto Follow.js'),
+    {id:'4444444444444444',script:'Instagram Follower Collector.js',
+      argument:JSON.stringify({sessionCookie:'SECRET'})},
+  ];
   const result = await discoverFollowerCollectors('valid-server-key', async (url, init) => {
     seen.push(url);
     assert.equal(init?.method,'GET');
     assert.equal(init?.redirect,'error');
     assert.equal(init?.credentials,'omit');
-    assert.equal(new URL(url).searchParams.get('withArgument'),'true');
-    assert.equal((init?.headers as Record<string,string>)['X-Phantombuster-Key'],'valid-server-key');
-    return new Response(JSON.stringify([
-      agent('1111111111111111','reference_a'),
-      agent('2222222222222222','reference_b'),
-      agent('3333333333333333','reference_a','Instagram Followers Auto Follow.js'),
-      {id:'4444444444444444',script:'Instagram Follower Collector.js',
-        argument:JSON.stringify({sessionCookie:'SECRET'})},
-    ]),{status:200});
+    assert.equal((init?.headers as Record<string,string>)['X-Phantombuster-Key'],
+      'valid-server-key');
+    if (url.includes('fetch-all')) {
+      assert.equal(new URL(url).searchParams.has('withArgument'),false);
+      // The actual inventory may OMIT argument.
+      return new Response(JSON.stringify(items.map(({id,script})=>({id,script}))),
+        {status:200});
+    }
+    const id = new URL(url).searchParams.get('id');
+    const item = items.find(x=>x.id===id);
+    return new Response(JSON.stringify(item),{status:200});
   });
-  assert.equal(seen.length,1);
+  assert.equal(seen.length,4); // one inventory, 3 detail reads
   assert.equal(result.status,'ok');
   assert.equal(result.agentsExamined,4);
   assert.deepEqual(result.collectors,[
@@ -55,6 +64,22 @@ test('discover only configured follower collectors and never expose raw argument
     {collectorAgentId:'2222222222222222',referenceUsername:'reference_b'},
   ]);
   assert.doesNotMatch(JSON.stringify(result),/SECRET|sessionCookie|profileUrl|valid-server-key/);
+});
+
+test('a failed detail read cannot silently return incomplete matches',async () => {
+  let call = 0;
+  const result = await discoverFollowerCollectors('key',async (url) => {
+    call++;
+    return url.includes('fetch-all')
+      ? new Response(JSON.stringify([
+          {id:'1111111111111111',script:'Instagram Follower Collector.js'},
+          {id:'2222222222222222',script:'Instagram Follower Collector.js'},
+        ]),{status:200})
+      : new Response('Too many requests',{status:429});
+  });
+  assert.equal(call,2);
+  assert.equal(result.status,'rate-limited');
+  assert.deepEqual(result.collectors,[]);
 });
 
 test('ambiguous agents cannot be assigned to any reference', () => {

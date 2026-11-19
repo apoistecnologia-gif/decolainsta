@@ -87,9 +87,13 @@ usuários continuam com acesso à leitura de suas próprias contas, não
 
 Antes de importar qualquer resultado, o backend consulta novamente a
 configuração do coletor e exige o mesmo `script` e perfil de destino.
-**Isso não comprova** que a execução histórica representa seguidores
-reais daquela referência; o resultado continua rotulado como não
-verificado pela Meta. Nenhum agente é criado ou iniciado nessa etapa.
+Além disso, requer que a execução finalizada informe `endedAt` válido
+e que tenha terminado **depois da associação aprovada**. Resultados
+anteriores à associação ou sem horário de encerramento não entram na
+importação automática. Isso evita atribuir uma execução antiga a um
+novo alvo, mas **não comprova** que os usernames eram seguidores reais
+da referência; o dado continua rotulado como não verificado pela Meta.
+Nenhum agente é criado ou iniciado nessa etapa.
 
 A lista global fixa de coletores no ambiente deixou de ser utilizada.
 A **criação automática de Phantoms novos ainda não existe**; exige validação

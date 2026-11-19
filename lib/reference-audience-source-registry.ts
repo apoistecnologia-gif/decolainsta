@@ -86,3 +86,22 @@ export function resolveActiveAudienceSources(rows: AudienceSourceBindingRow[]): 
     count.set(source.collectorAgentId, (count.get(source.collectorAgentId) ?? 0) + 1);
   return active.filter(source => count.get(source.collectorAgentId) === 1);
 }
+
+/** Explicitly revoked references must not be silently auto-bound again.
+ * The latest malformed event is also treated as disabled (fail closed).
+ */
+export function disabledAudienceReferenceKeys(rows: AudienceSourceBindingRow[]): Set<string> {
+  const latest = [...rows].sort((a,b) =>
+    b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+  const visited = new Set<string>(), disabled = new Set<string>();
+  for (const row of latest) {
+    if (!validId(row.instagramAccountId) || !validId(row.targetUsername)) continue;
+    const key = row.instagramAccountId + ':' + row.targetUsername;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    const record = parseAudienceSourceBinding(row.details);
+    if (!record || record.referenceId !== row.targetUsername || !record.enabled)
+      disabled.add(key);
+  }
+  return disabled;
+}

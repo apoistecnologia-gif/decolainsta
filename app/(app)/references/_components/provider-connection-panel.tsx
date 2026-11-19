@@ -54,7 +54,7 @@ export function ProviderConnectionPanel({ accountId }: { accountId: string }) {
         throw new Error(error);
       }
       const result = data as ProviderResult;
-      if (!Object.hasOwn(MESSAGES, result.status)) throw new Error('Resposta não reconhecida');
+      if (!Object.prototype.hasOwnProperty.call(MESSAGES, result.status)) throw new Error('Resposta não reconhecida');
       setStatus(result);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Não foi possível verificar');

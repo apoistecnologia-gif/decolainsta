@@ -55,10 +55,7 @@ export function ReferenceAudiencePanel({
     : (references[0]?.id ?? '');
 
   useEffect(() => {
-    if (!accountId || !selected) {
-      setHistory([]);
-      return;
-    }
+    if (!accountId || !selected) return;
     let active = true;
     void fetch(`/api/provider/phantombuster/audience-history?accountId=${encodeURIComponent(accountId)}&referenceId=${encodeURIComponent(selected)}`,
       { cache: 'no-store', credentials: 'same-origin' })

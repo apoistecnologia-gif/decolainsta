@@ -78,8 +78,31 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
   const [queue, setQueue] = useState<QueueResult | null>(null);
   const [index, setIndex] = useState<CandidateIndexSummary | null>(null);
   const [queueError, setQueueError] = useState('');
+  const [collectorNotice, setCollectorNotice] = useState('');
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!accountId) return;
+    try {
+      // Existing refresh button can test the real completed-run reader on Preview.
+      // This request never starts a collector and never carries an API key.
+      const providerResponse = await fetch('/api/provider/phantombuster/refresh-now', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+        body: JSON.stringify({ accountId, operation: 'refresh-readonly' }), signal,
+      });
+      if (providerResponse.ok) {
+        const status = await providerResponse.json() as {
+          enabled?: boolean; examined?: number; indexed?: number;
+          newCandidatesObserved?: number;
+        };
+        if (!signal?.aborted) setCollectorNotice(status.enabled
+          ? `Leitura de resultados anteriores: ${status.examined ?? 0} referência(s) verificadas; ${status.indexed ?? 0} candidato(s) novos no índice.`
+          : 'Coleta automática ainda não configurada. Dados já salvos permanecem disponíveis.');
+      } else if (providerResponse.status !== 403 && !signal?.aborted) {
+        setCollectorNotice('Leitura externa indisponível; mostrando os dados já salvos.');
+      }
+    } catch {
+      if (!signal?.aborted) setCollectorNotice('Leitura externa indisponível; mostrando os dados já salvos.');
+    }
     try {
       const data = await fetchPlan(accountId, signal);
       if (signal?.aborted) return;
@@ -144,8 +167,9 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
           onClick={() => { setLoading(true); setError(''); void load(); }}
           disabled={loading || !accountId}>
           <RefreshCw className="h-4 w-4 mr-2" />
-          {loading ? 'Atualizando...' : 'Atualizar planejamento'}
+          {loading ? 'Atualizando...' : 'Atualizar dados'}
         </Button>
+        {collectorNotice && <p role="status" className="text-xs text-muted-foreground">{collectorNotice}</p>}
         {queue && (
           <div className="rounded-md border p-3 space-y-1">
             <p className="font-medium">Índice persistente de candidatos</p>

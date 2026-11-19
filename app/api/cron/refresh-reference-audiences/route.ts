@@ -17,8 +17,8 @@ import {
 } from '@/lib/reference-candidate-queue';
 import { MANUAL_SOURCE_PREFIX, REFERENCE_ACTIONS } from '@/lib/reference-workflow';
 import {
-  AUDIENCE_REFRESH_ACTION, MAX_REFRESHES_PER_TICK,
-  newAudienceNames, parseAudienceRefreshSources, refreshIsDue,
+  AUDIENCE_REFRESH_ACTION,
+  dueRefreshSources, newAudienceNames, parseAudienceRefreshSources, refreshIsDue,
   type AudienceRefreshSource,
 } from '@/lib/reference-audience-refresh';
 
@@ -214,11 +214,26 @@ export async function GET(request: Request) {
       instagramActionsExecuted: 0 }, { headers: HEADERS });
   const results: RefreshState[] = [];
   try {
-    // Fixed upper bound: sequential requests reduce provider concurrency and rate limits.
-    for (const source of sources) {
-      if (results.filter(r => r.status !== 'skipped').length >= MAX_REFRESHES_PER_TICK) break;
-      results.push(await refreshSource(source, apiKey));
-    }
+    // Use the newest attempt per owned account/reference to fairly schedule
+    // sources; a fixed JSON order can otherwise starve the fourth reference.
+    const lastAttempts = await prisma.activityLog.groupBy({
+      by: ['instagramAccountId', 'targetUsername'],
+      where: {
+        action: AUDIENCE_REFRESH_ACTION,
+        instagramAccountId: { in: [...new Set(sources.map(s => s.accountId))] },
+        targetUsername: { in: sources.map(s => s.referenceId) },
+      },
+      _max: { createdAt: true },
+    });
+    const due = dueRefreshSources(sources, lastAttempts.flatMap(entry =>
+      entry.targetUsername ? [{
+        accountId: entry.instagramAccountId,
+        referenceId: entry.targetUsername,
+        lastAttemptAt: entry._max.createdAt,
+      }] : []), new Date());
+
+    // At most three external reads, sequentially; no collector launch.
+    for (const source of due) results.push(await refreshSource(source, apiKey));
     return NextResponse.json({
       enabled: true, examined: results.length,
       imported: results.filter(r => r.status === 'imported').length,

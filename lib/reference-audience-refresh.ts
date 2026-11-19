@@ -66,3 +66,37 @@ export function newAudienceNames(
   }
   return [...names].sort();
 }
+
+export type AudienceRefreshAttempt = {
+  accountId: string;
+  referenceId: string;
+  lastAttemptAt: Date | null;
+};
+
+/**
+ * Prioritize overdue sources by oldest attempt, not by JSON order. With a
+ * bounded per-tick budget, new references must never starve behind older ones.
+ */
+export function dueRefreshSources(
+  sources: AudienceRefreshSource[],
+  attempts: AudienceRefreshAttempt[],
+  now: Date,
+): AudienceRefreshSource[] {
+  const key = (accountId: string, referenceId: string) => accountId + ':' + referenceId;
+  const latest = new Map<string, Date>();
+  for (const entry of attempts) {
+    if (!(entry.lastAttemptAt instanceof Date) ||
+        !Number.isFinite(entry.lastAttemptAt.getTime())) continue;
+    const k = key(entry.accountId, entry.referenceId);
+    const previous = latest.get(k);
+    if (!previous || entry.lastAttemptAt > previous) latest.set(k, entry.lastAttemptAt);
+  }
+  return sources.filter(source => refreshIsDue(
+    latest.get(key(source.accountId, source.referenceId)) ?? null, now,
+  )).sort((a, b) => {
+    const at = latest.get(key(a.accountId, a.referenceId))?.getTime() ?? -Infinity;
+    const bt = latest.get(key(b.accountId, b.referenceId))?.getTime() ?? -Infinity;
+    return at - bt || a.accountId.localeCompare(b.accountId) ||
+      a.referenceId.localeCompare(b.referenceId);
+  }).slice(0, MAX_REFRESHES_PER_TICK);
+}

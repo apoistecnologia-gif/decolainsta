@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   const rejection = denied(ctx);
   if (rejection) return rejection;
   if ('error' in ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-  const [saved, reportedRelationships, protectedProfiles] = await Promise.all([
+  const [saved, reportedRelationships, protectedProfiles, references] = await Promise.all([
     prisma.activityLog.findMany({
       where: { instagramAccountId: ctx.account.id, action: AUDIENCE_CANDIDATE_ACTION },
       select: { id: true, targetUsername: true, details: true, createdAt: true },
@@ -61,10 +61,21 @@ export async function GET(req: Request) {
       where: { instagramAccountId: ctx.account.id },
       select: { username: true }, take: 2000,
     }),
+    prisma.targetAccount.findMany({
+      where: { instagramAccountId: ctx.account.id },
+      select: { id: true, username: true }, take: 5001,
+    }),
   ]);
+  // Do not display orphaned legacy/test records after their reference is
+  // removed. Preserve history in the database without treating it as active.
+  if (references.length > 5000)
+    return NextResponse.json({ error: 'Limite de referências excedido' },
+      { status: 409, headers: HEADERS });
+  const activeRefs = new Map(references.map(ref => [ref.id, ref.username.toLowerCase()]));
   const candidates = saved.flatMap(item => {
     const evidence = parseCandidateEvidence(item.details);
-    return evidence && item.targetUsername
+    return evidence && item.targetUsername &&
+      activeRefs.get(evidence.referenceId) === evidence.referenceUsername
       ? [{ id: item.id, username: item.targetUsername, referenceId: evidence.referenceId,
         referenceUsername: evidence.referenceUsername, status: evidence.status,
         createdAt: item.createdAt }] : [];
@@ -169,9 +180,12 @@ export async function POST(req: Request) {
         ]);
         if (existing.length > MAX_QUEUE_ENTRIES_PER_SYNC)
           return { synced: 0, total: existing.length, status: 'capacity-reached' as const };
+        const registered = new Map(refs.map(ref => [ref.id, ref.username.toLowerCase()]));
         const recorded = existing.flatMap(entry => {
           const evidence = parseCandidateEvidence(entry.details);
-          return evidence && entry.targetUsername ? [entry.targetUsername.toLowerCase()] : [];
+          return evidence && entry.targetUsername &&
+            registered.get(evidence.referenceId) === evidence.referenceUsername
+            ? [entry.targetUsername.toLowerCase()] : [];
         });
         const alreadyUsed = new Set(recorded);
         const exclusions = [

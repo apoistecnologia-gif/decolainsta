@@ -213,7 +213,7 @@ export function ReferenceWorkflowPanel() {
         </CardContent>
       </Card>
 
-      <ProviderConnectionPanel accountId={selectedAccount} />
+      <ProviderConnectionPanel key={selectedAccount} accountId={selectedAccount} />
 
       {ready && (
         <>

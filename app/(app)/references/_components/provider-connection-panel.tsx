@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,11 +30,6 @@ export function ProviderConnectionPanel({ accountId }: { accountId: string }) {
   const [status, setStatus] = useState<ProviderResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    setStatus(null);
-    setMessage('');
-  }, [accountId]);
 
   async function check() {
     if (!accountId || busy) return;

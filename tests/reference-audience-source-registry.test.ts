@@ -84,10 +84,27 @@ test('registry reader pulls database bindings, never hardcodes pilot account', (
   assert.match(route,/admin\?\.role !== 'admin'/);
   assert.match(route,/where: \{ id: referenceId, instagramAccountId: accountId \}/);
   assert.match(route,/Prisma\.TransactionIsolationLevel\.Serializable/);
-  assert.match(route,/verifyFollowerCollectorTemplate/);
+  assert.match(route,/verifyConfiguredFollowerCollector/);
   assert.match(route,/confirmReadOnlyCollector/);
   assert.match(route,/operation === 'unbind'/);
   assert.match(target,/enabled: false/);
   assert.doesNotMatch(runner+manual,/PHANTOMBUSTER_PILOT_USERNAME|PHANTOMBUSTER_AUDIENCE_SOURCES_JSON/);
   assert.doesNotMatch(route+runner,/agents\/launch|user_follow|user_unfollow|api\.instagram\.com/);
+});
+
+test('existing collectors are matched automatically only by administrator and saved account', () => {
+  const route = readFileSync('app/api/provider/phantombuster/match-collectors/route.ts','utf8');
+  const sourceStore = readFileSync('lib/server/reference-audience-source-store.ts','utf8');
+  assert.match(route,/user\?\.role !== 'admin'/);
+  assert.match(route,/process\.env\.VERCEL_ENV !== 'preview'/);
+  assert.match(route,/request\.headers\.get\('origin'\)/);
+  assert.match(route,/discoverFollowerCollectors/);
+  assert.match(route,/planExactReadOnlyCollectorBindings/);
+  assert.match(route,/instagramAccountId: account\.id/);
+  assert.match(route,/MAX_SOURCE_BINDING_LOGS/);
+  assert.match(route,/Prisma\.TransactionIsolationLevel\.Serializable/);
+  assert.match(route,/instagramActionsExecuted: 0/);
+  assert.match(sourceStore,/const globallyUnambiguous = resolveActiveAudienceSources\(rows\)/);
+  assert.match(sourceStore,/accountId \? globallyUnambiguous\.filter/);
+  assert.doesNotMatch(route,/agents\/launch|agents\/save|user_follow|user_unfollow/);
 });

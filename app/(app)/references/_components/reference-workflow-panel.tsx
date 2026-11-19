@@ -59,7 +59,6 @@ export function ReferenceWorkflowPanel() {
   const [referenceUsername, setReferenceUsername] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [selectedReference, setSelectedReference] = useState('');
-  const [reviewHours, setReviewHours] = useState<24 | 72>(72);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -192,7 +191,7 @@ export function ReferenceWorkflowPanel() {
     try {
       await readJson(await fetch('/api/reference-workflow', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: selectedAccount, leadId: lead.id, operation, hours: operation === 'confirm-follow' ? reviewHours : undefined }),
+        body: JSON.stringify({ accountId: selectedAccount, leadId: lead.id, operation, hours: operation === 'confirm-follow' ? 48 : undefined }),
       }));
       await refresh(selectedAccount);
       setMessage('Registro atualizado com base na confirmação informada por você.');
@@ -219,7 +218,8 @@ export function ReferenceWorkflowPanel() {
           <CardTitle>Fluxo principal: audiência das contas de referência</CardTitle>
           <CardDescription>
             Registre as referências e os perfis que você identificou nelas, acompanhe follows confirmados manualmente
-            e veja revisões após 24 ou 72 horas. Os dados são declarações suas, não uma coleta automatizada ou auditoria da Meta.
+            e veja a revisão 48 horas após o follow, somente quando houver follow-back informado.
+            Os dados são declarações suas, não uma coleta automatizada ou auditoria da Meta.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -338,13 +338,7 @@ export function ReferenceWorkflowPanel() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap items-center gap-3">
-                <label htmlFor="workflow-hours" className="text-sm font-medium">Revisar follow após</label>
-                <select id="workflow-hours" value={reviewHours} disabled={busy}
-                  onChange={event => setReviewHours(Number(event.target.value) === 24 ? 24 : 72)}
-                  className="rounded-md border bg-background px-3 py-2 text-sm">
-                  <option value={24}>24 horas</option>
-                  <option value={72}>72 horas (3 dias)</option>
-                </select>
+                <span className="text-sm font-medium">Regra do piloto: 48 horas após o follow, somente com follow-back confirmado.</span>
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => {
                   setError(''); void refresh(selectedAccount).catch(err => setError(err instanceof Error ? err.message : 'Falha na atualização'));
                 }}><RefreshCw className="mr-2 h-4 w-4" /> Atualizar</Button>
@@ -367,12 +361,18 @@ export function ReferenceWorkflowPanel() {
                       {lead.status === 'reference_candidate' ? 'Pendente de ação' :
                        lead.status === 'reference_unfollowed' ? 'Unfollow informado' :
                        lead.status === 'reference_kept' ? 'Manter seguindo' :
-                       lead.followedBack ? 'Seguiu de volta (informado)' :
-                       lead.due ? 'Prazo de revisão atingido' : 'Aguardando revisão'}
+                       lead.protected ? 'Perfil protegido' :
+                       lead.due ? '48h concluídas · follow-back informado' :
+                       lead.followedBack ? 'Follow-back informado · aguardando 48h' :
+                       'Aguardando confirmação de follow-back'}
                     </span>
                   </div>
-                  {lead.reviewAt && !lead.followedBack && lead.status === 'reference_followed' && (
-                    <p className="text-xs text-muted-foreground">Revisar em {displayDate(lead.reviewAt)} · não executa unfollow automaticamente</p>
+                  {lead.reviewAt && lead.status === 'reference_followed' && (
+                    <p className="text-xs text-muted-foreground">
+                      Marco de 48h: {displayDate(lead.reviewAt)}.
+                      {!lead.followedBack && ' Sem confirmação de follow-back, não há elegibilidade para unfollow.'}
+                      {' '}Este registro não executa unfollow automaticamente.
+                    </p>
                   )}
                   {lead.protected && <p className="text-xs text-muted-foreground">Perfil na lista de proteção: não marcar unfollow.</p>}
                   <div className="flex flex-wrap gap-2">
@@ -384,17 +384,24 @@ export function ReferenceWorkflowPanel() {
                         <Button size="sm" variant="outline" disabled={busy} onClick={() => void changeLead(lead, 'discard-candidate')}>Descartar</Button>
                       </>
                     )}
-                    {lead.status === 'reference_followed' && !lead.followedBack && (
+                    {lead.status === 'reference_followed' && (
                       <>
-                        <Button size="sm" variant="outline" disabled={busy} onClick={() => void changeLead(lead, 'confirm-followback')}>
-                          Confirmei follow-back
-                        </Button>
-                        <Button size="sm" variant="outline" disabled={busy} onClick={() => void changeLead(lead, 'keep-following')}>Manter seguindo</Button>
-                        {lead.due && !lead.protected &&
-                          <Button size="sm" disabled={busy} onClick={() => void changeLead(lead, 'confirm-unfollow')}>Confirmei que deixei de seguir</Button>}
+                        {!lead.followedBack && (
+                          <Button size="sm" variant="outline" disabled={busy}
+                            onClick={() => void changeLead(lead, 'confirm-followback')}>
+                            Confirmei follow-back
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" disabled={busy}
+                          onClick={() => void changeLead(lead, 'keep-following')}>Manter seguindo</Button>
+                        {lead.due && !lead.protected && lead.followedBack && (
+                          <Button size="sm" disabled={busy}
+                            onClick={() => void changeLead(lead, 'confirm-unfollow')}>
+                            Confirmei que deixei de seguir
+                          </Button>
+                        )}
                       </>
                     )}
-                    {lead.followedBack && <span className="text-xs text-muted-foreground">Preservado: nenhum unfollow programado.</span>}
                   </div>
                 </div>
               ))}

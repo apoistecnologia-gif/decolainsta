@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  FOLLOW_BACK_REVIEW_HOURS,
   MANUAL_SOURCE_PREFIX,
   REFERENCE_ACTIONS,
   referenceFromSource,
@@ -20,24 +21,25 @@ test('reference manual source is namespaced and reversible', () => {
   ]);
 });
 
-test('24h and 72h review deadlines use the confirmed follow timestamp', () => {
+test('fixed 48h deadline starts from confirmed follow, not collection or follow-back', () => {
   const followed = new Date('2026-11-18T12:00:00.000Z');
-  assert.equal(reviewTime(followed, 24)?.toISOString(), '2026-11-19T12:00:00.000Z');
-  assert.equal(reviewTime(followed, 72)?.toISOString(), '2026-11-21T12:00:00.000Z');
-  assert.equal(reviewTime(followed, 12), null);
-  assert.equal(reviewTime(followed, 0), null);
-  assert.equal(reviewTime(followed, '24'), null);
-  assert.equal(reviewTime(followed, undefined), null);
+  assert.equal(FOLLOW_BACK_REVIEW_HOURS, 48);
+  assert.equal(reviewTime(followed, 48)?.toISOString(), '2026-11-20T12:00:00.000Z');
+  for (const value of [0, 12, 24, 72, '48', undefined, null]) {
+    assert.equal(reviewTime(followed, value), null);
+  }
+  assert.equal(reviewTime(new Date('invalid'), 48), null);
 });
 
-test('only a due follow without follow-back qualifies for manual review', () => {
-  const deadline = new Date('2026-11-19T12:00:00.000Z');
-  assert.equal(reviewIsDue('reference_followed', false, deadline, new Date('2026-11-19T11:59:59Z')), false);
-  assert.equal(reviewIsDue('reference_followed', false, deadline, new Date('2026-11-19T12:00:00Z')), true);
-  assert.equal(reviewIsDue('reference_followed', true, deadline, new Date('2026-11-25T12:00:00Z')), false);
-  assert.equal(reviewIsDue('reference_candidate', false, deadline, new Date('2026-11-25T12:00:00Z')), false);
-  assert.equal(reviewIsDue('reference_unfollowed', false, deadline, new Date('2026-11-25T12:00:00Z')), false);
-  assert.equal(reviewIsDue('reference_followed', false, null, new Date('2026-11-25T12:00:00Z')), false);
+test('48h rule requires a confirmed follow-back; no follow-back means no unfollow review', () => {
+  const deadline = new Date('2026-11-20T12:00:00.000Z');
+  assert.equal(reviewIsDue('reference_followed', true, deadline, new Date('2026-11-20T11:59:59Z')), false);
+  assert.equal(reviewIsDue('reference_followed', true, deadline, new Date('2026-11-20T12:00:00Z')), true);
+  assert.equal(reviewIsDue('reference_followed', false, deadline, new Date('2026-11-25T12:00:00Z')), false);
+  assert.equal(reviewIsDue('reference_candidate', true, deadline, new Date('2026-11-25T12:00:00Z')), false);
+  assert.equal(reviewIsDue('reference_kept', true, deadline, new Date('2026-11-25T12:00:00Z')), false);
+  assert.equal(reviewIsDue('reference_unfollowed', true, deadline, new Date('2026-11-25T12:00:00Z')), false);
+  assert.equal(reviewIsDue('reference_followed', true, null, new Date('2026-11-25T12:00:00Z')), false);
 });
 
 test('cloud workflow requires auth, scopes reference and lead by owned account and isolates demo', () => {
@@ -48,7 +50,11 @@ test('cloud workflow requires auth, scopes reference and lead by owned account a
   assert.match(code, /instagramAccountId: ctx\.accountId/);
   assert.match(code, /isDryRun: false/);
   assert.match(code, /sourceTarget: \{ startsWith: MANUAL_SOURCE_PREFIX \}/);
-  assert.match(code, /followedBack: false, unfollowScheduledAt: \{ lte: now \}/);
+  assert.match(code, /followedBack: true/);
+  assert.match(code, /followedAt: \{ lte: cutoff \}/);
+  assert.match(code, /FOLLOW_BACK_REVIEW_HOURS/);
+  assert.match(code, /data: \{ followedBack: true \}/);
+  assert.doesNotMatch(code, /followedBack: false, unfollowScheduledAt: \{ lte: now \}/);
   assert.match(code, /prisma\.whitelist\.findUnique/);
   assert.doesNotMatch(code, /simulateFollow|simulateUnfollow|collectFollowers|publishPhoto|getProfile\(/);
   assert.match(code, /source: 'user_reported_not_meta_verified'/);
@@ -64,4 +70,18 @@ test('reference screen is primary and never claims Instagram action was executed
   assert.match(panel, /não executa unfollow automaticamente/);
   assert.match(panel, /não uma coleta automatizada ou auditoria da Meta/);
   assert.ok(sidebar.indexOf("href: '/references'") < sidebar.indexOf("href: '/scheduled-posts'"));
+});
+
+test('follow-back tracking keeps 48h review semantics without automating Instagram', () => {
+  const route = readFileSync('app/api/reference-workflow/route.ts', 'utf8');
+  const panel = readFileSync('app/(app)/references/_components/reference-workflow-panel.tsx', 'utf8');
+  const preview = readFileSync('app/(app)/references/_components/automatic-audience-plan-panel.tsx', 'utf8');
+  assert.match(route, /reviewTime\(now, FOLLOW_BACK_REVIEW_HOURS\)/);
+  assert.match(route, /followedAt: \{ lte: cutoff \}/);
+  assert.match(route, /data: \{ followedBack: true \}/);
+  assert.doesNotMatch(route, /data: \{ followedBack: true, unfollowScheduledAt: null \}/);
+  assert.match(panel, /Regra do piloto: 48 horas após o follow/);
+  assert.match(panel, /lead\.due && !lead\.protected && lead\.followedBack/);
+  assert.match(preview, /quem não seguiu de volta não entra nessa regra/);
+  assert.doesNotMatch(panel, /onClick=\{\(\) => void (?:follow|unfollow)\(/);
 });

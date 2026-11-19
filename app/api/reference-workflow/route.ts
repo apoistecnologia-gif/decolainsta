@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { cleanUsername } from '@/lib/instagram/validation';
 import {
+  FOLLOW_BACK_REVIEW_HOURS,
   MANUAL_SOURCE_PREFIX,
   REFERENCE_ACTIONS,
   referenceFromSource,
@@ -76,8 +77,11 @@ export async function GET(req: Request) {
       followedAt: lead.followedAt,
       followedBack: lead.followedBack,
       unfollowedAt: lead.unfollowedAt,
-      reviewAt: lead.unfollowScheduledAt,
-      due: reviewIsDue(lead.action, lead.followedBack, lead.unfollowScheduledAt, now),
+      reviewAt: lead.action === 'reference_followed' && lead.followedAt
+        ? reviewTime(lead.followedAt, FOLLOW_BACK_REVIEW_HOURS)
+        : null,
+      due: reviewIsDue(lead.action, lead.followedBack,
+        lead.followedAt ? reviewTime(lead.followedAt, FOLLOW_BACK_REVIEW_HOURS) : null, now),
       protected: whitelisted.has(lead.targetUsername),
       createdAt: lead.createdAt,
     })),
@@ -155,8 +159,10 @@ export async function POST(req: Request) {
   const now = new Date();
 
   if (operation === 'confirm-follow') {
-    const reviewAt = reviewTime(now, input.hours);
-    if (!reviewAt) return NextResponse.json({ error: 'Escolha 24 ou 72 horas' }, { status: 400 });
+    const reviewAt = reviewTime(now, FOLLOW_BACK_REVIEW_HOURS);
+    if (input.hours !== undefined && input.hours !== FOLLOW_BACK_REVIEW_HOURS)
+      return NextResponse.json({ error: 'O prazo fixo é de 48 horas' }, { status: 400 });
+    if (!reviewAt) return NextResponse.json({ error: 'Data inválida' }, { status: 400 });
     const updated = await prisma.followAction.updateMany({
       where: { ...where, action: 'reference_candidate' },
       data: { action: 'reference_followed', followedAt: now, unfollowScheduledAt: reviewAt },
@@ -168,8 +174,9 @@ export async function POST(req: Request) {
 
   if (operation === 'confirm-followback') {
     const updated = await prisma.followAction.updateMany({
-      where: { ...where, action: 'reference_followed', followedBack: false },
-      data: { followedBack: true, unfollowScheduledAt: null },
+      where: { ...where, action: 'reference_followed', followedBack: false, followedAt: { not: null } },
+      // Preserve the 48-hour deadline measured from the follow timestamp.
+      data: { followedBack: true },
     });
     return updated.count === 1
       ? NextResponse.json({ success: true, source: 'user_reported_not_meta_verified' })
@@ -187,18 +194,22 @@ export async function POST(req: Request) {
   }
 
   if (operation === 'confirm-unfollow') {
-    // The due date is a reminder, not an automated action. Respect manual protection.
+    // Manual record only: require a reciprocated follow at least 48 hours old.
+    // Never treat a missing or unverified follow-back as true.
+    const cutoff = new Date(now.getTime() - FOLLOW_BACK_REVIEW_HOURS * 60 * 60 * 1000);
     const current = await prisma.followAction.findFirst({
-      where: { ...where, action: 'reference_followed', followedBack: false, unfollowScheduledAt: { lte: now } },
+      where: { ...where, action: 'reference_followed', followedBack: true,
+        followedAt: { lte: cutoff } },
       select: { targetUsername: true },
     });
-    if (!current) return NextResponse.json({ error: 'O prazo de 24/72 horas não chegou ou o perfil foi protegido' }, { status: 409 });
+    if (!current) return NextResponse.json({ error: 'Exige follow-back informado e 48 horas após o follow' }, { status: 409 });
     const protectedUser = await prisma.whitelist.findUnique({
       where: { instagramAccountId_username: { instagramAccountId: ctx.accountId, username: current.targetUsername } },
     });
     if (protectedUser) return NextResponse.json({ error: 'Perfil protegido na lista de exclusões' }, { status: 409 });
     const updated = await prisma.followAction.updateMany({
-      where: { ...where, action: 'reference_followed', followedBack: false, unfollowScheduledAt: { lte: now } },
+      where: { ...where, action: 'reference_followed', followedBack: true,
+        followedAt: { lte: cutoff } },
       data: { action: 'reference_unfollowed', unfollowedAt: now },
     });
     return updated.count === 1

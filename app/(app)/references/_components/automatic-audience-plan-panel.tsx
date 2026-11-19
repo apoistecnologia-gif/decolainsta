@@ -100,8 +100,9 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
           </>
         )}
         <p className="text-xs text-muted-foreground">
-          Requisito solicitado: revisar os relacionamentos 48 horas após o follow.
-          O sistema ainda não consegue verificar quem seguiu de volta nem executar follow ou unfollow
+          Regra confirmada: 48 horas após o follow, perfis que seguiram de volta
+          tornam-se elegíveis para avaliação de unfollow; quem não seguiu de volta não entra nessa regra.
+          O sistema ainda não verifica follow-back nem executa follow/unfollow automaticamente
           por uma integração oficial; nenhum temporizador de ação real foi ativado.
         </p>
         {error && <p role="alert" className="text-destructive">{error}</p>}

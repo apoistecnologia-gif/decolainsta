@@ -185,3 +185,39 @@ administrador que escolha cada referência individualmente. O limite de
 uma criação por solicitação e a confirmação administrativa permanecem
 por precaução com os slots do provedor. Não há criação em lote nem
 agendamento de lançamentos nesta etapa.
+
+## Diagnóstico real de conexão no Preview (sem reapresentar a chave)
+
+O botão já existente **Atualizar dados** agora consulta
+`GET /api/provider/phantombuster/connection-status?accountId=...`, que
+faz uma chamada de leitura ao PhantomBuster usando a chave guardada no
+servidor. A rota exige sessão, comprova que a conta pertence ao usuário e
+não envia a chave ao browser. Ela informa apenas o estado da API,
+quantidade de referências e quantas têm coletores registrados naquela
+conta. Não afirma que a coleta foi feita nem que o Instagram foi acessado.
+
+`GET /api/provider/phantombuster?accountId=...` também foi ajustado
+para autorizar **qualquer conta do seu titular** no Preview, sem depender
+da antiga conta piloto. O POST manual legado de diagnóstico de perfil
+permanece separado, mas não é necessário para testar a conexão com a
+chave cadastrada.
+
+A descoberta de agentes utiliza o parâmetro oficialmente documentado
+`withArgument=true` em `GET /agents/fetch-all`. Quando o provedor não
+traz os argumentos de algum agente, há fallback controlado para
+`GET /agents/fetch?id=...`. Em ambos os casos, os argumentos completos
+são descartados no servidor: nomes de usuário, cookies e tokens não
+aparecem na resposta.
+
+Na preparação de rascunhos, a organização não é fixada em
+`phantombuster`; o provedor resolve o workspace associado à chave,
+conforme a API oficial, sem sobrescrever a organização do operador.
+
+### O que foi comprovado
+
+Os testes locais e CI validam autenticação, seleção segura de coletores,
+isolamento entre clientes, resultados sanitizados e ausência de ações
+sociais. **Ainda não são uma execução externa real.** Uma coleta
+real exige um Follower Collector corretamente conectado e previamente
+executado no PhantomBuster. A função aqui apresentada só lê resultados
+finalizados depois de um vínculo aprovado.

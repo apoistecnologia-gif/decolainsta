@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { readCollectorAudience } from '@/lib/providers/phantombuster-audience';
+import { verifyConfiguredFollowerCollector } from '@/lib/providers/phantombuster-collector-discovery';
 import {
   AUDIENCE_HISTORY_ACTION, MAX_HISTORY_BATCHES,
   makeAudienceSnapshot, parseAudienceSnapshot,
@@ -67,13 +68,22 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
   });
   if (!account) return { status: 'skipped', newNames: 0, indexed: 0 };
   const reference = await prisma.targetAccount.findFirst({
-    where: { id: source.referenceId, instagramAccountId: account.id, enabled: true },
+    where: { id: source.referenceId, instagramAccountId: account.id },
     select: { id: true, username: true },
   });
   if (!reference) return { status: 'skipped', newNames: 0, indexed: 0 };
   const claimId = await claim(source);
   if (!claimId) return { status: 'skipped', newNames: 0, indexed: 0 };
   try {
+    // A collector may have been reconfigured after initial binding: fail closed
+    // unless its CURRENT target still exactly matches this saved reference.
+    const inspected = await verifyConfiguredFollowerCollector(
+      apiKey, source.collectorAgentId, reference.username);
+    if (inspected !== 'matched') {
+      await finish(claimId, inspected === 'mismatch'
+        ? 'source-mismatch' : 'source-unavailable');
+      return { status: 'failed', newNames: 0, indexed: 0 };
+    }
     // Read a COMPLETED result only. Never launch a collector or touch Instagram.
     const result = await readCollectorAudience(apiKey, source.collectorAgentId,
       [account.username, reference.username]);
@@ -213,8 +223,7 @@ export async function runReadOnlyAudienceRefresh(onlyAccountId?: string) {
     // Every pairing must belong to the same Instagram account.
     const registered = await prisma.targetAccount.findMany({
       where: { id: { in: sources.map(s => s.referenceId) },
-        instagramAccountId: { in: [...new Set(sources.map(s => s.accountId))] },
-        enabled: true },
+        instagramAccountId: { in: [...new Set(sources.map(s => s.accountId))] } },
       select: { id: true, instagramAccountId: true },
     });
     const validPairs = new Set(registered.map(r => r.instagramAccountId + ':' + r.id));

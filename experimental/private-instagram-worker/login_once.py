@@ -45,6 +45,17 @@ def attempt_once(*, client_factory=None) -> str:
             return "STOPPED_LOGIN_REJECTED"
         if name in {"PleaseWaitFewMinutes", "ClientThrottledError", "FeedbackRequired", "RateLimitError"}:
             return "STOPPED_PLATFORM_RESTRICTION"
+        # Only allowlisted categories are emitted. Never print exception text,
+        # request URLs, response bodies, headers, sessions, usernames or passwords.
+        if isinstance(error, (ImportError, ModuleNotFoundError)):
+            return "STOPPED_DEPENDENCY_ERROR"
+        if name in {"ConnectionError", "ConnectError", "Timeout", "ConnectTimeout",
+                    "ReadTimeout", "SSLError", "ProxyError", "RequestException",
+                    "RequestsError", "CurlError", "NetworkError", "ConnectionResetError"}:
+            return "STOPPED_TRANSPORT_ERROR"
+        if name in {"TypeError", "ValueError", "AttributeError", "KeyError",
+                    "RuntimeError", "AssertionError"}:
+            return "STOPPED_RUNTIME_ERROR"
         return "STOPPED_OTHER_ERROR"
 
 

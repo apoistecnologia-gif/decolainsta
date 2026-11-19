@@ -48,3 +48,6 @@ jobs:
           python -c "import json; d=json.load(open('/tmp/decolainsta-worker-health.json')); assert d['status']=='ready' and d['instagram_connection']=='disabled' and d['follows']=='disabled' and d['unfollows']=='disabled'"
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18080/health)" = "405"
           docker stop decolainsta-pilot-ci
+      - name: Verificar biblioteca real offline, sem contas nem rede
+        run: |
+          docker run --rm --network none --entrypoint python decolainsta-private-pilot-ci -c "from instagrapi import Client; c=Client(with_challenge_flow=False); assert callable(c.login); assert c.with_challenge_flow is False; print('INSTAGRAPI_OFFLINE_CONSTRUCTOR_OK')"

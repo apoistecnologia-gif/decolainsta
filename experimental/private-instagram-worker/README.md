@@ -63,3 +63,17 @@ Caso haja challenge, 2FA, restrição ou erro, não tenta superar a proteção.
 Remova `preDeployCommand` imediatamente após inspecionar o resultado,
 antes de qualquer implantação futura. Nunca deixe esse comando ativo como
 migração permanente.
+
+## Diagnóstico offline após falha não classificada
+
+O primeiro teste de autenticação na Railway retornou apenas `STOPPED_OTHER_ERROR`.
+O usuário não viu nenhum desafio no aplicativo do Instagram, mas isso não confirma
+que a autenticação tenha sido aceita. Nenhum login adicional foi autorizado.
+O tratamento de exceções agora separa erros de dependência, transporte e
+execução, sempre por nomes de categorias estáticas e sem mensagens da biblioteca.
+
+O GitHub Actions valida em contêiner isolado, com `--network none` e sem segredos,
+a construção do cliente real `Client(with_challenge_flow=False)` e a existência
+do método `login()`. Isso NÃO tenta autenticar uma conta nem usar a API do Instagram.
+O comando temporário de pré-deploy foi removido da Railway após o teste inicial;
+o serviço passivo mantém o código anteriormente implantado até nova decisão.

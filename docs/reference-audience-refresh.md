@@ -80,3 +80,22 @@ explícitos e opt-in, continua desligada. Sem resultados novos, retorna
 O painel `/references` permanece simples e não mudou. Ações reais de
 follow/unfollow seguem desativadas. A regra de revisão de 48 h para
 follow-back informado não é alterada nem executada pelo cron.
+
+## Verificação de prontidão sem segredos
+
+A rota `GET /api/provider/phantombuster/refresh-readiness?accountId=<ID>`
+requer sessão do titular e verifica propriedade da conta antes de retornar
+contagens de referências habilitadas, quantas têm associação explícita com um
+coletor e quais nomes de variáveis ainda faltam configurar. Inclui timestamps
+da última tentativa e leitura autenticada bem-sucedida, quando existirem.
+
+A resposta **não revela** chaves, IDs de agentes, cookies, dados brutos nem
+afirma ter consultado PhantomBuster ou Instagram. `technicalReady` significa
+apenas que pré-requisitos locais estão presentes; o teste com o provedor
+continua necessário e a proveniência dos usernames não é verificada pela Meta.
+
+O ID `PHANTOMBUSTER_PILOT_AGENT_ID` cadastrado no projeto piloto originalmente
+identificava um agente **Instagram Followers Auto Follow**. Ele **não deve ser
+associado automaticamente** a uma referência como se fosse um Follower Collector.
+Para uma nova coleta real é indispensável identificar o coletor correto,
+comprovar sua configuração para a referência e conectar a API key com segurança.

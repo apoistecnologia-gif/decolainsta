@@ -86,6 +86,17 @@ test('one-time key route requires user, ownership, same-origin, pilot gates and 
   assert.doesNotMatch(code, /agents\/launch|user_follow|user_unfollow|PRIVATE_API_IG_PASSWORD|prisma\.[a-zA-Z]+\.(create|update|upsert|delete)/);
 });
 
+test('server-key GET is open to any owned account on Preview, not only one pilot username', () => {
+  const source = readFileSync('app/api/provider/phantombuster/route.ts','utf8');
+  assert.match(source,/async function authorizeOwnedAccount/);
+  assert.match(source,/where: \{ id: accountId, userId \}/);
+  assert.match(source,/const owned = await authorizeOwnedAccount\(accountId\)/);
+  assert.match(source,/return reply\(await checkPhantomBusterWorkspace\(key\)\)/);
+  assert.match(source,/process\.env\.VERCEL_ENV !== 'preview'/);
+  assert.doesNotMatch(source.split('export async function GET')[1]
+    .split('export async function POST')[0],/authorizePilot|pilotAgentId/);
+});
+
 test('reference screen can register the exact pilot username locally without Instagram login', () => {
   const source = readFileSync('app/(app)/references/_components/reference-workflow-panel.tsx', 'utf8');
   assert.match(source, /const PILOT_USERNAME = 'contateste6699'/);

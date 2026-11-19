@@ -112,5 +112,9 @@ test('cron faz seleção pelo último claim em vez da ordem fixa do JSON', () =>
   assert.match(route,/dueRefreshSources\(sources, lastAttempts/);
   assert.match(route,/boundAudienceDelta\(/);
   assert.match(route,/deferredByHistoryLimit/);
+  assert.match(route,/skippedConfiguration: sources.length - eligible.length/);
+  assert.match(route,/prisma.targetAccount.findMany/);
+  assert.match(route,/enabled: true \}/);
+  assert.match(route,/dueRefreshSources\(eligible,/);
   assert.doesNotMatch(route,/for \(const source of sources\)/);
 });

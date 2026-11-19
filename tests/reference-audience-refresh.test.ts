@@ -58,7 +58,8 @@ test('agendamento só lê execução finalizada e mantém ações sociais deslig
   assert.match(route, /secret\.length < 32/);
   assert.match(route, /timingSafeEqual/);
   assert.match(route, /PHANTOMBUSTER_AUDIENCE_POLL_ENABLED !== 'yes'/);
-  assert.match(route, /parseAudienceRefreshSources/);
+  assert.match(route, /loadActiveAudienceSources/);
+  assert.doesNotMatch(route, /PHANTOMBUSTER_PILOT_USERNAME|PHANTOMBUSTER_AUDIENCE_SOURCES_JSON/);
   assert.match(route, /where: \{ id: source.referenceId, instagramAccountId: account.id, enabled: true \}/);
   assert.match(route, /result\.resultLocation !== 'completed_run'/);
   assert.match(route, /Prisma.TransactionIsolationLevel.Serializable/);

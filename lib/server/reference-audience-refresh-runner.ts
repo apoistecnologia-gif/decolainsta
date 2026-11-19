@@ -14,10 +14,11 @@ import {
 import { MANUAL_SOURCE_PREFIX, REFERENCE_ACTIONS } from '@/lib/reference-workflow';
 import {
   AUDIENCE_REFRESH_ACTION, boundAudienceDelta, dueRefreshSources,
-  newAudienceNames, parseAudienceRefreshSources, refreshIsDue,
+  newAudienceNames, refreshIsDue,
   type AudienceRefreshSource,
 } from '@/lib/reference-audience-refresh';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
+import { loadActiveAudienceSources } from '@/lib/server/reference-audience-source-store';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
@@ -64,9 +65,7 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
     where: { id: source.accountId },
     select: { id: true, username: true },
   });
-  if (!account || account.username.toLowerCase() !==
-    process.env.PHANTOMBUSTER_PILOT_USERNAME?.toLowerCase())
-    return { status: 'skipped', newNames: 0, indexed: 0 };
+  if (!account) return { status: 'skipped', newNames: 0, indexed: 0 };
   const reference = await prisma.targetAccount.findFirst({
     where: { id: source.referenceId, instagramAccountId: account.id, enabled: true },
     select: { id: true, username: true },
@@ -194,33 +193,34 @@ export async function runReadOnlyAudienceRefresh(onlyAccountId?: string) {
     return NextResponse.json({ enabled: false, examined: 0, instagramActionsExecuted: 0 },
       { headers: HEADERS });
   }
-  const sources = parseAudienceRefreshSources(process.env.PHANTOMBUSTER_AUDIENCE_SOURCES_JSON)
-    .filter(source => !onlyAccountId || source.accountId === onlyAccountId);
+  // No named pilot account and no static list in Vercel. Read only bindings
+  // explicitly approved in the database by the operator.
+  if (process.env.VERCEL_ENV !== 'preview' &&
+      process.env.PHANTOMBUSTER_MULTI_ACCOUNT_PRODUCTION_ENABLED !== 'yes')
+    return NextResponse.json({ enabled: false, reason: 'environment-not-enabled',
+      instagramActionsExecuted: 0 }, { headers: HEADERS });
   const apiKey = process.env.PHANTOMBUSTER_API_KEY;
-  if (!isConfiguredPhantomBusterKey(apiKey) || !process.env.PHANTOMBUSTER_PILOT_USERNAME ||
-      !sources.length)
+  if (!isConfiguredPhantomBusterKey(apiKey))
     return NextResponse.json({ enabled: false, reason: 'configuration-incomplete',
       instagramActionsExecuted: 0 }, { headers: HEADERS });
   const results: RefreshState[] = [];
   try {
-    // Discard stale configuration before taking the limited polling slots.
-    // Deactivated/deleted references must not starve valid later references.
-    const accounts = await prisma.instagramAccount.findMany({
-      where: { id: { in: [...new Set(sources.map(s => s.accountId))] } },
-      select: { id: true, username: true },
-    });
-    const permittedAccounts = accounts.filter(a => a.username.toLowerCase() ===
-      process.env.PHANTOMBUSTER_PILOT_USERNAME!.toLowerCase()).map(a => a.id);
+    const sources = await loadActiveAudienceSources(onlyAccountId);
+    if (!sources.length)
+      return NextResponse.json({ enabled: false, reason: 'no-approved-collector-bindings',
+        instagramActionsExecuted: 0 }, { headers: HEADERS });
+    // Disabled or deleted references do not consume the limited polling slots.
+    // Every pairing must belong to the same Instagram account.
     const registered = await prisma.targetAccount.findMany({
       where: { id: { in: sources.map(s => s.referenceId) },
-        instagramAccountId: { in: permittedAccounts }, enabled: true },
+        instagramAccountId: { in: [...new Set(sources.map(s => s.accountId))] },
+        enabled: true },
       select: { id: true, instagramAccountId: true },
     });
     const validPairs = new Set(registered.map(r => r.instagramAccountId + ':' + r.id));
     const eligible = sources.filter(s => validPairs.has(s.accountId + ':' + s.referenceId));
 
-    // Use the newest attempt per owned account/reference to fairly schedule
-    // sources; a fixed JSON order can otherwise starve the fourth reference.
+    // Prioritize overdue sources across all registered customer accounts.
     const lastAttempts = await prisma.activityLog.groupBy({
       by: ['instagramAccountId', 'targetUsername'],
       where: {

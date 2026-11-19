@@ -60,15 +60,26 @@ test('cloud workflow requires auth, scopes reference and lead by owned account a
   assert.match(code, /source: 'user_reported_not_meta_verified'/);
 });
 
-test('reference screen is primary and never claims Instagram action was executed', () => {
+test('references main screen is simple and manual diagnostics remain separately accessible', () => {
   const page = readFileSync('app/(app)/references/page.tsx', 'utf8');
+  const simple = readFileSync('app/(app)/references/_components/simple-references-panel.tsx', 'utf8');
+  const diagnostics = readFileSync('app/(app)/references/diagnostics/page.tsx', 'utf8');
   const panel = readFileSync('app/(app)/references/_components/reference-workflow-panel.tsx', 'utf8');
   const sidebar = readFileSync('app/(app)/_components/app-sidebar.tsx', 'utf8');
-  assert.match(page, /ReferenceWorkflowPanel/);
+  const authLayout = readFileSync('app/(app)/layout.tsx', 'utf8');
+  assert.match(page, /SimpleReferencesPanel/);
+  assert.doesNotMatch(page, /ReferenceWorkflowPanel|ReferenceAudiencePanel|AutomaticAudiencePlanPanel/);
+  assert.match(simple, /Contas de referência/);
+  assert.match(simple, /Candidatos identificados/);
+  assert.match(simple, /\/references\/diagnostics/);
+  assert.match(simple, /Adicionar referência/);
+  assert.doesNotMatch(simple, /agents\/launch|user_follow|user_unfollow|audience-bulk-import|confirm-follow|confirm-unfollow|sessionid/);
+  assert.match(diagnostics, /ReferenceWorkflowPanel/);
+  assert.match(diagnostics, /ReferenceHistoryPanel/);
+  assert.match(authLayout, /redirect\('\/login'\)/);
   assert.match(panel, /Confirmei que segui/);
   assert.match(panel, /Confirmei que deixei de seguir/);
   assert.match(panel, /não executa unfollow automaticamente/);
-  assert.match(panel, /não uma coleta automatizada ou auditoria da Meta/);
   assert.ok(sidebar.indexOf("href: '/references'") < sidebar.indexOf("href: '/scheduled-posts'"));
 });
 

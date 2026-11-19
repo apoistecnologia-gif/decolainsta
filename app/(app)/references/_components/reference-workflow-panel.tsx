@@ -215,7 +215,7 @@ export function ReferenceWorkflowPanel() {
     <div className="space-y-5">
       <Card>
         <CardHeader>
-          <CardTitle>Fluxo principal: audiência das contas de referência</CardTitle>
+          <CardTitle>Ferramentas técnicas de referências e acompanhamento</CardTitle>
           <CardDescription>
             Registre as referências e os perfis que você identificou nelas, acompanhe follows confirmados manualmente
             e veja a revisão 48 horas após o follow, somente quando houver follow-back informado.

@@ -16,7 +16,28 @@ type QueueResult = {
   actionsEnabled: false;
   instagramActionsExecuted: 0;
 };
+type RelationshipOverview = {
+  basis: 'operator_reported_not_meta_verified';
+  followbackVerifiedByMeta: false;
+  socialActionsEnabled: false;
+  reviewHours: 48;
+  reportedRecords: number;
+  manuallyTrackedCandidates: number;
+  reportedFollowed: number;
+  followBackReported: number;
+  due48hReview: number;
+  awaiting48h: number;
+  followBackNotReported: number;
+  protectedDue48h: number;
+  invalidFollowTimestamps: number;
+  keptReported: number;
+  unfollowReported: number;
+  identifiedWithoutReportedAction: number;
+  identifiedWithReportedAction: number;
+};
+
 type CandidateIndexSummary = {
+  relationshipOverview: RelationshipOverview;
   persistedCandidates: number;
   referencesRepresented: number;
   capacity: number;
@@ -164,8 +185,33 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
                 )}
               </div>
             )}
+            {index && (
+              <div className="space-y-2 border-t pt-2">
+                <p className="font-medium">Estados de acompanhamento — somente registros informados</p>
+                <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                  <p>Identificados sem ação informada: <strong>{index.relationshipOverview.identifiedWithoutReportedAction}</strong></p>
+                  <p>Follows informados: <strong>{index.relationshipOverview.reportedFollowed}</strong></p>
+                  <p>Follow-backs informados: <strong>{index.relationshipOverview.followBackReported}</strong></p>
+                  <p>Aguardando 48h: <strong>{index.relationshipOverview.awaiting48h}</strong></p>
+                  <p>Elegíveis para revisão 48h: <strong>{index.relationshipOverview.due48hReview}</strong></p>
+                  <p>Unfollows informados: <strong>{index.relationshipOverview.unfollowReported}</strong></p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {index.relationshipOverview.protectedDue48h} perfil(is) protegidos fora da revisão,
+                  {' '}{index.relationshipOverview.followBackNotReported} follow(s) sem follow-back informado.
+                  Esses eventos não foram verificados pela Meta.
+                </p>
+                {index.relationshipOverview.invalidFollowTimestamps > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Atenção: {index.relationshipOverview.invalidFollowTimestamps} registro(s)
+                    com data de follow inconsistente.
+                  </p>
+                )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
-              Nenhum follow ou unfollow executado. O índice não é uma fila de execução do Instagram.
+              Nenhum follow ou unfollow executado pelo DECOLA INSTA.
+              O índice não é uma fila de execução do Instagram.
             </p>
             {queue.historyTruncated && <p className="text-xs text-muted-foreground">
               Histórico extenso: somente as últimas consultas dentro do limite foram processadas.

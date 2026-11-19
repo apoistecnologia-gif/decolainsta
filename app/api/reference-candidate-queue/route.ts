@@ -10,7 +10,8 @@ import {
   MAX_CANDIDATES_PER_ACCOUNT, MAX_SNAPSHOTS_PER_SYNC, MAX_QUEUE_ENTRIES_PER_SYNC,
   makeCandidateEvidence, parseCandidateEvidence, planCandidateIndex,
 } from '@/lib/reference-candidate-queue';
-import { REFERENCE_ACTIONS } from '@/lib/reference-workflow';
+import { MANUAL_SOURCE_PREFIX, REFERENCE_ACTIONS } from '@/lib/reference-workflow';
+import { summarizeReportedRelationships } from '@/lib/reference-relationship-overview';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
@@ -41,11 +42,26 @@ export async function GET(req: Request) {
   const rejection = denied(ctx);
   if (rejection) return rejection;
   if ('error' in ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-  const saved = await prisma.activityLog.findMany({
-    where: { instagramAccountId: ctx.account.id, action: AUDIENCE_CANDIDATE_ACTION },
-    select: { id: true, targetUsername: true, details: true, createdAt: true },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: MAX_QUEUE_ENTRIES_PER_SYNC + 1,
-  });
+  const [saved, reportedRelationships, protectedProfiles] = await Promise.all([
+    prisma.activityLog.findMany({
+      where: { instagramAccountId: ctx.account.id, action: AUDIENCE_CANDIDATE_ACTION },
+      select: { id: true, targetUsername: true, details: true, createdAt: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: MAX_QUEUE_ENTRIES_PER_SYNC + 1,
+    }),
+    prisma.followAction.findMany({
+      where: {
+        instagramAccountId: ctx.account.id, isDryRun: false,
+        sourceTarget: { startsWith: MANUAL_SOURCE_PREFIX },
+        action: { in: [...REFERENCE_ACTIONS] },
+      },
+      select: { targetUsername: true, action: true, followedBack: true, followedAt: true },
+      take: MAX_QUEUE_ENTRIES_PER_SYNC + 1,
+    }),
+    prisma.whitelist.findMany({
+      where: { instagramAccountId: ctx.account.id },
+      select: { username: true }, take: 2000,
+    }),
+  ]);
   const candidates = saved.flatMap(item => {
     const evidence = parseCandidateEvidence(item.details);
     return evidence && item.targetUsername
@@ -76,7 +92,11 @@ export async function GET(req: Request) {
   }
   const counts = [...byReference.values()].sort((a,b) =>
     b.candidates - a.candidates || a.referenceUsername.localeCompare(b.referenceUsername));
+  const relationshipOverview = summarizeReportedRelationships(
+    seen, reportedRelationships, protectedProfiles.map(row => row.username), new Date(),
+  );
   return NextResponse.json({
+    relationshipOverview,
     persistedCandidates: seen.size,
     referencesRepresented: counts.length,
     byReference: counts,

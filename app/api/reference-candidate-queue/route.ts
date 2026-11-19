@@ -25,8 +25,8 @@ async function authorize(accountId: unknown) {
     where: { id: accountId, userId }, select: { id: true, username: true },
   });
   if (!account) return { error: 'Conta não encontrada', code: 404 } as const;
-  if (process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes' ||
-      process.env.PHANTOMBUSTER_PILOT_USERNAME?.toLowerCase() !== account.username.toLowerCase())
+  if (process.env.VERCEL_ENV !== 'preview' ||
+      process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes')
     return { error: 'Fila experimental indisponível', code: 403 } as const;
   return { account } as const;
 }

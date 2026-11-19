@@ -12,7 +12,9 @@ export async function loadActiveAudienceSources(accountId?: string) {
   const rows = await prisma.activityLog.findMany({
     where: {
       action: AUDIENCE_SOURCE_BINDING_ACTION,
-      ...(accountId ? { instagramAccountId: accountId } : {}),
+      // Always load the GLOBAL registry before account filtering. Otherwise
+      // a duplicate agent bound to another tenant becomes invisible and
+      // the per-account refresh could ingest cross-tenant results.
     },
     select: {
       id: true, instagramAccountId: true,
@@ -23,5 +25,7 @@ export async function loadActiveAudienceSources(accountId?: string) {
   });
   if (rows.length > MAX_SOURCE_BINDING_LOGS)
     throw new Error('audience-bindings-require-compaction');
-  return resolveActiveAudienceSources(rows);
+  const globallyUnambiguous = resolveActiveAudienceSources(rows);
+  return accountId ? globallyUnambiguous.filter(s => s.accountId === accountId)
+    : globallyUnambiguous;
 }

@@ -1,12 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RefreshCw, ExternalLink } from 'lucide-react';
+import { RefreshCw, ExternalLink, History, Trash2 } from 'lucide-react';
 
 type Reference = { id: string; username: string };
+type HistoryItem = {
+  id: string; savedAt: string; usernames: string[]; collectorAgentId: string;
+  resultLocation: 'completed_run' | 'latest_agent_file'; referenceVerified: false;
+};
 type PreviewStatus = 'found' | 'no-run' | 'no-results' | 'unsupported-result'
   | 'invalid-key' | 'rate-limited' | 'unavailable';
 type Preview = {
@@ -43,10 +47,100 @@ export function ReferenceAudiencePanel({
   const [result, setResult] = useState<Preview | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyMessage, setHistoryMessage] = useState('');
 
   const selected = references.some(ref => ref.id === referenceId)
     ? referenceId
     : (references[0]?.id ?? '');
+
+  useEffect(() => {
+    if (!accountId || !selected) {
+      setHistory([]);
+      return;
+    }
+    let active = true;
+    void fetch(`/api/provider/phantombuster/audience-history?accountId=${encodeURIComponent(accountId)}&referenceId=${encodeURIComponent(selected)}`,
+      { cache: 'no-store', credentials: 'same-origin' })
+      .then(async response => {
+        if (!response.ok) throw Error('Histórico indisponível');
+        return response.json() as Promise<{ history: HistoryItem[] }>;
+      })
+      .then(data => { if (active && Array.isArray(data.history)) setHistory(data.history); })
+      .catch(() => { if (active) setHistory([]); });
+    return () => { active = false; };
+  }, [accountId, selected]);
+
+  async function reloadHistory() {
+    const response = await fetch(
+      `/api/provider/phantombuster/audience-history?accountId=${encodeURIComponent(accountId)}&referenceId=${encodeURIComponent(selected)}`,
+      { cache: 'no-store', credentials: 'same-origin' },
+    );
+    if (!response.ok) throw Error('Não foi possível atualizar o histórico.');
+    const data = await response.json() as { history: HistoryItem[] };
+    if (Array.isArray(data.history)) setHistory(data.history);
+  }
+
+  async function saveHistory() {
+    if (!selected || !accountId || busy) return;
+    const key = apiKey.trim();
+    const agent = collectorAgentId.trim();
+    if (!/^\d{10,25}$/.test(agent) || !key) {
+      setError('Para registrar, informe novamente o ID do coletor e a chave API temporária.');
+      return;
+    }
+    setApiKey('');
+    setError('');
+    setHistoryMessage('');
+    setBusy(true);
+    try {
+      const response = await fetch('/api/provider/phantombuster/audience-history', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store', credentials: 'same-origin', redirect: 'error',
+        body: JSON.stringify({ accountId, referenceId: selected, collectorAgentId: agent,
+          apiKey: key, confirmSave: true }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) {
+        const reason = data && typeof data === 'object' && 'error' in data
+          ? String((data as { error: unknown }).error) : 'Falha ao registrar histórico';
+        throw Error(reason);
+      }
+      const outcome = data as { status: string; saved: boolean; duplicate: boolean; importedCount?: number };
+      if (outcome.saved) {
+        setHistoryMessage(`Consulta registrada: ${outcome.importedCount ?? 0} nomes, sem ações no Instagram.`);
+      } else if (outcome.duplicate) {
+        setHistoryMessage('Esta mesma lista já está registrada. Não houve duplicação.');
+      } else if (outcome.status === 'history-limit') {
+        setHistoryMessage('Limite de 25 consultas por referência. Exclua uma antiga para liberar espaço.');
+      } else if (Object.prototype.hasOwnProperty.call(MESSAGES, outcome.status)) {
+        setHistoryMessage(MESSAGES[outcome.status as PreviewStatus]);
+      } else throw Error('Resposta desconhecida');
+      await reloadHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao registrar histórico');
+    } finally { setBusy(false); }
+  }
+
+  async function deleteHistory(historyId: string) {
+    if (!accountId || !selected || busy ||
+      !window.confirm('Excluir esta consulta salva e seus nomes do histórico?')) return;
+    setBusy(true);
+    setHistoryMessage('');
+    setError('');
+    try {
+      const response = await fetch('/api/provider/phantombuster/audience-history', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store', credentials: 'same-origin', redirect: 'error',
+        body: JSON.stringify({ accountId, referenceId: selected, historyId, confirmDelete: true }),
+      });
+      if (!response.ok) throw Error('Não foi possível excluir o registro.');
+      await reloadHistory();
+      setHistoryMessage('Consulta removida do histórico.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao excluir histórico');
+    } finally { setBusy(false); }
+  }
 
   async function check() {
     if (!selected || !accountId || busy) return;
@@ -93,7 +187,7 @@ export function ReferenceAudiencePanel({
         <CardTitle className="text-base">Seguidores de referência — prévia experimental</CardTitle>
         <CardDescription>
           Consulta somente resultados antigos de um Instagram Follower Collector configurado por você.
-          Não inicia coleta, follow ou unfollow, e não salva perfis no banco.
+          Não inicia coleta, follow ou unfollow. A prévia não salva perfis; o histórico opcional só grava após seu clique.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -107,7 +201,7 @@ export function ReferenceAudiencePanel({
           <>
             <label htmlFor="collector-reference" className="block font-medium">Conta de referência cadastrada</label>
             <select id="collector-reference" value={selected}
-              onChange={e => { setReferenceId(e.target.value); setResult(null); }}
+              onChange={e => { setReferenceId(e.target.value); setResult(null); setHistory([]); setHistoryMessage(''); }}
               className="w-full rounded-md border bg-background px-3 py-2">
               {references.map(ref => <option key={ref.id} value={ref.id}>@{ref.username}</option>)}
             </select>
@@ -124,6 +218,20 @@ export function ReferenceAudiencePanel({
               <RefreshCw className="h-4 w-4 mr-2"/>
               {busy ? 'Consultando...' : 'Ler resultados anteriores (sem executar coletor)'}
             </Button>
+            <div className="rounded-md border p-3 space-y-2">
+              <p className="font-medium">Histórico opcional de consultas</p>
+              <p className="text-xs text-muted-foreground">
+                Se escolher registrar, o DECOLA INSTA fará uma nova leitura da execução anterior e
+                guardará até 10 nomes, a referência indicada, o ID do coletor, a origem e a data de registro.
+                Não importa todos os 429 nomes, não inicia coleta nem registra follow.
+              </p>
+              <Button type="button" variant="outline" onClick={() => void saveHistory()}
+                disabled={busy || !accountId || !selected}>
+                <History className="h-4 w-4 mr-2"/>
+                {busy ? 'Processando...' : 'Registrar consulta no histórico'}
+              </Button>
+              {historyMessage && <p role="status" className="text-sm">{historyMessage}</p>}
+            </div>
             <p className="text-xs text-muted-foreground">
               <a className="underline inline-flex items-center gap-1"
                 href="https://support.phantombuster.com/hc/en-us/articles/26971109041170-How-to-Use-the-Instagram-Follower-Collector"
@@ -152,10 +260,45 @@ export function ReferenceAudiencePanel({
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Somente leitura; nenhuma pessoa foi seguida, nenhum registro foi persistido.
+                  Esta prévia é somente leitura. Salvar no histórico requer o botão separado acima.
+                  Nenhuma pessoa foi seguida.
                 </p>
               </>
             )}
+          </div>
+        )}
+        {references.length > 0 && (
+          <div className="rounded-md border p-3 space-y-2">
+            <p className="font-medium">Histórico registrado desta referência</p>
+            <p className="text-xs text-muted-foreground">
+              {history.length} consulta(s) salva(s), {new Set(history.flatMap(entry => entry.usernames)).size} nome(s)
+              distinto(s) no histórico. Dados fornecidos pela PhantomBuster, sem verificação independente da Meta.
+            </p>
+            {history.length === 0 && <p className="text-muted-foreground text-xs">Nenhuma consulta registrada ainda.</p>}
+            {history.map(entry => (
+              <div key={entry.id} className="rounded border p-2 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs">
+                    Registrado em {new Date(entry.savedAt).toLocaleString('pt-BR')}
+                    {' · '}{entry.usernames.length} nomes
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" disabled={busy}
+                    onClick={() => void deleteHistory(entry.id)} aria-label="Excluir consulta salva">
+                    <Trash2 className="h-4 w-4"/>
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Coletor {entry.collectorAgentId} · {entry.resultLocation === 'latest_agent_file'
+                    ? 'Arquivo mais recente do coletor' : 'Execução finalizada'} · Origem indicada, não verificada
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {entry.usernames.map(name => <a key={name}
+                    href={`https://www.instagram.com/${encodeURIComponent(name)}/`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="border rounded px-2 py-1 text-xs underline">@{name}</a>)}
+                </div>
+              </div>
+            ))}
           </div>
         )}
         {error && <p role="alert" className="text-destructive">{error}</p>}

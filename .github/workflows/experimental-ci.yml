@@ -37,3 +37,14 @@ jobs:
           python-version: '3.12'
       - name: Testar adaptador privado (sem Instagram e sem credenciais)
         run: python -m unittest discover -s experimental/private-instagram-worker/tests -v
+      - name: Validar imagem Docker do serviço passivo Railway
+        run: |
+          docker build -t decolainsta-private-pilot-ci experimental/private-instagram-worker
+          docker run -d --name decolainsta-pilot-ci -p 127.0.0.1:18080:8080 decolainsta-private-pilot-ci
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            if curl --silent --show-error --fail http://127.0.0.1:18080/health -o /tmp/decolainsta-worker-health.json; then break; fi
+            sleep 1
+          done
+          python -c "import json; d=json.load(open('/tmp/decolainsta-worker-health.json')); assert d['status']=='ready' and d['instagram_connection']=='disabled' and d['follows']=='disabled' and d['unfollows']=='disabled'"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18080/health)" = "405"
+          docker stop decolainsta-pilot-ci

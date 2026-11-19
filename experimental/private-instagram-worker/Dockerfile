@@ -9,7 +9,7 @@ WORKDIR /opt/private-instagram-worker
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
-COPY adapter.py cli.py health_service.py ./
+COPY adapter.py cli.py health_service.py login_once.py ./
 
 RUN groupadd --system worker && useradd --system --gid worker --home-dir /opt/private-instagram-worker worker
 USER worker

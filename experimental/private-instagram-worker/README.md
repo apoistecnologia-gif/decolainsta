@@ -48,3 +48,18 @@ Para implantar **apenas o serviço passivo**, use um novo serviço Railway com o
 Verifique o healthcheck `/health` e **não adicione domínio público** ao serviço: não existe interface do cliente nele. O contêiner permanece ativo e poderá gerar cobrança de infraestrutura; não o deixe rodando sem necessidade. A aplicação Next.js permanece na Vercel, o banco continua na Neon e não há sincronização entre o serviço passivo e o DECOLA INSTA.
 
 A instalação da integração Railway no ChatGPT, por si só, não cria serviço ou deploy. Este commit **não cria qualquer recurso da Railway nem altera segredos**. Um piloto privado autenticado e qualquer execução real exigem avaliação e autorização específicas.
+
+## Teste pontual de login (não ativado automaticamente)
+
+O arquivo `login_once.py` não é usado no start do serviço. Somente uma intervenção
+temporária em `preDeployCommand` com `PRIVATE_API_LOGIN_ONCE_APPROVED=yes python login_once.py`
+executa a chamada `Client(with_challenge_flow=False).login(...)`. Os resultados
+possíveis são rótulos fixos, sem mensagens, stack traces, senhas ou IDs do Instagram.
+
+O comando faz **uma invocação** da rotina de login da biblioteca (que pode
+internamente fazer várias requisições de autenticação). Não lê seguidores,
+não verifica perfis e não executa follows/unfollows. Não persiste sessão.
+Caso haja challenge, 2FA, restrição ou erro, não tenta superar a proteção.
+Remova `preDeployCommand` imediatamente após inspecionar o resultado,
+antes de qualquer implantação futura. Nunca deixe esse comando ativo como
+migração permanente.

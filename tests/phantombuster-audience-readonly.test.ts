@@ -201,3 +201,45 @@ test('collector does not attempt result-file fallback after authentication failu
   assert.equal(output.status, 'invalid-key');
   assert.doesNotMatch(JSON.stringify(output), /PRIVATE/);
 });
+
+test('full read keeps preview limited to ten and imports at most 500 validated usernames', async () => {
+  const { readCollectorAudience } = await import('../lib/providers/phantombuster-audience');
+  const rows = Array.from({ length: 429 }, (_, i) => ({
+    username: 'follower' + i, email: 'PRIVATE@EXAMPLE.COM',
+  }));
+  const get = async (url: string) => url.includes('/fetch-all')
+    ? new Response(JSON.stringify([{ id:'1111111111111111' }]), { status: 200 })
+    : new Response(JSON.stringify({ resultObject: rows }), { status: 200 });
+  const all = await readCollectorAudience('test-key','1234567890123456',['follower5'],get);
+  const preview = await previewCollectorResult('test-key','1234567890123456',[],get);
+  assert.equal(all.status,'found');
+  assert.equal(all.usernames.length,428);
+  assert.equal(all.usernames.includes('follower5'),false);
+  assert.equal(preview.usernames.length,10);
+  assert.doesNotMatch(JSON.stringify(all),/PRIVATE|EXAMPLE/);
+  const extra = await readCollectorAudience('test-key','1234567890123456',[],async url =>
+    url.includes('/fetch-all')
+      ? new Response(JSON.stringify([{id:'1111111111111111'}]),{status:200})
+      : new Response(JSON.stringify({resultObject:Array.from({length:600},(_,i)=>({username:'person'+i}))}),{status:200}));
+  assert.equal(extra.usernames.length,500);
+});
+
+test('bulk import is explicit, scoped, idempotent, serializable and never launches collector or IG actions', () => {
+  const code = readFileSync('app/api/provider/phantombuster/audience-bulk-import/route.ts','utf8');
+  const ui = readFileSync('app/(app)/references/_components/reference-audience-panel.tsx','utf8');
+  assert.match(code, /const session = await auth\(\)/);
+  assert.match(code, /where: \{ id: input.accountId, userId \}/);
+  assert.match(code, /where: \{ id: input.referenceId, instagramAccountId: account.id \}/);
+  assert.match(code, /origin !== new URL\(req.url\).origin/);
+  assert.match(code, /input.confirmBulkImport !== true/);
+  assert.match(code, /readCollectorAudience\(/);
+  assert.match(code, /names\.slice\(offset, offset \+ 10\)/);
+  assert.match(code, /Prisma.TransactionIsolationLevel.Serializable/);
+  assert.match(code, /fingerprints\.has\(batch.fingerprint\)/);
+  assert.match(code, /tx.activityLog.createMany\(/);
+  assert.match(code, /MAX_HISTORY_BATCHES/);
+  assert.doesNotMatch(code, /agents\/launch|user_follow|user_unfollow|followAction\.(create|update|delete)|instagram\.com/);
+  assert.match(ui, /Importar resultado completo do coletor/);
+  assert.match(ui, /confirmBulkImport: true/);
+  assert.match(ui, /setApiKey\(''\)/);
+});

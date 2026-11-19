@@ -1,5 +1,5 @@
 /**
- * Read at most 10 usernames from a PREVIOUSLY COMPLETED PhantomBuster run.
+ * Read only usernames from a PREVIOUSLY COMPLETED PhantomBuster run.
  * Does not launch a Phantom, call Instagram or persist followers/credentials.
  * The operator associates a Collector agent with a saved reference; PhantomBuster
  * output by itself does NOT verify follower-of-reference provenance.
@@ -120,8 +120,9 @@ function safeUsername(item: unknown): string | null {
   } catch { return null; }
 }
 
-export async function previewCollectorResult(
-  apiKey: string, agentId: string, excludedUsernames: string[], fetcher: Fetcher = fetch,
+async function readCollectorResult(
+  apiKey: string, agentId: string, excludedUsernames: string[],
+  maxNames: number, maxRows: number, fetcher: Fetcher,
 ): Promise<AudiencePreview> {
   if (!apiKey.trim() || !/^\d{10,25}$/.test(agentId)) return result('unsupported-result');
   try {
@@ -190,11 +191,25 @@ export async function previewCollectorResult(
     if (!sourceRows.length) return result('no-results');
     const excluded = new Set(excludedUsernames.map(x => x.toLowerCase()));
     const unique = new Set<string>();
-    for (const item of sourceRows.slice(0, 150)) {
+    for (const item of sourceRows.slice(0, maxRows)) {
       const username = safeUsername(item);
       if (username && !excluded.has(username)) unique.add(username);
-      if (unique.size >= 10) break;
+      if (unique.size >= maxNames) break;
     }
     return unique.size ? result('found', [...unique], location) : result('no-results');
   } catch { return result('unavailable'); }
+}
+
+/** Existing ten-name preview; never increases its exposure or writes. */
+export async function previewCollectorResult(
+  apiKey: string, agentId: string, excludedUsernames: string[], fetcher: Fetcher = fetch,
+): Promise<AudiencePreview> {
+  return readCollectorResult(apiKey, agentId, excludedUsernames, 10, 150, fetcher);
+}
+
+/** Optional explicit full read: at most 500 allowlisted usernames, no raw profile data. */
+export async function readCollectorAudience(
+  apiKey: string, agentId: string, excludedUsernames: string[], fetcher: Fetcher = fetch,
+): Promise<AudiencePreview> {
+  return readCollectorResult(apiKey, agentId, excludedUsernames, 500, 5000, fetcher);
 }

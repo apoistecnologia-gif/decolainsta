@@ -111,13 +111,59 @@ export function ReferenceAudiencePanel({
       } else if (outcome.duplicate) {
         setHistoryMessage('Esta mesma lista já está registrada. Não houve duplicação.');
       } else if (outcome.status === 'history-limit') {
-        setHistoryMessage('Limite de 25 consultas por referência. Exclua uma antiga para liberar espaço.');
+        setHistoryMessage('Limite de 60 consultas por referência. Exclua uma antiga para liberar espaço.');
       } else if (Object.prototype.hasOwnProperty.call(MESSAGES, outcome.status)) {
         setHistoryMessage(MESSAGES[outcome.status as PreviewStatus]);
       } else throw Error('Resposta desconhecida');
       await reloadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao registrar histórico');
+    } finally { setBusy(false); }
+  }
+
+  async function importCompleteAudience() {
+    if (!selected || !accountId || busy) return;
+    const key = apiKey.trim();
+    const agent = collectorAgentId.trim();
+    if (!/^\d{10,25}$/.test(agent) || !key) {
+      setError('Informe o ID do coletor e sua chave API temporária para importar os resultados.');
+      return;
+    }
+    if (!window.confirm(
+      'Importar até 500 nomes do resultado já existente para o histórico do DECOLA INSTA? ' +
+      'Serão gravados somente usernames, referência e proveniência. Nenhuma ação ocorrerá no Instagram.',
+    )) return;
+    setApiKey('');
+    setError('');
+    setHistoryMessage('');
+    setBusy(true);
+    try {
+      const response = await fetch('/api/provider/phantombuster/audience-bulk-import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store', credentials: 'same-origin', redirect: 'error',
+        body: JSON.stringify({ accountId, referenceId: selected, collectorAgentId: agent,
+          apiKey: key, confirmBulkImport: true }),
+      });
+      const data = await response.json() as {
+        error?: string; status?: string; importedCount?: number; newBatches?: number;
+        totalAvailable?: number;
+      };
+      if (!response.ok) throw Error(data.error || 'Falha ao importar o resultado completo.');
+      if (data.status === 'saved') {
+        setHistoryMessage(
+          `Importação concluída: ${data.importedCount ?? 0} nomes em ${data.newBatches ?? 0} novos lotes. ` +
+          'Atualize a página para sincronizar o índice persistente de candidatos. Não houve ações no Instagram.',
+        );
+      } else if (data.status === 'duplicate') {
+        setHistoryMessage('Esses resultados já constam do histórico. Nenhuma duplicação foi criada.');
+      } else if (data.status === 'history-limit') {
+        setHistoryMessage('O histórico atingiu o limite de 60 lotes desta referência.');
+      } else if (data.status && Object.prototype.hasOwnProperty.call(MESSAGES, data.status)) {
+        setHistoryMessage(MESSAGES[data.status as PreviewStatus]);
+      } else throw Error('Resposta desconhecida da importação.');
+      await reloadHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao importar resultados.');
     } finally { setBusy(false); }
   }
 
@@ -229,6 +275,20 @@ export function ReferenceAudiencePanel({
                 <History className="h-4 w-4 mr-2"/>
                 {busy ? 'Processando...' : 'Registrar consulta no histórico'}
               </Button>
+              <div className="rounded-md border p-3 space-y-2">
+                <p className="font-medium">Importar resultados completos (até 500 nomes)</p>
+                <p className="text-xs text-muted-foreground">
+                  Usa a execução já concluída da PhantomBuster; salva apenas usernames validados,
+                  em lotes de até dez, associados à referência selecionada.
+                  A origem permanece não verificada pela Meta. Nenhum follow ou unfollow é executado.
+                  É preciso informar a chave temporária novamente para essa operação.
+                </p>
+                <Button type="button" variant="outline" onClick={() => void importCompleteAudience()}
+                  disabled={busy || !accountId || !selected}>
+                  <History className="h-4 w-4 mr-2"/>
+                  {busy ? 'Importando...' : 'Importar resultado completo do coletor'}
+                </Button>
+              </div>
               {historyMessage && <p role="status" className="text-sm">{historyMessage}</p>}
             </div>
             <p className="text-xs text-muted-foreground">

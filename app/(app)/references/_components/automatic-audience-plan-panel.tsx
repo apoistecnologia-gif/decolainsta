@@ -20,11 +20,9 @@ type Plan = {
 export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string }) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!accountId) return;
-    setLoading(true);
-    setError('');
     try {
       const response = await fetch(`/api/reference-auto-plan?accountId=${encodeURIComponent(accountId)}`,
         { cache: 'no-store', credentials: 'same-origin', signal });
@@ -55,7 +53,9 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <Button type="button" variant="outline" onClick={() => void load()} disabled={loading || !accountId}>
+        <Button type="button" variant="outline"
+          onClick={() => { setLoading(true); setError(''); void load(); }}
+          disabled={loading || !accountId}>
           <RefreshCw className="h-4 w-4 mr-2" />
           {loading ? 'Atualizando...' : 'Atualizar planejamento'}
         </Button>

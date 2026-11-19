@@ -70,3 +70,34 @@ test('previews are still read-only and new history is an explicit user action', 
   assert.match(ui, /confirmSave: true/);
   assert.doesNotMatch(ui, /localStorage|sessionStorage|agents\/launch|user_follow|user_unfollow/);
 });
+
+test('history metrics count distinct, repeated and newly seen usernames chronologically', async () => {
+  const { summarizeAudienceHistory } = await import('../lib/reference-audience-metrics');
+  const history = [
+    { id: 'latest', savedAt: '2026-11-19T16:00:00.000Z', usernames: ['b', 'c', 'c'] },
+    { id: 'first', savedAt: '2026-11-19T10:00:00.000Z', usernames: ['a', 'b'] },
+    { id: 'middle', savedAt: '2026-11-19T12:00:00.000Z', usernames: ['a', 'd'] },
+  ];
+  const m = summarizeAudienceHistory(history);
+  assert.equal(m.consultations, 3);
+  assert.equal(m.distinctNames, 4);
+  assert.equal(m.repeatedNames, 2);
+  assert.equal(m.appearances, 6);
+  assert.deepEqual(m.byBatchId.first, { newNames: 2, repeatedNames: 0 });
+  assert.deepEqual(m.byBatchId.middle, { newNames: 1, repeatedNames: 1 });
+  assert.deepEqual(m.byBatchId.latest, { newNames: 1, repeatedNames: 1 });
+  assert.deepEqual(history.map(x => x.id), ['latest', 'first', 'middle'], 'does not mutate history order');
+});
+
+test('history metrics are empty-safe and never transmit or save data', async () => {
+  const { summarizeAudienceHistory } = await import('../lib/reference-audience-metrics');
+  const m = summarizeAudienceHistory([]);
+  assert.equal(m.consultations, 0);
+  assert.equal(m.distinctNames, 0);
+  assert.equal(m.repeatedNames, 0);
+  const ui = readFileSync('app/(app)/references/_components/reference-audience-panel.tsx', 'utf8');
+  const helper = readFileSync('lib/reference-audience-metrics.ts', 'utf8');
+  assert.match(ui, /summarizeAudienceHistory\(history\)/);
+  assert.match(ui, /historyMetrics\.repeatedNames/);
+  assert.doesNotMatch(helper, /fetch\(|prisma\.|agents\/launch|user_follow|user_unfollow|localStorage/);
+});

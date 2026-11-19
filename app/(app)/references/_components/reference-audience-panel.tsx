@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RefreshCw, ExternalLink, History, Trash2 } from 'lucide-react';
+import { summarizeAudienceHistory } from '@/lib/reference-audience-metrics';
 
 type Reference = { id: string; username: string };
 type HistoryItem = {
@@ -49,6 +50,7 @@ export function ReferenceAudiencePanel({
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyMessage, setHistoryMessage] = useState('');
+  const historyMetrics = summarizeAudienceHistory(history);
 
   const selected = references.some(ref => ref.id === referenceId)
     ? referenceId
@@ -268,8 +270,10 @@ export function ReferenceAudiencePanel({
           <div className="rounded-md border p-3 space-y-2">
             <p className="font-medium">Histórico registrado desta referência</p>
             <p className="text-xs text-muted-foreground">
-              {history.length} consulta(s) salva(s), {new Set(history.flatMap(entry => entry.usernames)).size} nome(s)
-              distinto(s) no histórico. Dados fornecidos pela PhantomBuster, sem verificação independente da Meta.
+              {historyMetrics.consultations} consulta(s), {historyMetrics.distinctNames} nome(s)
+              distinto(s), {historyMetrics.repeatedNames} nome(s) presentes em mais de uma consulta.
+              Total de {historyMetrics.appearances} ocorrência(s) registradas.
+              Dados fornecidos pela PhantomBuster, sem verificação independente da Meta.
             </p>
             {history.length === 0 && <p className="text-muted-foreground text-xs">Nenhuma consulta registrada ainda.</p>}
             {history.map(entry => (
@@ -278,6 +282,8 @@ export function ReferenceAudiencePanel({
                   <span className="text-xs">
                     Registrado em {new Date(entry.savedAt).toLocaleString('pt-BR')}
                     {' · '}{entry.usernames.length} nomes
+                    {' · '}{historyMetrics.byBatchId[entry.id]?.newNames ?? 0} novos
+                    {' · '}{historyMetrics.byBatchId[entry.id]?.repeatedNames ?? 0} repetidos
                   </span>
                   <Button type="button" variant="ghost" size="sm" disabled={busy}
                     onClick={() => void deleteHistory(entry.id)} aria-label="Excluir consulta salva">

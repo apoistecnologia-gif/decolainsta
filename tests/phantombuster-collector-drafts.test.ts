@@ -23,8 +23,8 @@ test('draft is deterministic per account+reference and never schedules or author
   assert.equal(prepareCollectorDraft(accountId,'reference_b','example_ref')?.name ===
     draft.name, false);
   assert.deepEqual(Object.keys(draft).sort(),
-    ['branch','idempotencyKey','launchType','name','org','script']);
-  assert.equal(draft.org,'phantombuster');
+    ['branch','idempotencyKey','launchType','name','script']);
+  assert.equal(Object.prototype.hasOwnProperty.call(draft,'org'),false);
   assert.equal(draft.script,'Instagram Follower Collector.js');
   assert.equal(draft.branch,'master');
   assert.equal(draft.launchType,'manually');

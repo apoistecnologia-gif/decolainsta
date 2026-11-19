@@ -218,18 +218,34 @@ export async function GET(request: Request) {
       instagramActionsExecuted: 0 }, { headers: HEADERS });
   const results: RefreshState[] = [];
   try {
+    // Discard stale configuration before taking the limited polling slots.
+    // Deactivated/deleted references must not starve valid later references.
+    const accounts = await prisma.instagramAccount.findMany({
+      where: { id: { in: [...new Set(sources.map(s => s.accountId))] } },
+      select: { id: true, username: true },
+    });
+    const permittedAccounts = accounts.filter(a => a.username.toLowerCase() ===
+      process.env.PHANTOMBUSTER_PILOT_USERNAME!.toLowerCase()).map(a => a.id);
+    const registered = await prisma.targetAccount.findMany({
+      where: { id: { in: sources.map(s => s.referenceId) },
+        instagramAccountId: { in: permittedAccounts }, enabled: true },
+      select: { id: true, instagramAccountId: true },
+    });
+    const validPairs = new Set(registered.map(r => r.instagramAccountId + ':' + r.id));
+    const eligible = sources.filter(s => validPairs.has(s.accountId + ':' + s.referenceId));
+
     // Use the newest attempt per owned account/reference to fairly schedule
     // sources; a fixed JSON order can otherwise starve the fourth reference.
     const lastAttempts = await prisma.activityLog.groupBy({
       by: ['instagramAccountId', 'targetUsername'],
       where: {
         action: AUDIENCE_REFRESH_ACTION,
-        instagramAccountId: { in: [...new Set(sources.map(s => s.accountId))] },
-        targetUsername: { in: sources.map(s => s.referenceId) },
+        instagramAccountId: { in: [...new Set(eligible.map(s => s.accountId))] },
+        targetUsername: { in: eligible.map(s => s.referenceId) },
       },
       _max: { createdAt: true },
     });
-    const due = dueRefreshSources(sources, lastAttempts.flatMap(entry =>
+    const due = dueRefreshSources(eligible, lastAttempts.flatMap(entry =>
       entry.targetUsername ? [{
         accountId: entry.instagramAccountId,
         referenceId: entry.targetUsername,
@@ -240,6 +256,7 @@ export async function GET(request: Request) {
     for (const source of due) results.push(await refreshSource(source, apiKey));
     return NextResponse.json({
       enabled: true, examined: results.length,
+      skippedConfiguration: sources.length - eligible.length,
       imported: results.filter(r => r.status === 'imported').length,
       unchanged: results.filter(r => r.status === 'unchanged').length,
       skipped: results.filter(r => r.status === 'skipped').length,

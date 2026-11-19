@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
-import { checkPhantomBusterWorkspace } from '@/lib/providers/phantombuster';
+import { verifyFollowerCollectorTemplate } from '@/lib/providers/phantombuster-collector-identity';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
@@ -17,7 +17,7 @@ const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' 
 /**
  * Internal operator configuration, not a public customer action.
  * One shared PhantomBuster workspace is controlled by the DECOLA INSTA admin.
- * Confirming the agent exists is NOT proof it is a Follower Collector.
+ * A template check blocks Auto Follow agents; it does not verify the target profile.
  */
 export async function POST(request: Request) {
   if (process.env.VERCEL_ENV !== 'preview')
@@ -91,9 +91,9 @@ export async function POST(request: Request) {
     if (!isConfiguredPhantomBusterKey(apiKey))
       return NextResponse.json({ error: 'Integração não configurada' },
         { status: 409, headers: HEADERS });
-    const check = await checkPhantomBusterWorkspace(apiKey, fetch, agentId!);
-    if (check.status !== 'verified' || !check.pilotAgentFound)
-      return NextResponse.json({ error: 'Agente não confirmado no workspace' },
+    const identity = await verifyFollowerCollectorTemplate(apiKey, agentId!);
+    if (identity !== 'verified-template')
+      return NextResponse.json({ error: 'Agente não corresponde ao Instagram Follower Collector' },
         { status: 422, headers: HEADERS });
   }
 
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       return NextResponse.json({
         status: outcome, accountId, referenceId,
-        collectorTypeVerified: false,
+        collectorTypeVerified: operation === 'bind',
         referenceVerifiedByInstagram: false,
         instagramActionsExecuted: 0,
       }, { status: outcome === 'agent-in-use' || outcome === 'registry-capacity' ? 409 : 200,

@@ -106,3 +106,19 @@ test('deleting saved snapshot prunes candidates linked to that source in a seria
   assert.match(code, /tx.activityLog.deleteMany\(/);
   assert.match(code, /Prisma.TransactionIsolationLevel.Serializable/);
 });
+
+
+test('index provides database-backed per-reference totals, no Instagram actions', () => {
+  const route = readFileSync('app/api/reference-candidate-queue/route.ts', 'utf8');
+  const ui = readFileSync('app/(app)/references/_components/automatic-audience-plan-panel.tsx', 'utf8');
+  assert.match(route, /const byReference = new Map/);
+  assert.match(route, /seen\.add\(candidate\.username\.toLowerCase\(\)\)/);
+  assert.match(route, /referencesRepresented: counts\.length/);
+  assert.match(route, /lastIndexedAt, duplicateRecords/);
+  assert.match(route, /status: 'identified_unverified'/);
+  assert.match(ui, /Confirmado no banco:/);
+  assert.match(ui, /Distribuição por referência/);
+  assert.match(ui, /fetchIndex\(accountId/);
+  assert.match(ui, /Nenhum follow ou unfollow executado/);
+  assert.doesNotMatch(route, /user_follow|user_unfollow|agents\/launch|followAction\.(create|update|delete)/);
+});

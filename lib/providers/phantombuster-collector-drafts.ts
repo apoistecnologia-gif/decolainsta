@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
 export type CollectorDraft = Readonly<{
-  org: 'phantombuster';
   script: 'Instagram Follower Collector.js';
   branch: 'master';
   name: string;
@@ -37,7 +36,7 @@ const validId = (value: string) => /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const validUsername = (value: string) => /^[a-z0-9._]{1,30}$/.test(value);
 
 /**
- * A PhantomBuster instance without an Instagram connection or input.
+ * A PhantomBuster instance in the API key's own workspace, without a\n * hardcoded org, Instagram connection or input.
  * Never put usernames, session cookies, arguments, automatic schedules,
  * or a launch instruction in the creation request.
  */
@@ -51,7 +50,6 @@ export function prepareCollectorDraft(
     .update(accountId).update('\0').update(referenceId)
     .digest('hex');
   return {
-    org: 'phantombuster',
     script: 'Instagram Follower Collector.js',
     branch: 'master',
     name: 'DECOLA INSTA - Follower Collector draft ' + fingerprint.slice(0, 16),
@@ -71,7 +69,6 @@ export async function createUnconfiguredCollectorDraft(
   fetcher: Fetcher = fetch,
 ): Promise<DraftCreationStatus> {
   if (!apiKey || apiKey.length > 512 ||
-      draft.org !== 'phantombuster' ||
       draft.script !== 'Instagram Follower Collector.js' ||
       draft.branch !== 'master' ||
       draft.launchType !== 'manually' ||

@@ -100,3 +100,18 @@ export function dueRefreshSources(
       a.referenceId.localeCompare(b.referenceId);
   }).slice(0, MAX_REFRESHES_PER_TICK);
 }
+
+/**
+ * The legacy history schema permits only ten names in each snapshot. Store
+ * the part that fits; never silently drop the entire update at 59/60 batches.
+ */
+export function boundAudienceDelta(
+  fresh: string[], existingBatches: number, maxBatches = 60,
+): { importable: string[]; deferred: number } {
+  if (!Number.isSafeInteger(existingBatches) || existingBatches < 0 ||
+      !Number.isSafeInteger(maxBatches) || maxBatches < 0)
+    return { importable: [], deferred: fresh.length };
+  const slots = Math.max(0, maxBatches - existingBatches);
+  const importable = fresh.slice(0, slots * 10);
+  return { importable, deferred: fresh.length - importable.length };
+}

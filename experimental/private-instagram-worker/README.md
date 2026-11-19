@@ -77,3 +77,25 @@ a construção do cliente real `Client(with_challenge_flow=False)` e a existênc
 do método `login()`. Isso NÃO tenta autenticar uma conta nem usar a API do Instagram.
 O comando temporário de pré-deploy foi removido da Railway após o teste inicial;
 o serviço passivo mantém o código anteriormente implantado até nova decisão.
+
+
+## Investigação forense do login — 2026-11-19
+
+- Serviço Railway: ambiente `piloto` e execução sem domínio público.
+- Versão instalada durante os incidentes: `instagrapi==3.2.6` (lançada em novembro de 2026).
+- Tentativa anterior do deploy `815f39cf`: apenas `STOPPED_OTHER_ERROR`, sem detalhes.
+- Deploys `a918dd73` e `b2f39e99`: status saudável, **sem diagnóstico registrado**. Não é correto afirmar que houve login.
+- Deploy `46a04503`: resultado **`STOPPED_PLATFORM_RESTRICTION`** registrado em `2026-11-19T12:15:02.824Z`. Fluxos de rede mostraram saída HTTPS na janela de execução. Isto confirma que o diagnóstico atingiu um erro classificado pela biblioteca como limitação da plataforma, mas **não identifica seu tipo exato**.
+- O usuário confirmou que a conta funciona no aplicativo oficial; isto não significa necessariamente que a API privada esteja autorizada ou acessível.
+- A classe `STOPPED_PLATFORM_RESTRICTION` agregava quatro erros: `PleaseWaitFewMinutes`, `FeedbackRequired`, `ClientThrottledError` (HTTP 429) ou `RateLimitError`. Não há exceção bruta preservada. Não inferir qual ocorreu.
+- **Fator provável, não comprovado:** `login_once.py` constrói um `Client()` novo por execução e não lê/grava settings de sessão. O pacote recomenda evitar logins novos repetidos, pois têm maiores chances de acionar controles de abuso. O piloto roda no datacenter Railway e não compartilha o contexto de sessão do aplicativo oficial.
+- A versão mais recente da biblioteca na investigação foi `3.2.19` (2026-11-19), e a `3.2.16` melhorou diagnósticos de login CAA. Isso **não prova** que uma atualização removeria limitações do Instagram; não há atualização automática.
+- **Correção implementada na branch experimental:** mapear cada uma das quatro exceções a um rótulo distinto e fixo, sem salvar ou imprimir conteúdo do erro, corpo de resposta, endereço IP, identificadores ou segredo. Testado apenas com erros simulados, **sem novo login**.
+- A política segura permanece: não retentar automaticamente, não solucionar desafios por robô, não girar IPs, não ativar coleta, follow ou unfollow. Um resultado de limite deve suspender o piloto e exigir avaliação humana.
+
+Documentação de base:
+- [instagrapi 3.2.0 — Exceptions](https://subzeroid.github.io/instagrapi/3.2.0/exceptions/)
+- [instagrapi — Best Practices / Sessions](https://subzeroid.github.io/instagrapi/latest/usage-guide/best-practices/)
+- [instagrapi 3.2.19 — Changelog](https://github.com/subzeroid/instagrapi/blob/3.2.19/CHANGELOG.md)
+
+**Sem implantar o diagnóstico novo na Railway**: o serviço continua passivo, e qualquer nova tentativa de login exige autorização nova.

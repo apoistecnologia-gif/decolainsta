@@ -59,6 +59,31 @@ class LoginOnceTests(unittest.TestCase):
                 self.assertEqual(len(fake.calls), 1)
                 self.assertEqual(out.getvalue(), "")
 
+    def test_each_platform_restriction_receives_distinct_sanitized_label(self):
+        labels = [
+            ("PleaseWaitFewMinutes", "STOPPED_PLEASE_WAIT_FEW_MINUTES"),
+            ("FeedbackRequired", "STOPPED_FEEDBACK_REQUIRED"),
+            ("ClientThrottledError", "STOPPED_HTTP_429_THROTTLED"),
+            ("RateLimitError", "STOPPED_RATE_LIMIT_ERROR"),
+        ]
+        for class_name, label in labels:
+            with self.subTest(class_name=class_name):
+                fake_exc = type(class_name, (Exception,), {})
+                fake = FakeClient(exc=fake_exc("private username password response"))
+                with patch.dict(os.environ, {
+                    "PRIVATE_API_LOGIN_ONCE_APPROVED": "yes",
+                    "PRIVATE_API_IG_USERNAME": "isolated",
+                    "PRIVATE_API_IG_PASSWORD": "top-secret",
+                }, clear=True):
+                    out = io.StringIO()
+                    with redirect_stdout(out):
+                        result = login_once.attempt_once(client_factory=lambda: fake)
+                    self.assertEqual(result, label)
+                    self.assertEqual(len(fake.calls), 1)
+                    self.assertEqual(out.getvalue(), "")
+                    self.assertNotIn("top-secret", result)
+                    self.assertNotIn("username", result)
+
     def test_transport_dependency_and_unknown_are_classified_without_leaking_details(self):
         for error, expected in [
             (ConnectionError("password and private endpoint"), "STOPPED_TRANSPORT_ERROR_DURING_LOGIN"),

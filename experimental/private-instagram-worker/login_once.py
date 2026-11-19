@@ -44,6 +44,16 @@ def attempt_once(*, client_factory=None) -> str:
     except Exception as error:
         # Only print allowlisted class names. No message, trace, response, or URL.
         name = type(error).__name__
+        # Distinguish the 4 restriction responses, using only fixed labels.
+        # Never log a raw response, status body, cookies or exception text.
+        if name == "PleaseWaitFewMinutes":
+            return "STOPPED_PLEASE_WAIT_FEW_MINUTES"
+        if name == "FeedbackRequired":
+            return "STOPPED_FEEDBACK_REQUIRED"
+        if name == "ClientThrottledError":
+            return "STOPPED_HTTP_429_THROTTLED"
+        if name == "RateLimitError":
+            return "STOPPED_RATE_LIMIT_ERROR"
         if name in {"ChallengeRequired", "TwoFactorRequired", "ClientChallengeRequired"}:
             return "STOPPED_CHALLENGE_OR_2FA"
         if name in {"BadPassword", "ClientBadPassword", "ClientLoginRequired", "LoginRequired"}:

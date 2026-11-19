@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { ArrowUpRight, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,7 @@ export function SimpleReferencesPanel() {
   const [refreshMessage, setRefreshMessage] = useState('');
   const [refreshError, setRefreshError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmRemovalId, setConfirmRemovalId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadAccount = useCallback(async (id: string, signal?: AbortSignal) => {
@@ -229,6 +230,28 @@ export function SimpleReferencesPanel() {
     } finally { setBusy(false); }
   }
 
+  async function removeReference(reference: Reference) {
+    if (!accountId || busy || confirmRemovalId !== reference.id) return;
+    setBusy(true);
+    setError(''); setMessage(''); setRefreshMessage('');
+    try {
+      const response = await fetch(
+        '/api/instagram-accounts/' + encodeURIComponent(accountId) +
+        '/targets/' + encodeURIComponent(reference.id),
+        { method: 'DELETE', credentials: 'same-origin', cache: 'no-store',
+          headers: { 'Accept': 'application/json' } },
+      );
+      await readJson<{ success: true }>(response);
+      setConfirmRemovalId(null);
+      const updated = await loadAccount(accountId);
+      setReferences(updated.references);
+      setIndex(updated.index);
+      setMessage('Referência removida. Seus históricos antigos foram preservados, mas não entram nos totais ativos.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível remover a referência');
+    } finally { setBusy(false); }
+  }
+
   const byReference = new Map(index?.byReference.map(item => [item.referenceId, item.candidates]) ?? []);
   return (
     <div className="space-y-5">
@@ -245,6 +268,7 @@ export function SimpleReferencesPanel() {
               setAccountId(event.target.value);
               setIndex(null); setReferences([]); setLoading(true);
               setError(''); setMessage(''); setRefreshMessage(''); setRefreshError('');
+              setConfirmRemovalId(null);
             }}>
             {accounts.length === 0 && <option value="">Nenhuma conta cadastrada</option>}
             {accounts.map(account => (
@@ -268,7 +292,7 @@ export function SimpleReferencesPanel() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Candidatos identificados</p>
+            <p className="text-xs text-muted-foreground">Nomes salvos (não verificados)</p>
             <p className="mt-2 text-3xl font-semibold tabular-nums">
               {index ? index.persistedCandidates : '—'}
             </p>
@@ -302,9 +326,31 @@ export function SimpleReferencesPanel() {
                     href={'https://www.instagram.com/' + encodeURIComponent(reference.username) + '/'}>
                     @{reference.username} <ArrowUpRight className="inline h-3 w-3" />
                   </a>
-                  {index && <span className="text-xs text-muted-foreground tabular-nums">
-                    {byReference.get(reference.id) ?? 0} candidatos
-                  </span>}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {index && <span className="text-xs text-muted-foreground tabular-nums">
+                      {byReference.get(reference.id) ?? 0} nomes
+                    </span>}
+                    {confirmRemovalId === reference.id ? (
+                      <div className="flex items-center gap-1">
+                        <Button type="button" size="sm" variant="destructive"
+                          disabled={busy} onClick={() => void removeReference(reference)}>
+                          Confirmar
+                        </Button>
+                        <Button type="button" size="sm" variant="outline"
+                          disabled={busy} onClick={() => setConfirmRemovalId(null)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button type="button" variant="ghost" size="sm"
+                        disabled={busy}
+                        aria-label={'Remover referência @' + reference.username}
+                        title="Remover referência"
+                        onClick={() => setConfirmRemovalId(reference.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

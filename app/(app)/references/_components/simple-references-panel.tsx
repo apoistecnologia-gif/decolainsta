@@ -321,7 +321,7 @@ export function SimpleReferencesPanel() {
           </p>}
           <p className="text-xs text-muted-foreground">
             Atualiza as referências e consulta resultados anteriores do provedor quando disponíveis.
-            Não inicia uma coleta nem executa ações no Instagram.
+            Não inicia uma nova coleta no Instagram nem executa ações de seguir ou deixar de seguir.
           </p>
           {index?.lastIndexedAt && (
             <p className="text-xs text-muted-foreground">

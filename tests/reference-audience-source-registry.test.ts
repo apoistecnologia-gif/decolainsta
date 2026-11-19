@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, makeAudienceSourceBinding,
   parseAudienceSourceBinding, resolveActiveAudienceSources,
-  resolveLatestAudienceBindings,
+  resolveLatestAudienceBindings, disabledAudienceReferenceKeys,
   type AudienceSourceBindingRow,
 } from '../lib/reference-audience-source-registry';
 
@@ -107,4 +107,22 @@ test('existing collectors are matched automatically only by administrator and sa
   assert.match(sourceStore,/const globallyUnambiguous = resolveActiveAudienceSources\(rows\)/);
   assert.match(sourceStore,/accountId \? globallyUnambiguous\.filter/);
   assert.doesNotMatch(route,/agents\/launch|agents\/save|user_follow|user_unfollow/);
+});
+
+test('explicit opt-out survives automated discovery until operator deliberately rebinds', () => {
+  const entries = [
+    row('account_a','ref_a','1111111111111111',true,'2026-11-19T10:00:00Z','one'),
+    row('account_a','ref_a',null,false,'2026-11-19T11:00:00Z','two'),
+    row('account_b','ref_b','2222222222222222',true,'2026-11-19T12:00:00Z','three'),
+  ];
+  assert.deepEqual([...disabledAudienceReferenceKeys(entries)], ['account_a:ref_a']);
+  const restored = row('account_a','ref_a','1111111111111111',true,
+    '2026-11-19T13:00:00Z','four');
+  assert.equal(disabledAudienceReferenceKeys([...entries,restored]).size,0);
+  assert.match(readFileSync(
+    'app/api/provider/phantombuster/match-collectors/route.ts','utf8'),
+    /disabledAudienceReferenceKeys\(rows\)/);
+  assert.match(readFileSync(
+    'app/api/instagram-accounts/[id]/targets/[targetId]/route.ts','utf8'),
+    /if \(enabled === false\)/);
 });

@@ -47,11 +47,11 @@ test('create adapter uses official endpoint, idempotency and NO argument or auto
         'server-api-key');
       const payload = JSON.parse(String(init?.body)) as Record<string,unknown>;
       assert.deepEqual(payload,draft);
-      assert.equal(Object.hasOwn(payload,'argument'),false);
-      assert.equal(Object.hasOwn(payload,'id'),false);
-      assert.equal(Object.hasOwn(payload,'launchOnceAt'),false);
-      assert.equal(Object.hasOwn(payload,'repeatedLaunchTimes'),false);
-      assert.equal(Object.hasOwn(payload,'wasSetupValidWhenSubmittedByTheFrontend'),false);
+      assert.equal(Object.prototype.hasOwnProperty.call(payload,'argument'),false);
+      assert.equal(Object.prototype.hasOwnProperty.call(payload,'id'),false);
+      assert.equal(Object.prototype.hasOwnProperty.call(payload,'launchOnceAt'),false);
+      assert.equal(Object.prototype.hasOwnProperty.call(payload,'repeatedLaunchTimes'),false);
+      assert.equal(Object.prototype.hasOwnProperty.call(payload,'wasSetupValidWhenSubmittedByTheFrontend'),false);
       assert.equal(payload.idempotencyKey,draft.idempotencyKey);
       return new Response(JSON.stringify({id:ID,argument:'SECRET_COOKIE'}),{status:200});
     });

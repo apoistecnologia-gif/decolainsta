@@ -168,7 +168,7 @@ export async function DELETE(req: Request) {
       // Do not retain indexed candidates whose sole recorded evidence was deleted.
       const result = await prisma.$transaction(async tx => {
         const entry = await tx.activityLog.findFirst({
-          where: { id: p.historyId, instagramAccountId: ctx.account.id,
+          where: { id: p.historyId as string, instagramAccountId: ctx.account.id,
             action: AUDIENCE_HISTORY_ACTION, targetUsername: ctx.reference.username },
           select: { details: true },
         });
@@ -181,7 +181,7 @@ export async function DELETE(req: Request) {
         const derivedIds = indexed.filter(row =>
           parseCandidateEvidence(row.details)?.snapshotId === p.historyId).map(row => row.id);
         const removed = await tx.activityLog.deleteMany({
-          where: { id: p.historyId, instagramAccountId: ctx.account.id,
+          where: { id: p.historyId as string, instagramAccountId: ctx.account.id,
             action: AUDIENCE_HISTORY_ACTION, targetUsername: ctx.reference.username },
         });
         if (removed.count === 1 && derivedIds.length) {

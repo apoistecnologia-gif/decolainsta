@@ -1,2 +1,2 @@
 # Installed only inside an isolated authorized Python worker, not Vercel Next.js.
-instagrapi==3.2.6
+instagrapi==3.2.19

@@ -99,3 +99,7 @@ Documentação de base:
 - [instagrapi 3.2.19 — Changelog](https://github.com/subzeroid/instagrapi/blob/3.2.19/CHANGELOG.md)
 
 **Sem implantar o diagnóstico novo na Railway**: o serviço continua passivo, e qualquer nova tentativa de login exige autorização nova.
+
+## Atualização não evasiva do cliente — 2026-11-19
+
+Versão Python do protótipo atualizada de `instagrapi 3.2.6` para a release verificada `3.2.19`. Não modifica a identidade de rede, não instala proxy, não altera impressão digital TLS nem tenta contornar challenges. A versão 3.2.16 incluiu melhorias para preservar contexto de falhas CAA; isto **não** significa que esta conta possa se autenticar. O diagnóstico individual agora acrescenta somente códigos HTTP numéricos permitidos (400, 401, 403, 408, 429, 500, 502, 503), sem conteúdo de resposta. Os testes usam dublês e contêiner sem rede. Não habilitar retries e não usar outras contas para testar o mesmo limite.

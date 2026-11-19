@@ -50,4 +50,4 @@ jobs:
           docker stop decolainsta-pilot-ci
       - name: Verificar biblioteca real offline, sem contas nem rede
         run: |
-          docker run --rm --network none --entrypoint python decolainsta-private-pilot-ci -c "from instagrapi import Client; c=Client(with_challenge_flow=False); assert callable(c.login); assert c.with_challenge_flow is False; print('INSTAGRAPI_OFFLINE_CONSTRUCTOR_OK')"
+          docker run --rm --network none --entrypoint python decolainsta-private-pilot-ci -c "from importlib.metadata import version; from instagrapi import Client; assert version('instagrapi') == '3.2.19'; c=Client(with_challenge_flow=False); assert callable(c.login); assert c.with_challenge_flow is False; print('INSTAGRAPI_3219_OFFLINE_READY')"

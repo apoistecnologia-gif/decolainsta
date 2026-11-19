@@ -136,6 +136,36 @@ class LoginOnceTests(unittest.TestCase):
         finally:
             logging.disable(old)
 
+    def test_http_status_adds_only_allowlisted_numeric_suffix(self):
+        class FakeResponse:
+            def __init__(self, status_code):
+                self.status_code = status_code
+
+        for status, expected in [
+            (429, "STOPPED_FEEDBACK_REQUIRED_HTTP_429"),
+            (400, "STOPPED_FEEDBACK_REQUIRED_HTTP_400"),
+            (418, "STOPPED_FEEDBACK_REQUIRED"),
+            ("429", "STOPPED_FEEDBACK_REQUIRED"),
+        ]:
+            class FeedbackRequired(Exception):
+                pass
+            exc = FeedbackRequired("secret body with token")
+            exc.response = FakeResponse(status)
+            with patch.dict(os.environ, {
+                "PRIVATE_API_LOGIN_ONCE_APPROVED": "yes",
+                "PRIVATE_API_IG_USERNAME": "isolated",
+                "PRIVATE_API_IG_PASSWORD": "top-secret",
+            }, clear=True):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    label = login_once.attempt_once(
+                        client_factory=lambda: FakeClient(exc=exc)
+                    )
+                self.assertEqual(label, expected)
+                self.assertEqual(output.getvalue(), "")
+                self.assertNotIn("secret", label)
+                self.assertNotIn("token", label)
+
     def test_false_login_is_not_reported_as_success(self):
         fake = FakeClient(result=False)
         with patch.dict(os.environ, {"PRIVATE_API_LOGIN_ONCE_APPROVED": "yes", "PRIVATE_API_IG_USERNAME": "isolated", "PRIVATE_API_IG_PASSWORD": "top-secret"}, clear=True):

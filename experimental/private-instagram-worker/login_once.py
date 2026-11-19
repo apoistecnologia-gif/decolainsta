@@ -12,6 +12,15 @@ import logging
 import os
 
 
+def _http_suffix(error: Exception) -> str:
+    """Allowlist a numeric HTTP status, never exception messages or response data."""
+    response = getattr(error, "response", None)
+    status = getattr(response, "status_code", None)
+    if type(status) is int and status in {400, 401, 403, 408, 429, 500, 502, 503}:
+        return f"_HTTP_{status}"
+    return ""
+
+
 def attempt_once(*, client_factory=None) -> str:
     """Return a sanitized fixed result label; never leak credentials."""
     if os.environ.get("PRIVATE_API_LOGIN_ONCE_APPROVED") != "yes":
@@ -44,34 +53,35 @@ def attempt_once(*, client_factory=None) -> str:
     except Exception as error:
         # Only print allowlisted class names. No message, trace, response, or URL.
         name = type(error).__name__
+        def label(value: str) -> str:
+            return value + _http_suffix(error)
+
         # Distinguish the 4 restriction responses, using only fixed labels.
         # Never log a raw response, status body, cookies or exception text.
         if name == "PleaseWaitFewMinutes":
-            return "STOPPED_PLEASE_WAIT_FEW_MINUTES"
+            return label("STOPPED_PLEASE_WAIT_FEW_MINUTES")
         if name == "FeedbackRequired":
-            return "STOPPED_FEEDBACK_REQUIRED"
+            return label("STOPPED_FEEDBACK_REQUIRED")
         if name == "ClientThrottledError":
-            return "STOPPED_HTTP_429_THROTTLED"
+            return label("STOPPED_HTTP_429_THROTTLED")
         if name == "RateLimitError":
-            return "STOPPED_RATE_LIMIT_ERROR"
+            return label("STOPPED_RATE_LIMIT_ERROR")
         if name in {"ChallengeRequired", "TwoFactorRequired", "ClientChallengeRequired"}:
-            return "STOPPED_CHALLENGE_OR_2FA"
+            return label("STOPPED_CHALLENGE_OR_2FA")
         if name in {"BadPassword", "ClientBadPassword", "ClientLoginRequired", "LoginRequired"}:
-            return "STOPPED_LOGIN_REJECTED"
-        if name in {"PleaseWaitFewMinutes", "ClientThrottledError", "FeedbackRequired", "RateLimitError"}:
-            return "STOPPED_PLATFORM_RESTRICTION"
+            return label("STOPPED_LOGIN_REJECTED")
         # Only allowlisted categories are emitted. Never print exception text,
         # request URLs, response bodies, headers, sessions, usernames or passwords.
         if isinstance(error, (ImportError, ModuleNotFoundError)):
-            return f"STOPPED_DEPENDENCY_ERROR_DURING_{phase}"
+            return label(f"STOPPED_DEPENDENCY_ERROR_DURING_{phase}")
         if name in {"ConnectionError", "ConnectError", "Timeout", "ConnectTimeout",
                     "ReadTimeout", "SSLError", "ProxyError", "RequestException",
                     "RequestsError", "CurlError", "NetworkError", "ConnectionResetError"}:
-            return f"STOPPED_TRANSPORT_ERROR_DURING_{phase}"
+            return label(f"STOPPED_TRANSPORT_ERROR_DURING_{phase}")
         if name in {"TypeError", "ValueError", "AttributeError", "KeyError",
                     "RuntimeError", "AssertionError"}:
-            return f"STOPPED_RUNTIME_ERROR_DURING_{phase}"
-        return f"STOPPED_OTHER_ERROR_DURING_{phase}"
+            return label(f"STOPPED_RUNTIME_ERROR_DURING_{phase}")
+        return label(f"STOPPED_OTHER_ERROR_DURING_{phase}")
 
 
 def main() -> int:

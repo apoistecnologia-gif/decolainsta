@@ -43,3 +43,9 @@ Chave API: [guia de introdução](https://support.phantombuster.com/hc/en-us/art
 - Consulta real com o novo endpoint, a ser realizada com consentimento.
 - Avaliar separadamente, antes de qualquer ação real, se o fornecedor aceita seguir seguidores de referência, permite agendamento 24/72h, limites da conta e risco de termos da plataforma.
 - Projetar idempotência, deduplicação, whitelist, proteção contra unfollow de followback, armazenamento minimizado e métricas **comprovadas pelo provedor**. Migração/ação real depende de autorização separada.
+
+## Pré-configuração sem chave ou pagamento (somente Preview da branch)
+
+O sistema pode restringir o diagnóstico a `PHANTOMBUSTER_PILOT_USERNAME=contateste6699`, em vez de exigir que o titular encontre e compartilhe o ID interno do banco. A API confirma antes que o usuário autenticado é dono de `accountId`, então uma pessoa não consegue consultar outra conta apenas informando seu username. A flag `PHANTOMBUSTER_READONLY_ENABLED=yes` sem `PHANTOMBUSTER_API_KEY` não faz chamadas ao provedor e devolve `not-configured` para a conta autorizada. Não habilita qualquer operação Instagram.
+
+A verificação da PhantomBuster continua dependendo de uma chave de workspace adicionada pelo titular diretamente no cofre do Preview e de um plano elegível. O navegador da conversa fornece no máximo leitura de abas: não autoriza capturar cookies, extrair chaves ou clicar na conta do usuário. A conta de teste precisa estar cadastrada no DECOLA INSTA para poder ser selecionada no painel; este procedimento não a cadastra no banco.

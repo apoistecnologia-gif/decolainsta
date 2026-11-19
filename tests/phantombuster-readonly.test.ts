@@ -53,7 +53,9 @@ test('route is authenticated, tenant scoped, pilot only, read-only and does not 
   assert.match(src, /const session = await auth\(\)/);
   assert.match(src, /where: \{ id: accountId, userId \}/);
   assert.match(src, /PHANTOMBUSTER_READONLY_ENABLED/);
-  assert.match(src, /PHANTOMBUSTER_PILOT_ACCOUNT_ID !== account.id/);
+  assert.match(src, /PHANTOMBUSTER_PILOT_ACCOUNT_ID === account.id/);
+  assert.match(src, /PHANTOMBUSTER_PILOT_USERNAME/);
+  assert.match(src, /PHANTOMBUSTER_PILOT_USERNAME.toLowerCase\(\) === account.username.toLowerCase\(\)/);
   assert.match(src, /process\.env\.PHANTOMBUSTER_API_KEY/);
   assert.match(src, /export async function GET/);
   assert.doesNotMatch(src, /export async function POST|agents\/launch|user_follow|user_unfollow|PRIVATE_API_IG_PASSWORD/);

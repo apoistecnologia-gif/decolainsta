@@ -28,14 +28,20 @@ export async function GET(req: Request) {
   }
   const account = await prisma.instagramAccount.findFirst({
     where: { id: accountId, userId },
-    select: { id: true },
+    select: { id: true, username: true },
   });
   if (!account) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 });
 
+  // Allow an explicit test account by its app ID OR exact username.
+  // In either case, the authenticated user must own the account in our DB.
+  // Username allowlisting avoids needing to inspect or copy a customer's DB ID.
+  const pilotById = !!process.env.PHANTOMBUSTER_PILOT_ACCOUNT_ID &&
+    process.env.PHANTOMBUSTER_PILOT_ACCOUNT_ID === account.id;
+  const pilotByUsername = !!process.env.PHANTOMBUSTER_PILOT_USERNAME &&
+    process.env.PHANTOMBUSTER_PILOT_USERNAME.toLowerCase() === account.username.toLowerCase();
   if (
     process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes' ||
-    !process.env.PHANTOMBUSTER_PILOT_ACCOUNT_ID ||
-    process.env.PHANTOMBUSTER_PILOT_ACCOUNT_ID !== account.id
+    !(pilotById || pilotByUsername)
   ) {
     return reply({ status: 'disabled', instagramConnectionVerified: false, actionsEnabled: false });
   }

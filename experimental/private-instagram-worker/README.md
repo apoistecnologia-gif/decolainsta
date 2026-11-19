@@ -1,6 +1,6 @@
-# Integração experimental com API privada do Instagram (NÃO implantada)
+# Integração experimental com API privada do Instagram (serviço passivo na Railway)
 
-**Objetivo:** comprovar a viabilidade técnica de ler seguidores de uma conta de referência e de executar **uma** ação de follow/unfollow em uma **conta de teste**, sob aprovação específica. Esta pasta não integra o runtime atual do Next.js e não é um robô contínuo. Nenhuma implantação, sessão, conta real ou mudança no banco foi feita.
+**Objetivo:** comprovar a viabilidade técnica de ler seguidores de uma conta de referência e de executar **uma** ação de follow/unfollow em uma **conta de teste**, sob aprovação específica. Esta pasta não integra o runtime atual do Next.js e não é um robô contínuo. Há um **serviço passivo de diagnóstico implantado na Railway**, sem automação de Instagram; foram feitos testes de autenticação exclusivamente na conta de teste autorizada. Nenhuma alteração no banco de dados do aplicativo foi feita por este protótipo.
 
 ## Conclusão da pesquisa (18 de novembro de 2026)
 
@@ -103,3 +103,19 @@ Documentação de base:
 ## Atualização não evasiva do cliente — 2026-11-19
 
 Versão Python do protótipo atualizada de `instagrapi 3.2.6` para a release verificada `3.2.19`. Não modifica a identidade de rede, não instala proxy, não altera impressão digital TLS nem tenta contornar challenges. A versão 3.2.16 incluiu melhorias para preservar contexto de falhas CAA; isto **não** significa que esta conta possa se autenticar. O diagnóstico individual agora acrescenta somente códigos HTTP numéricos permitidos (400, 401, 403, 408, 429, 500, 502, 503), sem conteúdo de resposta. Os testes usam dublês e contêiner sem rede. Não habilitar retries e não usar outras contas para testar o mesmo limite.
+
+## Resultado definitivo do teste com a versão 3.2.19 — 2026-11-19
+
+- Commit experimental: `99f9f01e914eb1c93085bdc795a82e2a28f15527`.
+- Implantação isolada Railway: `206884e2-ad30-4673-80df-eaaf6738dc18`, ambiente `piloto`.
+- Validação em CI: 45 testes Node, 16 testes Python, contêiner Docker e criação do cliente `instagrapi==3.2.19` offline — todos aprovados.
+- **Resultado capturado uma vez nos logs:** `STOPPED_PLEASE_WAIT_FEW_MINUTES_HTTP_429`.
+- Isto indica exceção `PleaseWaitFewMinutes` associada a resposta HTTP 429: a plataforma solicitou uma pausa. A conta funcionava normalmente no app oficial quando relatado pelo proprietário. O erro **não comprova conta suspensa, senha incorreta nem OAuth inválido**.
+- Como a versão atual também recebeu HTTP 429, a atualização da biblioteca por si só não resolveu esta conta/contexto de autenticação.
+- O código invocou uma vez `Client.login` na etapa isolada; a biblioteca executa múltiplas requisições internas. **Não houve coleta de seguidores, follows ou unfollows neste teste**.
+- **Proteção após teste:** `preDeployCommand=[]` e `startCommand="python health_service.py"`; serviço sem domínio público, `restartPolicyType=NEVER` e variáveis de ações reais desativadas.
+- Não houve alteração de produção, integração com Neon, armazenamento de sessão autenticada, habilitação do robô ou atualização de `main`.
+- **Estado técnico atual: autenticação privada não estabelecida.** Não fazer repetidas tentativas de login, rotacionar IPs/proxies, alterar impressões digitais de rede nem tentar superar desafios.
+- Como nenhum novo login foi autorizado depois desse limite, a próxima ação segura é revisar a possibilidade de usar recursos oficialmente autorizados da Meta ou obter uma integração documentada de um provedor, compreendendo que a API oficial não fornece follow/unfollow arbitrário. Aguardar apenas não garante sucesso futuro.
+
+Este registro não contém credenciais, sessões, cookies, URLs privadas de requisições ou respostas completas do Instagram.

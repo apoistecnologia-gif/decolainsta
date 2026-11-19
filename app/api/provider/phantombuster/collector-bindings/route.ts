@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
-import { verifyFollowerCollectorTemplate } from '@/lib/providers/phantombuster-collector-identity';
+import { verifyConfiguredFollowerCollector } from '@/lib/providers/phantombuster-collector-discovery';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
@@ -77,23 +77,22 @@ export async function POST(request: Request) {
 
   const reference = await prisma.targetAccount.findFirst({
     where: { id: referenceId, instagramAccountId: accountId },
-    select: { id: true, enabled: true },
+    select: { id: true, username: true },
   });
   if (!reference)
     return NextResponse.json({ error: 'Referência não pertence à conta indicada' },
       { status: 404, headers: HEADERS });
-  if (operation === 'bind' && !reference.enabled)
-    return NextResponse.json({ error: 'Referência desativada' },
-      { status: 409, headers: HEADERS });
-
   if (operation === 'bind') {
     const apiKey = process.env.PHANTOMBUSTER_API_KEY;
     if (!isConfiguredPhantomBusterKey(apiKey))
       return NextResponse.json({ error: 'Integração não configurada' },
         { status: 409, headers: HEADERS });
-    const identity = await verifyFollowerCollectorTemplate(apiKey, agentId!);
-    if (identity !== 'verified-template')
-      return NextResponse.json({ error: 'Agente não corresponde ao Instagram Follower Collector' },
+    // Verify BOTH script type and exactly configured target, not merely the
+    // collector's user-editable name. Other references are never accepted.
+    const identity = await verifyConfiguredFollowerCollector(
+      apiKey, agentId!, reference.username);
+    if (identity !== 'matched')
+      return NextResponse.json({ error: 'Coletor não configurado para esta referência' },
         { status: 422, headers: HEADERS });
   }
 

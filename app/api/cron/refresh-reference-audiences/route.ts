@@ -18,7 +18,7 @@ import {
 import { MANUAL_SOURCE_PREFIX, REFERENCE_ACTIONS } from '@/lib/reference-workflow';
 import {
   AUDIENCE_REFRESH_ACTION,
-  dueRefreshSources, newAudienceNames, parseAudienceRefreshSources, refreshIsDue,
+  boundAudienceDelta, dueRefreshSources, newAudienceNames, parseAudienceRefreshSources, refreshIsDue,
   type AudienceRefreshSource,
 } from '@/lib/reference-audience-refresh';
 
@@ -36,7 +36,7 @@ function keyIsSafe(value: string | undefined): value is string {
     /^[\x21-\x7e]+$/.test(value) && !/sessionid|instagram|%3a|[;\s]/i.test(value);
 }
 type RefreshResult = 'skipped' | 'unchanged' | 'imported' | 'failed' | 'history-limit';
-type RefreshState = { status: RefreshResult; newNames: number; indexed: number };
+type RefreshState = { status: RefreshResult; newNames: number; indexed: number; deferredNames?: number };
 
 // A serialized claim prevents two cron workers from importing the same reference
 // simultaneously. A failed claim remains a short backoff, not a permanent lock.
@@ -114,15 +114,18 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
           });
           const fresh = newAudienceNames(result.usernames, known,
             [account.username, reference.username]);
+          const { importable, deferred } = boundAudienceDelta(
+            fresh, previous.length, MAX_HISTORY_BATCHES);
+          if (fresh.length > 0 && importable.length === 0)
+            return { status: 'history-limit' as const, newNames: 0,
+              indexed: 0, deferredNames: deferred };
           const snapshots = [];
-          for (let i = 0; i < fresh.length; i += 10) {
+          for (let i = 0; i < importable.length; i += 10) {
             const snapshot = makeAudienceSnapshot(reference.id, reference.username.toLowerCase(),
-              source.collectorAgentId, fresh.slice(i, i + 10), 'completed_run');
+              source.collectorAgentId, importable.slice(i, i + 10), 'completed_run');
             if (!snapshot) throw Error('invalid-snapshot');
             snapshots.push(snapshot);
           }
-          if (previous.length + snapshots.length > MAX_HISTORY_BATCHES)
-            return { status: 'history-limit' as const, newNames: 0, indexed: 0 };
 
           if (snapshots.length) await tx.activityLog.createMany({
             data: snapshots.map(snapshot => ({
@@ -158,7 +161,8 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
             }),
           ]);
           if (existing.length > MAX_QUEUE_ENTRIES_PER_SYNC)
-            return { status: 'history-limit' as const, newNames: fresh.length, indexed: 0 };
+            return { status: importable.length ? 'imported' as const : 'unchanged' as const,
+              newNames: importable.length, indexed: 0, deferredNames: deferred };
           const recorded = existing.flatMap(row => {
             const evidence = parseCandidateEvidence(row.details);
             return evidence && row.targetUsername ? [row.targetUsername.toLowerCase()] : [];
@@ -178,8 +182,8 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
                 row.snapshotId, row.collectorAgentId)),
             })),
           });
-          return { status: fresh.length || plan.insert.length ? 'imported' as const : 'unchanged' as const,
-            newNames: fresh.length, indexed: plan.insert.length };
+          return { status: importable.length || plan.insert.length ? 'imported' as const : 'unchanged' as const,
+            newNames: importable.length, indexed: plan.insert.length, deferredNames: deferred };
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
         await finish(claimId, saved.status, saved.newNames, saved.indexed);
         return saved;
@@ -242,6 +246,7 @@ export async function GET(request: Request) {
       failed: results.filter(r => r.status === 'failed').length,
       historyLimit: results.filter(r => r.status === 'history-limit').length,
       newCandidatesObserved: results.reduce((sum,r) => sum + r.newNames, 0),
+      deferredByHistoryLimit: results.reduce((sum,r) => sum + (r.deferredNames ?? 0), 0),
       indexed: results.reduce((sum,r) => sum + r.indexed, 0),
       provenance: 'operator_assigned_collector_result',
       referenceVerified: false, actionsEnabled: false, instagramActionsExecuted: 0,

@@ -13,11 +13,16 @@ export type AudiencePreview = {
   source: 'operator_assigned_collector_result';
   savedToDatabase: false;
   actionsEnabled: false;
+  resultLocation?: 'completed_run' | 'latest_agent_file';
 };
 
-function result(status: AudiencePreview['status'], usernames: string[] = []): AudiencePreview {
+function result(
+  status: AudiencePreview['status'], usernames: string[] = [],
+  resultLocation?: AudiencePreview['resultLocation'],
+): AudiencePreview {
   return { status, usernames, referenceVerified: false,
-    source: 'operator_assigned_collector_result', savedToDatabase: false, actionsEnabled: false };
+    source: 'operator_assigned_collector_result', savedToDatabase: false, actionsEnabled: false,
+    ...(resultLocation ? { resultLocation } : {}) };
 }
 
 function record(v: unknown): Record<string, unknown> | null {
@@ -32,11 +37,33 @@ function collection(v: unknown, name: 'containers' | 'results'): unknown[] | nul
   const data = record(o.data);
   return data && Array.isArray(data[name]) ? data[name] : null;
 }
-async function boundedJson(r: Response): Promise<unknown> {
-  if (Number(r.headers.get('content-length') ?? 0) > 150000) return null;
-  const raw = await r.text();
-  if (raw.length > 150000) return null;
-  try { return JSON.parse(raw) as unknown; } catch { return null; }
+// Read large collector output without accepting unbounded provider response bodies.
+async function boundedJson(r: Response, maxBytes = 4_000_000): Promise<unknown> {
+  const size = Number(r.headers.get('content-length') ?? 0);
+  if (Number.isFinite(size) && size > maxBytes) return null;
+  if (!r.body) return null;
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let raw = '';
+  let bytes = 0;
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      raw += decoder.decode(chunk.value, { stream: true });
+    }
+    raw += decoder.decode();
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  } finally {
+    reader.releaseLock();
+  }
 }
 function rows(payload: unknown): unknown[] | null {
   const o = record(payload);
@@ -49,13 +76,32 @@ function rows(payload: unknown): unknown[] | null {
   let value: unknown = source.resultObject;
   if (value === null || value === undefined || value === '') return [];
   if (typeof value === 'string') {
-    if (value.length > 150000) return null;
+    if (value.length > 4_000_000) return null;
     try { value = JSON.parse(value) as unknown; } catch { return null; }
   }
   if (value === null) return [];
   if (Array.isArray(value)) return value;
   return collection(value, 'results');
 }
+// Only the official S3 location derived from trusted agent metadata is permitted.
+// The API key is NEVER sent to this location or included in its URL.
+function resultFileUrl(metadata: unknown, expectedAgentId: string): string | null {
+  const outer = record(metadata);
+  const agent = record(outer?.data) ?? outer;
+  if (!agent || String(agent.id ?? '') !== expectedAgentId) return null;
+  const organization = agent.orgS3Folder;
+  const folder = agent.s3Folder;
+  const safeSegment = (s: unknown): s is string =>
+    typeof s === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(s);
+  if (!safeSegment(organization) || !safeSegment(folder)) return null;
+  return `https://phantombuster.s3.amazonaws.com/${organization}/${folder}/result.json`;
+}
+
+function fileRows(payload: unknown): unknown[] | null {
+  if (Array.isArray(payload)) return payload;
+  return collection(payload, 'results') ?? rows(payload);
+}
+
 function safeUsername(item: unknown): string | null {
   const row = record(item);
   if (!row) return null;
@@ -109,7 +155,37 @@ export async function previewCollectorResult(
     if ([401, 403].includes(resultRes.status)) return result('invalid-key');
     if (resultRes.status === 429) return result('rate-limited');
     if (!resultRes.ok) return result('unavailable');
-    const sourceRows = rows(await boundedJson(resultRes));
+    let sourceRows = rows(await boundedJson(resultRes));
+    let location: AudiencePreview['resultLocation'] = 'completed_run';
+
+    // Some collector runs have oversized or file-backed result objects.
+    // The dashboard's result.json is the agent's latest result file, not
+    // independently verified evidence about the operator's chosen reference.
+    if (!sourceRows || !sourceRows.length) {
+      const agentUrl = new URL('https://api.phantombuster.com/api/v2/agents/fetch');
+      agentUrl.searchParams.set('id', agentId);
+      agentUrl.searchParams.set('withArgument', 'false');
+      const agentRes = await fetcher(agentUrl.toString(), opts);
+      if ([401, 403].includes(agentRes.status)) return result('invalid-key');
+      if (agentRes.status === 429) return result('rate-limited');
+      if (agentRes.ok) {
+        const fileUrl = resultFileUrl(await boundedJson(agentRes, 100_000), agentId);
+        if (fileUrl) {
+          const fileRes = await fetcher(fileUrl, {
+            method: 'GET', headers: { Accept: 'application/json' },
+            cache: 'no-store', redirect: 'error', credentials: 'omit',
+            signal: AbortSignal.timeout(8000),
+          });
+          if (fileRes.ok) {
+            const parsedFile = fileRows(await boundedJson(fileRes));
+            if (parsedFile) {
+              sourceRows = parsedFile;
+              location = 'latest_agent_file';
+            }
+          }
+        }
+      }
+    }
     if (!sourceRows) return result('unsupported-result');
     if (!sourceRows.length) return result('no-results');
     const excluded = new Set(excludedUsernames.map(x => x.toLowerCase()));
@@ -119,6 +195,6 @@ export async function previewCollectorResult(
       if (username && !excluded.has(username)) unique.add(username);
       if (unique.size >= 10) break;
     }
-    return unique.size ? result('found', [...unique]) : result('no-results');
+    return unique.size ? result('found', [...unique], location) : result('no-results');
   } catch { return result('unavailable'); }
 }

@@ -113,3 +113,91 @@ test('collector distinguishes valid empty runs from malformed provider responses
   assert.equal(malformed.status, 'unsupported-result');
   assert.doesNotMatch(JSON.stringify(malformed), /PRIVATE/);
 });
+
+test('collector reads more than 150 KB of completed-run JSON while exposing only ten usernames', async () => {
+  const largeRows = Array.from({ length: 429 }, (_, i) => ({
+    username: 'largeprofile' + i,
+    imageUrl: 'https://cdn.instagram.com/' + 'x'.repeat(550),
+    phoneNumber: 'PRIVATE PHONE', sessionid: 'PRIVATE TOKEN',
+  }));
+  assert.ok(JSON.stringify({ resultObject: largeRows }).length > 150_000);
+  let calls = 0;
+  const value = await previewCollectorResult('test-key', '1234567890123456', [], async url => {
+    calls++;
+    return url.includes('/fetch-all')
+      ? new Response(JSON.stringify([{ id: '1111111111111111' }]), { status: 200 })
+      : new Response(JSON.stringify({ resultObject: largeRows }), { status: 200 });
+  });
+  assert.equal(calls, 2);
+  assert.equal(value.status, 'found');
+  assert.equal(value.resultLocation, 'completed_run');
+  assert.deepEqual(value.usernames, Array.from({ length: 10 }, (_, i) => 'largeprofile' + i));
+  assert.doesNotMatch(JSON.stringify(value), /PRIVATE|cdn.instagram/);
+});
+
+test('collector safely falls back to its latest result.json without exposing the API key to S3', async () => {
+  const urls: string[] = [];
+  const output = await previewCollectorResult('secret-api-key', '1234567890123456', ['mameto_lueji'], async (url, opts) => {
+    urls.push(url);
+    if (url.includes('/fetch-all'))
+      return new Response(JSON.stringify([{ id: '1111111111111111' }]), { status: 200 });
+    if (url.includes('/fetch-result-object'))
+      return new Response(JSON.stringify({ resultObject: { resultFile: 'file-backed' } }), { status: 200 });
+    if (url.includes('/agents/fetch')) {
+      assert.equal((opts?.headers as Record<string,string>)['X-Phantombuster-Key'], 'secret-api-key');
+      assert.equal(new URL(url).searchParams.get('withArgument'), 'false');
+      return new Response(JSON.stringify({
+        id: '1234567890123456', orgS3Folder: 'test_workspace', s3Folder: 'test_collector',
+        argument: 'PRIVATE SESSION',
+      }), { status: 200 });
+    }
+    assert.equal(url, 'https://phantombuster.s3.amazonaws.com/test_workspace/test_collector/result.json');
+    assert.equal((opts?.headers as Record<string,string>)['X-Phantombuster-Key'], undefined);
+    assert.equal(opts?.credentials, 'omit');
+    assert.equal(opts?.redirect, 'error');
+    return new Response(JSON.stringify([
+      { username: 'mameto_lueji', email: 'PRIVATE MAIL' },
+      { username: 'safe_follower', email: 'PRIVATE MAIL' },
+    ]), { status: 200 });
+  });
+  assert.equal(urls.length, 4);
+  assert.equal(output.status, 'found');
+  assert.deepEqual(output.usernames, ['safe_follower']);
+  assert.equal(output.resultLocation, 'latest_agent_file');
+  assert.equal(output.referenceVerified, false);
+  assert.equal(output.savedToDatabase, false);
+  assert.equal(output.actionsEnabled, false);
+  assert.doesNotMatch(JSON.stringify(output), /PRIVATE|secret-api-key/);
+});
+
+test('collector cannot redirect fallback to arbitrary URL or path traversal', async () => {
+  const urls: string[] = [];
+  const output = await previewCollectorResult('test-key', '1234567890123456', [], async url => {
+    urls.push(url);
+    if (url.includes('/fetch-all'))
+      return new Response(JSON.stringify([{ id: '1111111111111111' }]), { status: 200 });
+    if (url.includes('/fetch-result-object'))
+      return new Response(JSON.stringify({ resultObject: { unsupported: true } }), { status: 200 });
+    if (url.includes('/agents/fetch'))
+      return new Response(JSON.stringify({
+        id: '1234567890123456', orgS3Folder: '../../evil.test', s3Folder: 'subfolder',
+      }), { status: 200 });
+    throw new Error('Unexpected external request');
+  });
+  assert.equal(output.status, 'unsupported-result');
+  assert.equal(urls.length, 3);
+  assert.ok(urls.every(u => u.startsWith('https://api.phantombuster.com/api/v2/')));
+});
+
+test('collector does not attempt result-file fallback after authentication failure', async () => {
+  let calls = 0;
+  const output = await previewCollectorResult('test-key', '1234567890123456', [], async url => {
+    calls++;
+    return url.includes('/fetch-all')
+      ? new Response(JSON.stringify([{ id: '1111111111111111' }]), { status: 200 })
+      : new Response('PRIVATE', { status: 403 });
+  });
+  assert.equal(calls, 2);
+  assert.equal(output.status, 'invalid-key');
+  assert.doesNotMatch(JSON.stringify(output), /PRIVATE/);
+});

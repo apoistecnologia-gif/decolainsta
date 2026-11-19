@@ -17,6 +17,7 @@ type Preview = {
   source: 'operator_assigned_collector_result';
   savedToDatabase: false;
   actionsEnabled: false;
+  resultLocation?: 'completed_run' | 'latest_agent_file';
 };
 
 const MESSAGES: Record<PreviewStatus, string> = {
@@ -137,6 +138,11 @@ export function ReferenceAudiencePanel({
             {result.status === 'found' && (
               <>
                 <p>Referência indicada: @{result.referenceUsername}. Origem ainda não verificada pela Meta.</p>
+                {result.resultLocation === 'latest_agent_file' && (
+                  <p className="text-xs text-muted-foreground">
+                    Fonte: arquivo JSON mais recente da PhantomBuster. Pode não representar apenas a última execução.
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {result.usernames.map(name => (
                     <a key={name} href={`https://www.instagram.com/${encodeURIComponent(name)}/`}

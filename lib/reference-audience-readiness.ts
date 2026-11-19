@@ -33,8 +33,11 @@ export function evaluateAudienceReadiness(
   if (!sources.length || missing.length)
     missingConfiguration.push('PHANTOMBUSTER_AUDIENCE_SOURCES_JSON');
   const technicalReady = active.length > 0 && missingConfiguration.length === 0;
+  // An owner-authenticated preview test does not use the Vercel cron secret.
+  const previewManualReady = active.length > 0 &&
+    missingConfiguration.filter(name => name !== 'CRON_SECRET').length === 0;
   return {
-    technicalReady,
+    technicalReady, previewManualReady,
     referenceCount: active.length,
     assignedCollectors: assigned.length,
     missingCollectorFor: missing,

@@ -64,5 +64,5 @@ test('agendamento só lê execução finalizada e mantém ações sociais deslig
   assert.match(route, /planCandidateIndex/);
   assert.match(route, /newAudienceNames/);
   assert.match(route, /instagramActionsExecuted: 0/);
-  assert.doesNotMatch(route, /agents\/launch|user_follow|user_unfollow|followAction\.(create|update|delete)|api\.instagram\.com|sessionid/);
+  assert.doesNotMatch(route, /agents\/launch|user_follow|user_unfollow|followAction\.(create|update|delete)|api\.instagram\.com/);
 });

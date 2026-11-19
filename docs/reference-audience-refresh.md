@@ -221,3 +221,25 @@ sociais. **Ainda não são uma execução externa real.** Uma coleta
 real exige um Follower Collector corretamente conectado e previamente
 executado no PhantomBuster. A função aqui apresentada só lê resultados
 finalizados depois de um vínculo aprovado.
+
+### Página principal simplificada
+
+A página `/references` usa `SimpleReferencesPanel`. Ela não prioriza
+`@contateste6699`; seleciona uma conta conectada do titular, ou sua
+primeira conta cadastrada. Os endpoints
+`/api/reference-candidate-queue` e `/api/reference-auto-plan`
+agora aceitam qualquer conta pertencente ao usuário autenticado no
+Preview, sem a flag antiga `PHANTOMBUSTER_PILOT_USERNAME`.
+
+O botão **Atualizar dados** da página principal, não só do diagnóstico,
+tenta associar coletores preexistentes pelo vínculo exato (admin),
+consultar resultados já finalizados (usuário da conta), sincronizar
+o índice por conta e verificar a API usando apenas a chave do servidor.
+Falhas externas não impedem a leitura de dados já salvos. A tela resume
+conexão e referências que aguardam coletor em um parágrafo, sem solicitar
+IDs, cookies ou nova chave de API. A execução externa de coletores e
+ações sociais continuam inativas.
+
+O painel legado avançado de diagnóstico ainda existe em
+`/references/diagnostics`; seu POST de teste antigo é separado do
+fluxo multiusuário de produção planejado.

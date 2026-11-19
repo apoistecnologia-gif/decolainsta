@@ -5,6 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RefreshCw } from 'lucide-react';
 
+type QueueResult = {
+  status: 'synced' | 'capacity-reached';
+  synced: number;
+  total: number;
+  availableInHistory?: number;
+  referencesRepresented?: number;
+  snapshotsRead?: number;
+  historyTruncated?: boolean;
+  actionsEnabled: false;
+  instagramActionsExecuted: 0;
+};
 type Plan = {
   source: 'saved_snapshots_unverified';
   readOnly: true;
@@ -28,6 +39,8 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [queue, setQueue] = useState<QueueResult | null>(null);
+  const [queueError, setQueueError] = useState('');
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!accountId) return;
     try {
@@ -44,6 +57,21 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
   useEffect(() => {
     if (!accountId) return;
     const controller = new AbortController();
+    // Synchronize ONLY previously saved, operator-approved history. No per-user
+    // choices, no collector launch, and no social actions.
+    void fetch('/api/reference-candidate-queue', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+      body: JSON.stringify({ accountId, operation: 'sync-saved-history' }),
+      signal: controller.signal,
+    }).then(async response => {
+      const data = await response.json() as QueueResult & { error?: string };
+      if (!response.ok) throw new Error(data.error || 'Sincronização indisponível');
+      if (!controller.signal.aborted) setQueue(data);
+    }).catch(err => {
+      if (!controller.signal.aborted)
+        setQueueError(err instanceof Error ? err.message : 'Fila indisponível');
+    });
     void fetchPlan(accountId, controller.signal)
       .then(data => {
         if (!controller.signal.aborted) {
@@ -76,6 +104,25 @@ export function AutomaticAudiencePlanPanel({ accountId }: { accountId: string })
           <RefreshCw className="h-4 w-4 mr-2" />
           {loading ? 'Atualizando...' : 'Atualizar planejamento'}
         </Button>
+        {queue && (
+          <div className="rounded-md border p-3 space-y-1">
+            <p className="font-medium">Índice persistente de candidatos</p>
+            <p>
+              {queue.total} candidato(s) distintos registrados no banco,
+              {' '}{queue.synced} novo(s) nesta sincronização, a partir de históricos já salvos.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Estado: identificado, não verificado. Nenhum follow ou unfollow executado.
+              O índice não é uma fila de execução do Instagram.
+            </p>
+            {queue.historyTruncated && <p className="text-xs text-muted-foreground">
+              Histórico extenso: somente as últimas consultas dentro do limite foram processadas.
+            </p>}
+          </div>
+        )}
+        {queueError && <p role="alert" className="text-destructive">
+          Não foi possível sincronizar os candidatos: {queueError}
+        </p>}
         {plan && (
           <>
             <p>

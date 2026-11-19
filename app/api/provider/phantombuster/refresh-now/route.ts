@@ -46,15 +46,13 @@ export async function POST(request: Request) {
 
   const account = await prisma.instagramAccount.findFirst({
     where: { id: input.accountId, userId },
-    select: { id: true, username: true },
+    select: { id: true },
   });
   if (!account)
     return NextResponse.json({ error: 'Conta não encontrada' },
       { status: 404, headers: HEADERS });
-  if (process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes' ||
-      !process.env.PHANTOMBUSTER_PILOT_USERNAME ||
-      process.env.PHANTOMBUSTER_PILOT_USERNAME.toLowerCase() !== account.username.toLowerCase())
-    return NextResponse.json({ error: 'Piloto de leitura não autorizado para esta conta' },
+  if (process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes')
+    return NextResponse.json({ error: 'Leitura de audiências desativada' },
       { status: 403, headers: HEADERS });
 
   // The runner implements a six-hour claim cooldown and never performs IG actions.

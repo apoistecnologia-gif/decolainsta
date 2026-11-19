@@ -52,10 +52,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     data: {
       instagramAccountId: id,
       username: usernameClean,
-      // Registration enables reference discovery only. No Instagram social
-      // actions can run; collector binding still requires operator approval.
+      // Register without activating existing social-action or collection flags.
+      // Read-only collector binding requires separate operator approval.
       niche: niche || 'geral',
-      enabled: true,
+      enabled: false,
     },
   });
 

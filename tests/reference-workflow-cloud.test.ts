@@ -109,3 +109,18 @@ test('simple refresh synchronizes saved reference history explicitly and only af
   assert.match(ui, /Não inicia uma nova coleta no Instagram/);
   assert.doesNotMatch(ui, /apiKey|sessionid|agents\/launch|user_follow|user_unfollow|followAction\.create/);
 });
+
+
+test('refresh feedback appears beside Update Data, not at the account selector', () => {
+  const ui = readFileSync('app/(app)/references/_components/simple-references-panel.tsx', 'utf8');
+  assert.match(ui, /const \[refreshMessage, setRefreshMessage\] = useState/);
+  assert.match(ui, /const \[refreshError, setRefreshError\] = useState/);
+  assert.match(ui, /setRefreshMessage\('Os históricos salvos já estão sincronizados/);
+  assert.match(ui, /setRefreshError\(err instanceof Error/);
+  const button = ui.indexOf('Atualizar dados');
+  const status = ui.indexOf('{refreshMessage && <p role="status"');
+  const alert = ui.indexOf('{refreshError && <p role="alert"');
+  assert.ok(button > 0 && status > button && alert > status);
+  assert.match(ui, /aria-live="polite"/);
+  assert.doesNotMatch(ui, /agents\/launch|user_follow|user_unfollow/);
+});

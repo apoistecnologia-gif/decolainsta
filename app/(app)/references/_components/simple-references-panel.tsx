@@ -36,6 +36,8 @@ export function SimpleReferencesPanel() {
   const [referenceUsername, setReferenceUsername] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [refreshMessage, setRefreshMessage] = useState('');
+  const [refreshError, setRefreshError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -103,6 +105,8 @@ export function SimpleReferencesPanel() {
     if (!accountId || !referenceUsername.trim() || busy) return;
     setBusy(true);
     setMessage('');
+    setRefreshMessage('');
+    setRefreshError('');
     setError('');
     try {
       const response = await fetch('/api/instagram-accounts/' + encodeURIComponent(accountId) + '/targets', {
@@ -127,7 +131,8 @@ export function SimpleReferencesPanel() {
     if (!accountId || busy || loading) return;
     setBusy(true);
     setError('');
-    setMessage('');
+    setRefreshError('');
+    setRefreshMessage('');
     try {
       let syncResult: SyncResult | null = null;
       // Synchronize only stored, operator-approved history when the experimental
@@ -147,16 +152,16 @@ export function SimpleReferencesPanel() {
       setReferences(updated.references);
       setIndex(updated.index);
       if (syncResult?.status === 'capacity-reached') {
-        setMessage('Índice de candidatos no limite de capacidade do piloto.');
+        setRefreshMessage('Índice de candidatos no limite de capacidade do piloto.');
       } else if (syncResult && (syncResult.synced ?? 0) > 0) {
-        setMessage(`${syncResult.synced} novo(s) candidato(s) dos históricos salvos foram adicionados. Nenhuma ação no Instagram.`);
+        setRefreshMessage(`${syncResult.synced} novo(s) candidato(s) dos históricos salvos foram adicionados. Nenhuma ação no Instagram.`);
       } else if (syncResult) {
-        setMessage('Os históricos salvos já estão sincronizados. Nenhuma ação no Instagram.');
+        setRefreshMessage('Os históricos salvos já estão sincronizados. Nenhuma ação no Instagram.');
       } else {
-        setMessage('Referências atualizadas. A sincronização de candidatos não está disponível nesta conta.');
+        setRefreshMessage('Referências atualizadas. A sincronização de candidatos não está disponível nesta conta.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha na atualização');
+      setRefreshError(err instanceof Error ? err.message : 'Falha na atualização');
     } finally { setBusy(false); }
   }
 
@@ -174,7 +179,8 @@ export function SimpleReferencesPanel() {
             value={accountId} disabled={busy}
             onChange={event => {
               setAccountId(event.target.value);
-              setIndex(null); setReferences([]); setLoading(true); setError(''); setMessage('');
+              setIndex(null); setReferences([]); setLoading(true);
+              setError(''); setMessage(''); setRefreshMessage(''); setRefreshError('');
             }}>
             {accounts.length === 0 && <option value="">Nenhuma conta cadastrada</option>}
             {accounts.map(account => (
@@ -243,6 +249,12 @@ export function SimpleReferencesPanel() {
             onClick={() => void refresh()}>
             <RefreshCw className="mr-2 h-4 w-4" /> {busy ? 'Atualizando...' : 'Atualizar dados'}
           </Button>
+          {refreshMessage && <p role="status" aria-live="polite" className="text-sm">
+            {refreshMessage}
+          </p>}
+          {refreshError && <p role="alert" className="text-sm text-destructive">
+            {refreshError}
+          </p>}
           <p className="text-xs text-muted-foreground">
             Atualiza os registros já importados. Não inicia uma nova coleta no Instagram.
           </p>

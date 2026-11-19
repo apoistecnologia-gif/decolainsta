@@ -61,7 +61,7 @@ export async function GET(req: Request) {
     if (!saved) continue;
     const pool = pools.get(saved.referenceId);
     if (!pool || saved.referenceUsername !== pool.referenceUsername ||
-        snapshotRow.targetUsername.toLowerCase() !== pool.referenceUsername) continue;
+        snapshotRow.targetUsername?.toLowerCase() !== pool.referenceUsername) continue;
     for (const username of saved.usernames) pool.usernames.add(username);
   }
 

@@ -41,4 +41,19 @@ A API também está disponível **no teste grátis e no plano gratuito**, confor
 
 A chave API permite controle amplo da workspace PhantomBuster, possivelmente incluindo lançamentos. Embora nosso endpoint só faça leitura, o titular deve manter a chave segura e revogá-la depois de usar a chave de teste. Nunca copiar o cookie Instagram `sessionid`, deixar a chave em screenshots ou tentar repetir login privado sob HTTP 429.
 
-Ainda pendente: o titular criar a chave no painel, autenticar no Preview com a conta de teste, validar apenas a leitura da workspace e comprovar a sessão Instagram **na interface do provedor**. A parte técnica de follow/unfollow e revisão 24/72h depende de uma etapa futura de arquitetura, proteção, testes e autorização explícita. Nenhuma integração de mutação foi implementada.
+## Marco validado no piloto — 19/11/2026
+
+Evidência enviada pelo proprietário (tela de resultados da própria PhantomBuster):
+
+- A verificação de acesso à API via Preview do DECOLA INSTA retornou `verified`, `workspaceAgentCount: 1` e `pilotAgentFound: true` para o primeiro agente (`Instagram Followers Auto Follow`). Isso comprova apenas o acesso à workspace e a existência do agente.
+- O proprietário criou separadamente o Phantom **Instagram Profile Scraper** (ID `3648918782366739`, observado na URL de configuração).
+- Uma execução **manual de leitura** do Instagram Profile Scraper terminou com **`Phantom Stopped` e `Results (1)`**, contendo uma linha de perfil `contateste6699`, seguidores `0`, seguindo `0` e `Blocked By Viewer: false`. A captura demonstra que o provedor retornou dados do perfil solicitado.
+- Não foi feita auditoria independente da resposta pelo backend do DECOLA INSTA. A consulta de dados públicos, por si só, não comprova que o cookie da sessão seria aceito em ações autenticadas. Não declarar `Instagram connection verified for authenticated actions`.
+- Nenhuma evidência de execução de **Instagram Followers Auto Follow**, follow real ou unfollow. A automação original permaneceu inativa nas últimas telas verificadas; não há monitoramento contínuo para garantir estado posterior.
+- Como a conta de teste está vazia (0 seguidores e 0 seguindo), essa consulta valida a leitura, mas não o comportamento de follow/unfollow 24/72h.
+- Capturas anteriores exibiram parte do `sessionid`; recomendar revogação da sessão exposta e reconexão legítima antes de testes futuros.
+- Nenhuma senha, API key, cookie ou resultado pessoal foi armazenado neste documento.
+
+**O que ainda falta:** implementar/testar ingestão de resultados do provedor em escopo de leitura, validar integridade e limites; planejar conscientemente qualquer ação social com aprovação separada, respeitando os termos da plataforma. A consulta de perfil **não é** autorização para mutações.
+
+A parte técnica de follow/unfollow e revisão 24/72h permanece pendente, sem implementação de mutação via PhantomBuster ou agendamento ativo.

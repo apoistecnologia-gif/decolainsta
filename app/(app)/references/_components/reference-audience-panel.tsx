@@ -268,7 +268,7 @@ export function ReferenceAudiencePanel({
               <p className="text-xs text-muted-foreground">
                 Se escolher registrar, o DECOLA INSTA fará uma nova leitura da execução anterior e
                 guardará até 10 nomes, a referência indicada, o ID do coletor, a origem e a data de registro.
-                Não importa todos os 429 nomes, não inicia coleta nem registra follow.
+                Para importar até 500 nomes, use o botão separado abaixo. Nenhuma opção inicia coleta ou registra follow.
               </p>
               <Button type="button" variant="outline" onClick={() => void saveHistory()}
                 disabled={busy || !accountId || !selected}>

@@ -64,6 +64,8 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ...readiness,
     technicalReady: readiness.technicalReady && references.length <= 100,
+    previewManualReady: process.env.VERCEL_ENV === 'preview' &&
+      readiness.previewManualReady && references.length <= 100,
     referencesTruncated: references.length > 100,
     lastAttemptAt: lastAttempt?.createdAt ?? null,
     lastCompletedReadAt: lastSuccessfulRead?.createdAt ?? null,

@@ -97,3 +97,51 @@ export async function createUnconfiguredCollectorDraft(
     return { status: 'unavailable' };
   }
 }
+
+export type ExistingDraftStatus =
+  | { status: 'found'; agentId: string }
+  | { status: 'not-found' | 'ambiguous' | 'unavailable' };
+
+/**
+ * Reconcile by deterministic name BEFORE any draft creation. This can detect
+ * a prior remote creation even if the response to /agents/save was lost.
+ */
+export async function findExistingCollectorDraft(
+  apiKey: string, draft: CollectorDraft,
+  fetcher: Fetcher = fetch,
+): Promise<ExistingDraftStatus> {
+  if (!apiKey || apiKey.length > 512) return { status: 'unavailable' };
+  try {
+    const url = new URL('https://api.phantombuster.com/api/v2/agents/fetch-all');
+    url.searchParams.set('withArgument', 'false');
+    const response = await fetcher(url.toString(), {
+      method: 'GET',
+      headers: { Accept: 'application/json', 'X-Phantombuster-Key': apiKey },
+      cache: 'no-store', redirect: 'error', credentials: 'omit',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok ||
+        Number(response.headers.get('content-length') ?? 0) > 400_000)
+      return { status: 'unavailable' };
+    const text = await response.text();
+    if (text.length > 400_000) return { status: 'unavailable' };
+    const raw: unknown = JSON.parse(text) as unknown;
+    const wrapped = raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? raw as Record<string, unknown> : null;
+    const agents = Array.isArray(raw) ? raw :
+      Array.isArray(wrapped?.data) ? wrapped.data :
+      Array.isArray(wrapped?.agents) ? wrapped.agents : null;
+    if (!agents || agents.length > 200) return { status: 'unavailable' };
+    const matching = agents.filter(item => item && typeof item === 'object' &&
+      !Array.isArray(item) && (item as Record<string, unknown>).name === draft.name);
+    if (!matching.length) return { status: 'not-found' };
+    if (matching.length !== 1) return { status: 'ambiguous' };
+    const record = matching[0] as Record<string, unknown>;
+    const id = record.id ?? record._id;
+    if (record.script !== draft.script || !/^\d{10,25}$/.test(String(id ?? '')))
+      return { status: 'ambiguous' };
+    return { status: 'found', agentId: String(id) };
+  } catch {
+    return { status: 'unavailable' };
+  }
+}

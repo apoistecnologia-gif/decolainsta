@@ -49,8 +49,8 @@ export function SimpleReferencesPanel() {
         { cache: 'no-store', credentials: 'same-origin', signal }),
     ]);
     const workflow = await readJson<Workflow>(referenceResponse);
-    // The candidate index is pilot-only. A 403 means no index for another account,
-    // not a failure to list or register that account's references.
+    // The candidate index is separately scoped to each owned account.
+    // It may be unavailable outside the experimental Preview.
     const summary = indexResponse.ok ? await readJson<Index>(indexResponse) : null;
     return { references: workflow.references, index: summary };
   }, []);
@@ -65,9 +65,8 @@ export function SimpleReferencesPanel() {
         const valid = Array.isArray(accountsResult) ? accountsResult.filter(a =>
           typeof a?.id === 'string' && typeof a?.username === 'string') : [];
         setAccounts(valid);
-        // Prefer the existing test account for the experimental Preview.
-        const preferred = valid.find(a => a.username.toLowerCase() === 'contateste6699')
-          ?? valid.find(a => a.connected) ?? valid[0];
+        // No mandatory test account: choose an owned connected profile if one exists.
+        const preferred = valid.find(a => a.connected) ?? valid[0];
         if (preferred) setAccountId(preferred.id);
         else setLoading(false);
       })
@@ -134,6 +133,40 @@ export function SimpleReferencesPanel() {
     setRefreshError('');
     setRefreshMessage('');
     try {
+      const phases: string[] = [];
+      // Admin discovery associates only EXISTING matching collectors; regular
+      // users get a safe 403, without selecting a collector or another profile.
+      try {
+        const matched = await fetch('/api/provider/phantombuster/match-collectors', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+          body: JSON.stringify({ accountId, operation: 'match-existing' }),
+        });
+        if (matched.ok) {
+          const result = await matched.json() as { matched?: number };
+          if ((result.matched ?? 0) > 0)
+            phases.push((result.matched ?? 0) + ' coletor(es) vinculados às referências.');
+        }
+      } catch {
+        // Provider discovery must never block saved reference records.
+      }
+      // Read only previously finalized provider results for this one customer.
+      try {
+        const response = await fetch('/api/provider/phantombuster/refresh-now', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+          body: JSON.stringify({ accountId, operation: 'refresh-readonly' }),
+        });
+        if (response.ok) {
+          const info = await response.json() as {
+            enabled?: boolean; examined?: number; newCandidatesObserved?: number;
+          };
+          if (info.enabled && (info.newCandidatesObserved ?? 0) > 0)
+            phases.push((info.newCandidatesObserved ?? 0) + ' candidato(s) novos da coleta concluída.');
+        }
+      } catch {
+        // Previously stored data remains readable when the provider is unavailable.
+      }
       let syncResult: SyncResult | null = null;
       // Synchronize only stored, operator-approved history when the experimental
       // index is available. This never starts a collector or Instagram operation.
@@ -151,14 +184,45 @@ export function SimpleReferencesPanel() {
       const updated = await loadAccount(accountId);
       setReferences(updated.references);
       setIndex(updated.index);
+      try {
+        const connectionResponse = await fetch(
+          '/api/provider/phantombuster/connection-status?accountId=' +
+          encodeURIComponent(accountId),
+          { cache: 'no-store', credentials: 'same-origin' });
+        if (connectionResponse.ok) {
+          const connection = await connectionResponse.json() as {
+            status: string; providerReached: boolean;
+            waitingForCollectors: number; linkedCollectors: number;
+          };
+          if (connection.providerReached) {
+            phases.push(connection.waitingForCollectors > 0
+              ? 'API conectada; ' + connection.waitingForCollectors +
+                ' referência(s) aguardando coletor.'
+              : 'API conectada; ' + connection.linkedCollectors +
+                ' coletor(es) vinculado(s).');
+          } else if (connection.status === 'invalid-key')
+            phases.push('A chave API cadastrada não foi autorizada.');
+          else if (connection.status === 'not-configured')
+            phases.push('Chave do PhantomBuster ausente no servidor.');
+          else if (connection.status === 'disabled')
+            phases.push('Consulta do PhantomBuster desativada.');
+          else if (connection.status === 'limited')
+            phases.push('Limite de acesso temporário do PhantomBuster.');
+          else
+            phases.push('Conexão externa ainda não confirmada.');
+        }
+      } catch {
+        // The main page never depends on an external provider request.
+      }
+      const providerInfo = phases.length ? ' ' + phases.join(' ') : '';
       if (syncResult?.status === 'capacity-reached') {
-        setRefreshMessage('Índice de candidatos no limite de capacidade do piloto.');
+        setRefreshMessage('Índice de candidatos no limite de capacidade do teste.' + providerInfo);
       } else if (syncResult && (syncResult.synced ?? 0) > 0) {
-        setRefreshMessage(`${syncResult.synced} novo(s) candidato(s) dos históricos salvos foram adicionados. Nenhuma ação no Instagram.`);
+        setRefreshMessage(`${syncResult.synced} novo(s) candidato(s) dos históricos salvos foram adicionados. Nenhuma ação no Instagram.` + providerInfo);
       } else if (syncResult) {
-        setRefreshMessage('Os históricos salvos já estão sincronizados. Nenhuma ação no Instagram.');
+        setRefreshMessage('Os históricos salvos já estão sincronizados. Nenhuma ação no Instagram.' + providerInfo);
       } else {
-        setRefreshMessage('Referências atualizadas. A sincronização de candidatos não está disponível nesta conta.');
+        setRefreshMessage('Referências atualizadas.' + providerInfo);
       }
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : 'Falha na atualização');
@@ -256,7 +320,8 @@ export function SimpleReferencesPanel() {
             {refreshError}
           </p>}
           <p className="text-xs text-muted-foreground">
-            Atualiza os registros já importados. Não inicia uma nova coleta no Instagram.
+            Atualiza as referências e consulta resultados anteriores do provedor quando disponíveis.
+            Não inicia uma coleta nem executa ações no Instagram.
           </p>
           {index?.lastIndexedAt && (
             <p className="text-xs text-muted-foreground">

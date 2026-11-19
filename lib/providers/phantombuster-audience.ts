@@ -41,11 +41,18 @@ async function boundedJson(r: Response): Promise<unknown> {
 function rows(payload: unknown): unknown[] | null {
   const o = record(payload);
   if (!o) return null;
-  let value: unknown = o.resultObject ?? record(o.data)?.resultObject;
+  // A finalized run can legitimately contain no collected rows.
+  // Missing resultObject in an unexpected 200 response remains an error.
+  const nested = record(o.data);
+  const source = Object.prototype.hasOwnProperty.call(o, 'resultObject') ? o : nested;
+  if (!source || !Object.prototype.hasOwnProperty.call(source, 'resultObject')) return null;
+  let value: unknown = source.resultObject;
+  if (value === null || value === undefined || value === '') return [];
   if (typeof value === 'string') {
     if (value.length > 150000) return null;
     try { value = JSON.parse(value) as unknown; } catch { return null; }
   }
+  if (value === null) return [];
   if (Array.isArray(value)) return value;
   return collection(value, 'results');
 }
@@ -80,7 +87,7 @@ export async function previewCollectorResult(
     const listUrl = new URL('https://api.phantombuster.com/api/v2/containers/fetch-all');
     listUrl.searchParams.set('agentId', agentId);
     listUrl.searchParams.set('mode', 'finalized');
-    listUrl.searchParams.set('limit', '1');
+    listUrl.searchParams.set('limit', '3');
     listUrl.searchParams.set('withRuntimeEvents', 'false');
     const listRes = await fetcher(listUrl.toString(), opts);
     if ([401, 403].includes(listRes.status)) return result('invalid-key');
@@ -89,11 +96,15 @@ export async function previewCollectorResult(
     const containers = collection(await boundedJson(listRes), 'containers');
     if (!containers) return result('unsupported-result');
     if (!containers.length) return result('no-run');
-    const id = record(containers[0])?.id;
-    if (!/^\d{10,25}$/.test(String(id ?? ''))) return result('unsupported-result');
+    // Select newest by endedAt, ignoring malformed provider-supplied IDs.
+    const valid = containers.map(record).filter((item): item is Record<string, unknown> =>
+      !!item && /^\d{10,25}$/.test(String(item.id ?? '')));
+    if (!valid.length) return result('unsupported-result');
+    const newest = [...valid].sort((a, b) =>
+      (Number(b.endedAt ?? 0) || 0) - (Number(a.endedAt ?? 0) || 0))[0];
 
     const resultUrl = new URL('https://api.phantombuster.com/api/v2/containers/fetch-result-object');
-    resultUrl.searchParams.set('id', String(id));
+    resultUrl.searchParams.set('id', String(newest.id));
     const resultRes = await fetcher(resultUrl.toString(), opts);
     if ([401, 403].includes(resultRes.status)) return result('invalid-key');
     if (resultRes.status === 429) return result('rate-limited');

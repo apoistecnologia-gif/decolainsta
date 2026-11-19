@@ -23,6 +23,7 @@ test('collector preview reads existing finalized run only, returns 10 allowliste
   });
   assert.equal(seen.length, 2);
   assert.equal(new URL(seen[0]).searchParams.get('mode'), 'finalized');
+  assert.equal(new URL(seen[0]).searchParams.get('limit'), '3');
   assert.equal(new URL(seen[1]).searchParams.get('id'), '123123123123123');
   assert.deepEqual(value.usernames, Array.from({length:10},(_,i)=>'sample'+i));
   assert.equal(value.status, 'found');
@@ -71,4 +72,44 @@ test('references page adds explicitly labeled read-only audience preview', () =>
   assert.match(component, /no máximo 10 nomes/);
   assert.match(component, /onClick=\{\(\) => void check\(\)\}/);
   assert.doesNotMatch(component, /localStorage|sessionStorage|agents\/launch|user_follow|user_unfollow/);
+});
+
+test('collector selects newest valid finalized run even when provider order differs', async () => {
+  const accessed: string[] = [];
+  const value = await previewCollectorResult('test-key', '1234567890123456', [], async url => {
+    accessed.push(url);
+    if (url.includes('/fetch-all')) {
+      return new Response(JSON.stringify([
+        { id: '1111111111111111', endedAt: 100 },
+        { id: 'invalid-container-id', endedAt: 99999 },
+        { id: '2222222222222222', endedAt: 200 },
+      ]), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      resultObject: JSON.stringify([{ username: 'newest.follower', email: 'PRIVATE@EXAMPLE.COM' }]),
+    }), { status: 200 });
+  });
+  assert.equal(accessed.length, 2);
+  assert.equal(new URL(accessed[1]).searchParams.get('id'), '2222222222222222');
+  assert.equal(value.status, 'found');
+  assert.deepEqual(value.usernames, ['newest.follower']);
+  assert.doesNotMatch(JSON.stringify(value), /PRIVATE|EXAMPLE/);
+});
+
+test('collector distinguishes valid empty runs from malformed provider responses', async () => {
+  for (const empty of [null, 'null', '']) {
+    const value = await previewCollectorResult('key', '1234567890123456', [], async url =>
+      url.includes('/fetch-all')
+        ? new Response(JSON.stringify([{ id: '1111111111111111' }]), { status: 200 })
+        : new Response(JSON.stringify({ resultObject: empty, apiKey: 'PRIVATE' }), { status: 200 }));
+    assert.equal(value.status, 'no-results');
+    assert.deepEqual(value.usernames, []);
+    assert.doesNotMatch(JSON.stringify(value), /PRIVATE/);
+  }
+  const malformed = await previewCollectorResult('key', '1234567890123456', [], async url =>
+    url.includes('/fetch-all')
+      ? new Response(JSON.stringify([{ id: '1111111111111111' }]), { status: 200 })
+      : new Response(JSON.stringify({ error: 'PRIVATE' }), { status: 200 }));
+  assert.equal(malformed.status, 'unsupported-result');
+  assert.doesNotMatch(JSON.stringify(malformed), /PRIVATE/);
 });

@@ -49,7 +49,8 @@ test('ingestão incremental armazena apenas novos usernames em ordem estável', 
 });
 
 test('agendamento só lê execução finalizada e mantém ações sociais desligadas', () => {
-  const route = readFileSync('app/api/cron/refresh-reference-audiences/route.ts', 'utf8');
+  const route = readFileSync('app/api/cron/refresh-reference-audiences/route.ts', 'utf8') +
+    readFileSync('lib/server/reference-audience-refresh-runner.ts', 'utf8');
   const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
   assert.ok(config.crons.some((job: {path: string; schedule: string}) =>
     job.path === '/api/cron/refresh-reference-audiences' && job.schedule === '0 10 * * *'));
@@ -107,7 +108,7 @@ test('importação parcial ocupa o último lote e contabiliza nomes adiados', ()
 });
 
 test('cron faz seleção pelo último claim em vez da ordem fixa do JSON', () => {
-  const route = readFileSync('app/api/cron/refresh-reference-audiences/route.ts','utf8');
+  const route = readFileSync('lib/server/reference-audience-refresh-runner.ts','utf8');
   assert.match(route,/prisma\.activityLog\.groupBy/);
   assert.match(route,/dueRefreshSources\(eligible, lastAttempts/);
   assert.match(route,/boundAudienceDelta\(/);

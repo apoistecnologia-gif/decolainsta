@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, makeAudienceSourceBinding,
   parseAudienceSourceBinding, resolveActiveAudienceSources,
+  resolveLatestAudienceBindings,
   type AudienceSourceBindingRow,
 } from '../lib/reference-audience-source-registry';
 
@@ -47,6 +48,13 @@ test('same collector assigned to two clients is quarantined for both', () => {
     row('account_b','ref_b','1111111111111111',true,'2026-11-19T10:00:00Z','two'),
   ];
   assert.deepEqual(resolveActiveAudienceSources(entries), []);
+  // Operator must still see and revoke both conflicting assignments.
+  assert.equal(resolveLatestAudienceBindings(entries).length, 2);
+  const revoked = row('account_a','ref_a',null,false,
+    '2026-11-19T13:00:00Z','three');
+  assert.deepEqual(resolveActiveAudienceSources([...entries,revoked]),[
+    {accountId:'account_b',referenceId:'ref_b',collectorAgentId:'1111111111111111'},
+  ]);
 });
 
 test('malformed latest binding fails closed and does not revive older event', () => {

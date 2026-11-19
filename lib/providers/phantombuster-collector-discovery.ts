@@ -104,9 +104,11 @@ export async function discoverFollowerCollectors(
     });
   if (!apiKey || apiKey.length > 512) return result('unavailable');
   try {
-    // The documented /agents/fetch-all is an INVENTORY, not a reliable source
-    // of the agent's configured argument. Inspect each candidate separately.
+    // The provider documents withArgument=true on /agents/fetch-all. Most
+    // discovery needs just this one read-only request. Missing arguments
+    // fall back to per-agent /agents/fetch with bounded requests.
     const inventoryUrl = new URL('https://api.phantombuster.com/api/v2/agents/fetch-all');
+    inventoryUrl.searchParams.set('withArgument', 'true');
     const options: RequestInit = {
       method: 'GET',
       headers: { Accept: 'application/json', 'X-Phantombuster-Key': apiKey },
@@ -129,13 +131,22 @@ export async function discoverFollowerCollectors(
       const entry = obj(item);
       if (!entry || entry.script !== 'Instagram Follower Collector.js') return [];
       const id = String(entry.id ?? entry._id ?? '');
-      return /^\d{10,25}$/.test(id) ? [id] : [];
+      return /^\d{10,25}$/.test(id)
+        ? [{ id, argument: entry.argument }] : [];
     });
-    // Fail closed instead of accepting an incomplete inventory that could
-    // produce cross-reference ambiguity. One inventory + max 20 GET requests.
-    if (candidates.length > 20) return result('too-many-agents', [], agents.length);
+    // Fail closed rather than partially matching an inventory with more
+    // than 20 details missing. Normal case uses a single provider request.
+    if (candidates.filter(item => item.argument === undefined).length > 20)
+      return result('too-many-agents', [], agents.length);
     const discovered: DiscoveredFollowerCollector[] = [];
-    for (const id of candidates) {
+    for (const candidate of candidates) {
+      const id = candidate.id;
+      if (candidate.argument !== undefined) {
+        const username = configuredFollowerCollectorReference(candidate.argument);
+        if (username)
+          discovered.push({ collectorAgentId: id, referenceUsername: username });
+        continue;
+      }
       const detailUrl = new URL('https://api.phantombuster.com/api/v2/agents/fetch');
       detailUrl.searchParams.set('id', id);
       detailUrl.searchParams.set('withManifest', 'false');

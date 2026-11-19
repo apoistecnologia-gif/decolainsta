@@ -18,6 +18,24 @@ type PilotAuth =
   | { ok: true; username: string }
   | { ok: false; status: number; error: string };
 
+/** Shared server-key diagnostic works for any customer account on Preview. */
+async function authorizeOwnedAccount(accountId: unknown): Promise<PilotAuth> {
+  if (process.env.VERCEL_ENV !== 'preview' ||
+      process.env.PHANTOMBUSTER_READONLY_ENABLED !== 'yes')
+    return { ok: false, status: 403, error: 'Diagnóstico desativado' };
+  const session = await auth();
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) return { ok: false, status: 401, error: 'Não autorizado' };
+  if (typeof accountId !== 'string' ||
+      !/^[a-zA-Z0-9_-]{1,100}$/.test(accountId))
+    return { ok: false, status: 400, error: 'Conta inválida' };
+  const account = await prisma.instagramAccount.findFirst({
+    where: { id: accountId, userId }, select: { username: true },
+  });
+  return account ? { ok: true, username: account.username } :
+    { ok: false, status: 404, error: 'Conta não encontrada' };
+}
+
 async function authorizePilot(accountId: unknown): Promise<PilotAuth> {
   const session = await auth();
   const userId = (session?.user as { id?: string } | undefined)?.id;
@@ -52,12 +70,13 @@ function pilotAgentId(): string | undefined {
 
 export async function GET(req: Request) {
   const accountId = new URL(req.url).searchParams.get('accountId');
-  const pilot = await authorizePilot(accountId);
-  if (!pilot.ok) return NextResponse.json({ error: pilot.error }, { status: pilot.status });
-  // Optional backend-only credential. Absent in the initial pilot preview.
+  const owned = await authorizeOwnedAccount(accountId);
+  if (!owned.ok) return NextResponse.json({ error: owned.error }, { status: owned.status });
   const key = process.env.PHANTOMBUSTER_API_KEY;
   if (!key) return reply({ status: 'not-configured', instagramConnectionVerified: false, actionsEnabled: false });
-  return reply(await checkPhantomBusterWorkspace(key, fetch, pilotAgentId()));
+  // Do not expose or attach the old pilot Auto Follow agent to a customer's
+  // generic workspace check. A verified API key is not Instagram authorization.
+  return reply(await checkPhantomBusterWorkspace(key));
 }
 
 /**

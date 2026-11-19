@@ -129,6 +129,9 @@ test('route is admin+Preview only and external writes require separate OFF-by-de
   assert.match(route,/request\.headers\.get\('origin'\)/);
   assert.match(route,/process\.env\.PHANTOMBUSTER_DRAFT_CREATION_ENABLED !== 'yes'/);
   assert.match(route,/confirmCreateUnconfiguredDraft !== true/);
+  assert.match(route,/operation !== 'create-next-draft'/);
+  assert.match(route,/const ref = eligible\[0\]/);
+  assert.doesNotMatch(route,/body\.referenceId/);
   assert.match(route,/Prisma\.TransactionIsolationLevel\.Serializable/);
   assert.match(route,/collectorDraftAlreadyAttempted/);
   assert.match(route,/findExistingCollectorDraft/);

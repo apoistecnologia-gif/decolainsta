@@ -51,7 +51,26 @@ export function RelationshipIntegrationsPanel(){
     }catch{setError('Não foi possível consultar os requisitos');}
     finally{setBusy(false);}
   },[]);
-  useEffect(()=>{void reload();},[reload]);
+  useEffect(()=>{
+    const controller=new AbortController();
+    const options={cache:'no-store' as const,credentials:'same-origin' as const,
+      signal:controller.signal};
+    void Promise.all([
+      fetch('/api/operator/instagram-messaging/readiness',options),
+      fetch('/api/operator/phantombuster-unfollow-readiness',options),
+    ]).then(async ([a,b])=>{
+      if(!a.ok||!b.ok)throw Error('unavailable');
+      const [m,u]=await Promise.all([
+        a.json() as Promise<MetaReadiness>,
+        b.json() as Promise<UnfollowReadiness>,
+      ]);
+      if(!controller.signal.aborted){setMeta(m);setUnfollow(u);}
+    }).catch(()=>{
+      if(!controller.signal.aborted)
+        setError('Não foi possível consultar os requisitos');
+    });
+    return ()=>controller.abort();
+  },[]);
   const readyToConnect=Boolean(meta?.integrationEnabled&&meta?.migrationReady&&
     meta?.oauthConfigured&&meta?.webhookConfigured&&meta?.accountId);
   return <div className="space-y-3 pt-3 text-sm">

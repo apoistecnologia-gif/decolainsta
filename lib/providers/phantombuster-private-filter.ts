@@ -11,7 +11,7 @@ const obj=(v:unknown):Record<string,unknown>|null=>
   v!==null&&typeof v==='object'&&!Array.isArray(v)
     ?v as Record<string,unknown>:null;
 const label=(v:unknown):boolean=>
-  typeof v==='string'&&v.trim().replace(/\s*\\(optional\\)\s*$/i,'')
+  typeof v==='string'&&v.trim().replace(/\s*\(optional\)\s*$/i,'')
     .replace(/\s+/g,' ').toLowerCase()==='exclude private profiles';
 const field=(v:unknown):v is string=>
   typeof v==='string'&&/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(v);

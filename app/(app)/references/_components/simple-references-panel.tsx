@@ -211,9 +211,27 @@ export function SimpleReferencesPanel() {
           const connection = await connectionResponse.json() as {
             status: string; providerReached: boolean;
             waitingForCollectors: number; linkedCollectors: number;
+            collectorCheck?: string; lastReadStatus?: string | null;
           };
           if (needsAdminAuthorization && connection.waitingForCollectors > 0)
             phases.push('Vínculo pendente de autorização administrativa.');
+          if (connection.providerReached && connection.linkedCollectors > 0) {
+            const diagnostics: Record<string, string> = {
+              'invalid-key': 'A API não autorizou a consulta ao coletor vinculado.',
+              'rate-limited': 'O PhantomBuster limitou temporariamente a consulta ao coletor.',
+              'not-found': 'Coletor vinculado não encontrado na workspace.',
+              'mismatch': 'A configuração do coletor não corresponde à referência cadastrada.',
+              'unavailable': 'A API responde, mas não foi possível consultar os detalhes do coletor.',
+            };
+            const problem = connection.collectorCheck
+              ? diagnostics[connection.collectorCheck] : undefined;
+            if (problem) phases.push(problem);
+            else if (connection.lastReadStatus === 'historical-only')
+              phases.push('Resultado antigo preservado; nenhuma coleta nova foi importada.');
+            else if (connection.lastReadStatus === 'source-unavailable' &&
+                connection.collectorCheck !== 'matched')
+              phases.push('A última tentativa de leitura não conseguiu confirmar o coletor.');
+          }
           if (connection.providerReached) {
             phases.push(connection.waitingForCollectors > 0
               ? 'API conectada; ' + connection.waitingForCollectors +

@@ -9,6 +9,12 @@ type Inspection={
   providerCheck:string;oneFollowPerLaunchVerified:boolean;agentLaunchEnabled:false;
   privateExclusionRequested:boolean;privateExclusionStatus:string;
   privateExclusionReason?:string;privateExclusionVerified:boolean;
+  privateExclusionStructure?:{
+    schema:'present'|'absent';form:'present'|'absent'|'encoded';
+    steps:'array'|'map'|'absent'|'other';
+    fields:'array'|'map'|'mixed'|'absent';
+    booleanControls:number;privateRelatedLabels:number;exactLabels:number;
+  }|null;
 };
 type Attempt={
   stage:string;requestedAt:string|null;followConfirmed:false;
@@ -154,6 +160,17 @@ export function SocialPilotPanel(){
         <p>Motivo do filtro não confirmado: {
           FILTER_REASON_LABELS[inspection.privateExclusionReason??'']??
           'a configuração do agente não foi comprovada'}.</p>}
+      {inspection.privateExclusionReason==='filter-not-described'&&
+        inspection.privateExclusionStructure&&
+        <p>Estrutura técnica do manifesto (sem campos ou valores):
+          esquema {inspection.privateExclusionStructure.schema};
+          formulário {inspection.privateExclusionStructure.form};
+          etapas {inspection.privateExclusionStructure.steps};
+          campos {inspection.privateExclusionStructure.fields};
+          controles booleanos {inspection.privateExclusionStructure.booleanControls};
+          rótulos relacionados a privacidade {
+            inspection.privateExclusionStructure.privateRelatedLabels}.
+          Nenhum dado da sessão foi exibido.</p>}
       <p>Conta registrada: {inspection.accountRegistered?'sim':'não'}.
         Referência: {inspection.referenceRegistered?'sim':'não'}.</p>
       <p>Lançamento real: {trial.attempted

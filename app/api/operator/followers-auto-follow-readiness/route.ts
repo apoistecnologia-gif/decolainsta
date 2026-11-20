@@ -61,6 +61,8 @@ export async function GET() {
     privateExclusionRequested,
     privateExclusionStatus,
     privateExclusionReason:exclusion.reason,
+    privateExclusionStructure:'structure' in exclusion
+      ? (exclusion.structure??null) : null,
     privateExclusionVerified:privateExclusionRequested&&privateExclusionStatus==='enabled',
     accountRegistered:Boolean(account),
     referenceRegistered:Boolean(reference),

@@ -379,3 +379,44 @@ test('manifest fields map works on 404 inventory fallback without guessing optio
   ]);
   assert.doesNotMatch(JSON.stringify(diagnosis),/API_SECRET|CREDENTIAL/);
 });
+
+test('sanitized structure identifies missing Phantom form paths without exposing fields',async()=>{
+  const {diagnoseSavedPrivateFilter,describeSavedPrivateFilterStructure}=
+    await import('../lib/providers/phantombuster-private-filter');
+  const privateAgent={...agent({
+    igSessionCookie:'VERY_SENSITIVE_COOKIE',
+    privateSwitch:true,
+  }),manifest:{
+    argumentSchema:{properties:{
+      igSessionCookie:{type:'string',title:'Connected account'},
+    }},
+    argumentForm:{steps:[{fields:{
+      privateSwitch:{type:'checkbox',label:'Exclude unavailable accounts'},
+      connectedSession:{type:'text',label:'Connected account'},
+    }}]},
+  }};
+  const status=diagnoseSavedPrivateFilter(privateAgent,id,ref);
+  assert.equal(status.status,'unverified');
+  assert.equal(status.reason,'filter-not-described');
+  assert.deepEqual(status.structure,{
+    schema:'present',form:'present',steps:'array',fields:'map',
+    booleanControls:1,privateRelatedLabels:0,exactLabels:0,
+  });
+  const serialized=JSON.stringify(status);
+  assert.doesNotMatch(serialized,/VERY_SENSITIVE_COOKIE|igSessionCookie|privateSwitch|connectedSession/);
+  assert.doesNotMatch(serialized,/Exclude unavailable accounts|Connected account/);
+  const noForm=describeSavedPrivateFilterStructure({
+    argumentSchema:{properties:{flag:{type:'boolean',title:'Privacy setting'}}},
+  });
+  assert.equal(noForm.form,'absent');
+  assert.equal(noForm.booleanControls,1);
+});
+test('only admin readiness emits sanitized profile and leaves launch guard intact',()=>{
+  const route=readFileSync('app/api/operator/followers-auto-follow-readiness/route.ts','utf8');
+  assert.match(route,/privateExclusionStructure/);
+  assert.match(route,/operator\?\.role !== 'admin'/);
+  const ui=readFileSync('app/(app)/references/_components/social-pilot-panel.tsx','utf8');
+  assert.match(ui,/privateExclusionStructure/);
+  const runner=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
+  assert.match(runner,/privateExclusion!=='enabled'/);
+});

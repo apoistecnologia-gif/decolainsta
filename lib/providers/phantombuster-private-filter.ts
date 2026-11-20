@@ -19,8 +19,18 @@ export type PrivateFilterReason=
   'provider-service-error'|'response-too-large'|'response-malformed'|
   'provider-timeout'|'provider-forbidden'|
   'listed-agent-manifest-unavailable'|'inventory-unavailable'|'inventory-mismatch';
+export type PrivateFilterStructure={
+  schema:'present'|'absent';
+  form:'present'|'absent'|'encoded';
+  steps:'array'|'map'|'absent'|'other';
+  fields:'array'|'map'|'mixed'|'absent';
+  booleanControls:number;
+  privateRelatedLabels:number;
+  exactLabels:number;
+};
 export type PrivateFilterDiagnosis={
   status:PrivateFilterStatus;reason:PrivateFilterReason;
+  structure?:PrivateFilterStructure;
 };
 const obj=(v:unknown):Record<string,unknown>|null=>
   v!==null&&typeof v==='object'&&!Array.isArray(v)
@@ -43,6 +53,69 @@ function parseObject(input:unknown,limit:number):Record<string,unknown>|null{
   }
   return obj(input);
 }
+/**
+ * Safe-only structural summary for the administrative Preview.
+ * Inspects provider metadata labels/types, never argument keys or values.
+ * No raw labels, URLs, cookies, IDs, tokens, or dynamic field names returned.
+ */
+export function describeSavedPrivateFilterStructure(manifest:Record<string,unknown>):
+  PrivateFilterStructure{
+  const form=manifest.argumentForm;
+  const formObj=obj(form);
+  const schema=obj(manifest.argumentSchema);
+  const schemaProps=obj(schema?.properties);
+  let booleanControls=0,privateRelatedLabels=0,exactLabels=0;
+  const fieldKinds=new Set<'array'|'map'>();
+  const shape=(v:unknown):'array'|'map'|'absent'|'other'=>
+    v===undefined||v===null?'absent':
+      Array.isArray(v)?'array':obj(v)?'map':'other';
+  const record=(node:Record<string,unknown>)=>{
+    const label=node.label??node.title;
+    if(typeof label==='string'){
+      if(/privat|públic|public/i.test(label))privateRelatedLabels++;
+      if(named(label))exactLabels++;
+    }
+    if(booleanField(node))booleanControls++;
+  };
+  const props=schemaProps?Object.values(schemaProps):[];
+  if(props.length<=200)for(const value of props){
+    const node=obj(value);if(node)record(node);
+  }
+  const pending:unknown[]=[form];
+  let visited=0;
+  while(pending.length&&visited<300){
+    const node=pending.shift();visited++;
+    if(Array.isArray(node)){
+      if(node.length<=100)pending.push(...node);
+      continue;
+    }
+    const o=obj(node);if(!o)continue;
+    record(o);
+    const fields=o.fields;
+    if(Array.isArray(fields)){
+      fieldKinds.add('array');
+      if(fields.length<=100)pending.push(...fields);
+    }else if(obj(fields)){
+      fieldKinds.add('map');
+      const entries=Object.values(fields as Record<string,unknown>);
+      if(entries.length<=100)pending.push(...entries);
+    }
+    for(const key of ['steps','inputs','sections','groups','children']){
+      if(Object.prototype.hasOwnProperty.call(o,key))pending.push(o[key]);
+    }
+  }
+  return {
+    schema:schemaProps?'present':'absent',
+    form:typeof form==='string'?'encoded':formObj?'present':'absent',
+    steps:shape(formObj?.steps),
+    fields:fieldKinds.size===2?'mixed':
+      fieldKinds.has('array')?'array':fieldKinds.has('map')?'map':'absent',
+    booleanControls:Math.min(booleanControls,300),
+    privateRelatedLabels:Math.min(privateRelatedLabels,300),
+    exactLabels:Math.min(exactLabels,300),
+  };
+}
+
 /** Only an explicit, unique boolean manifest field can prove the flag. */
 export function diagnoseSavedPrivateFilter(
   raw:unknown,agentId:string,reference:string,
@@ -111,7 +184,10 @@ export function diagnoseSavedPrivateFilter(
     }
   }
   if(queue.length)return unverified('manifest-invalid');
-  if(!keys.size)return unverified('filter-not-described');
+  if(!keys.size)return {
+    ...unverified('filter-not-described'),
+    structure:describeSavedPrivateFilterStructure(manifest),
+  };
   if(keys.size!==1)return unverified('filter-ambiguous');
   const key=[...keys][0];
   if(!argument||!Object.prototype.hasOwnProperty.call(argument,key))

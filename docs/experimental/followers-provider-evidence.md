@@ -192,3 +192,18 @@ ausente ou manifesto indisponível continuam bloqueados.
 A consulta permanece restrita ao operador no Preview e não altera o
 agente ou executa ações no Instagram. A confirmação ainda dependerá
 da leitura de um manifesto verdadeiro; testes usam somente fixtures.
+
+
+## Resumo estrutural sanitizado do manifesto (2026-11-20)
+
+Quando o PhantomBuster envia um manifesto mas o campo de exclusão
+não pode ser identificado, o diagnóstico administrativo do Preview
+mostra somente um resumo de **estrutura**: presença de esquema,
+formulário, formato das etapas/campos e contagens limitadas de
+controles booleanos e rótulos relacionados a privacidade. Não divulga
+nomes das opções, valores, argumentos, IDs, cookies nem tokens.
+
+O resumo **não** transforma indícios em uma opção habilitada. A
+proteção de futuros lançamentos permanece bloqueada enquanto a
+configuração não puder ser comprovada. Os registros da primeira
+solicitação e o estado de unfollow permanecem inalterados.

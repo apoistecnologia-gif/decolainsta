@@ -14,7 +14,10 @@ export type PrivateFilterReason=
   'verified'|'agent-mismatch'|'manifest-absent'|'manifest-invalid'|
   'filter-not-described'|'filter-ambiguous'|'saved-argument-missing'|
   'saved-value-invalid'|'provider-unavailable'|'provider-auth-failed'|
-  'provider-rate-limited';
+  'provider-rate-limited'|'manifest-access-denied'|'agent-not-found'|
+  'agent-script-missing'|'manifest-request-rejected'|
+  'provider-service-error'|'response-too-large'|'response-malformed'|
+  'provider-timeout'|'provider-forbidden';
 export type PrivateFilterDiagnosis={
   status:PrivateFilterStatus;reason:PrivateFilterReason;
 };
@@ -100,9 +103,14 @@ export const readSavedPrivateFilter=(
   raw:unknown,agentId:string,reference:string,
 ):PrivateFilterStatus=>diagnoseSavedPrivateFilter(raw,agentId,reference).status;
 
-async function boundedJson(response:Response):Promise<unknown>{
-  if(!response.body||Number(response.headers.get('content-length')??0)>250000)
-    return null;
+async function boundedJson(response:Response):Promise<
+  {ok:true;value:unknown}|{ok:false;reason:'response-too-large'|'response-malformed'}
+>{
+  const declared=response.headers.get('content-length');
+  if(declared!==null&&Number.isFinite(Number(declared))&&
+    Number(declared)>250000)
+    return {ok:false,reason:'response-too-large'};
+  if(!response.body)return {ok:false,reason:'response-malformed'};
   const reader=response.body.getReader(),decoder=new TextDecoder();
   let raw='',bytes=0;
   try{
@@ -110,11 +118,13 @@ async function boundedJson(response:Response):Promise<unknown>{
       const part=await reader.read();
       if(part.done)break;
       bytes+=part.value.byteLength;
-      if(bytes>250000){await reader.cancel();return null;}
+      if(bytes>250000){await reader.cancel();
+        return {ok:false,reason:'response-too-large'};}
       raw+=decoder.decode(part.value,{stream:true});
     }
-    return JSON.parse(raw+decoder.decode()) as unknown;
-  }catch{return null;}finally{reader.releaseLock();}
+    return {ok:true,value:JSON.parse(raw+decoder.decode()) as unknown};
+  }catch{return {ok:false,reason:'response-malformed'};}
+  finally{reader.releaseLock();}
 }
 export async function inspectSavedPrivateFilterDetails(
   apiKey:string,agentId:string,reference:string,fetcher:Fetcher=fetch,
@@ -134,15 +144,30 @@ export async function inspectSavedPrivateFilterDetails(
       credentials:'omit',redirect:'error',cache:'no-store',
       signal:AbortSignal.timeout(8000),
     });
-    if(res.status===401||res.status===403)
-      return {status:'invalid-key',reason:'provider-auth-failed'};
+    // The official /agents/fetch documentation distinguishes a 401 for
+    // inaccessible manifest from general authentication on plain /fetch.
+    // This request includes withManifest=true, so do NOT claim the API key
+    // is invalid when the agent is otherwise readable.
+    if(res.status===401)
+      return unverified('manifest-access-denied');
+    if(res.status===403)return unverified('provider-forbidden');
+    if(res.status===404)return unverified('agent-not-found');
+    if(res.status===412)return unverified('agent-script-missing');
+    if(res.status===400)return unverified('manifest-request-rejected');
     if(res.status===429)
       return {status:'rate-limited',reason:'provider-rate-limited'};
+    if(res.status>=500)return {status:'unavailable',reason:'provider-service-error'};
     if(!res.ok)return unavailable;
     const payload=await boundedJson(res);
-    return payload===null?unavailable:
-      diagnoseSavedPrivateFilter(payload,agentId,reference);
-  }catch{return unavailable;}
+    return payload.ok
+      ? diagnoseSavedPrivateFilter(payload.value,agentId,reference)
+      : unverified(payload.reason);
+  }catch(error){
+    if(error instanceof Error&&
+      (error.name==='TimeoutError'||error.name==='AbortError'))
+      return {status:'unavailable',reason:'provider-timeout'};
+    return unavailable;
+  }
 }
 export async function inspectSavedPrivateFilter(
   apiKey:string,agentId:string,reference:string,fetcher:Fetcher=fetch,

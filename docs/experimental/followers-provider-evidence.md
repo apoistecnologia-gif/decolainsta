@@ -134,3 +134,19 @@ sem dados brutos da sessão, configurações ou credenciais.
   ocultado após `provider-reported`.
 - O primeiro histórico e a observação `requested` não são alterados.
   Nenhuma execução extra de follow/unfollow foi iniciada.
+
+## Diagnóstico de códigos HTTP oficiais (2026-11-20)
+
+A consulta com `withManifest=true` agora classifica separadamente:
+- 401: acesso ao manifesto recusado (`manifest-access-denied`), **não**
+  assumir chave inválida quando a consulta simples reconhece o agente.
+- 403: acesso proibido; 404: agente não encontrado; 412: script associado
+  não disponível; 400: requisição rejeitada; 429: limite do provedor;
+  5xx: erro do serviço.
+- 200 com JSON inválido, resposta grande demais ou manifesto ausente:
+  motivos diferentes, sem inferir que o filtro esteja ativo.
+- Nenhum corpo bruto, headers, cookies, nomes de chaves ou tokens é
+  devolvido ao navegador. A leitura permanece exclusiva ao diagnóstico.
+
+Referência da API:
+https://hub.phantombuster.com/reference/get_agents-fetch

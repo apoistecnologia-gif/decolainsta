@@ -200,3 +200,43 @@ test('client does not advertise a completed launch as enabled or repeat result i
     'app/api/operator/followers-auto-follow-readiness/route.ts','utf8');
   assert.match(readiness,/privateExclusionReason:exclusion.reason/);
 });
+
+test('official withManifest API errors have precise sanitized outcomes',async()=>{
+  const {inspectSavedPrivateFilterDetails}=
+    await import('../lib/providers/phantombuster-private-filter');
+  const cases=[
+    [400,'manifest-request-rejected','unverified'],
+    [401,'manifest-access-denied','unverified'],
+    [403,'provider-forbidden','unverified'],
+    [404,'agent-not-found','unverified'],
+    [412,'agent-script-missing','unverified'],
+    [429,'provider-rate-limited','rate-limited'],
+    [500,'provider-service-error','unavailable'],
+    [502,'provider-service-error','unavailable'],
+  ] as const;
+  for(const [code,reason,status] of cases){
+    const result=await inspectSavedPrivateFilterDetails('SENSITIVE_KEY',id,ref,
+      async(url,opts)=>{
+        assert.equal(new URL(url).searchParams.get('withManifest'),'true');
+        assert.equal(opts?.method,'GET');
+        assert.equal(opts?.redirect,'error');
+        return new Response('SENSITIVE_BODY',{status:code});
+      });
+    assert.deepEqual(result,{status,reason});
+    assert.doesNotMatch(JSON.stringify(result),/SENSITIVE/);
+  }
+});
+test('large, malformed and missing manifest responses cannot imply enabled',async()=>{
+  const {inspectSavedPrivateFilterDetails}=
+    await import('../lib/providers/phantombuster-private-filter');
+  for(const [body,opts,reason] of [
+    ['not-json',{},'response-malformed'],
+    ['{}',{headers:{'content-length':'250001'}},'response-too-large'],
+    [JSON.stringify({data:agent()}),{},'manifest-absent'],
+  ] as const){
+    const result=await inspectSavedPrivateFilterDetails('key',id,ref,
+      async()=>new Response(body,{status:200,...opts}));
+    assert.equal(result.reason,reason);
+    assert.notEqual(result.status,'enabled');
+  }
+});

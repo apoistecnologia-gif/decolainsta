@@ -36,6 +36,15 @@ const FILTER_REASON_LABELS:Record<string,string>={
   'provider-unavailable':'a resposta do provedor não estava disponível',
   'provider-auth-failed':'o provedor recusou a autenticação',
   'provider-rate-limited':'o provedor limitou a consulta',
+  'manifest-access-denied':'a API recusou acesso ao manifesto (401); a chave pode continuar válida para outras consultas',
+  'provider-forbidden':'a API recusou a consulta ao manifesto (403)',
+  'agent-not-found':'a API não encontrou o agente nesta consulta (404)',
+  'agent-script-missing':'a API não encontrou script associado ao agente (412)',
+  'manifest-request-rejected':'a API rejeitou os parâmetros de consulta (400)',
+  'provider-service-error':'o serviço do PhantomBuster respondeu com erro (5xx)',
+  'response-too-large':'o retorno do manifesto excede o limite seguro',
+  'response-malformed':'o retorno do manifesto não é um JSON válido',
+  'provider-timeout':'a consulta ao manifesto excedeu o tempo permitido',
 };
 export function SocialPilotPanel(){
   const [inspection,setInspection]=useState<Inspection|null>(null);

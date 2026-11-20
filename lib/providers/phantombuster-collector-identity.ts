@@ -3,6 +3,8 @@
  * Instagram cookies, result bodies, or launch any agent. Script identity alone
  * still does NOT prove the collector targets a particular reference username.
  */
+import { phantomBusterRequestHeaders } from './phantombuster-request-headers';
+
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 export type FollowerCollectorIdentity =
   | 'verified-template' | 'different-template' | 'not-found'
@@ -19,9 +21,7 @@ export async function verifyFollowerCollectorTemplate(
   url.searchParams.set('withManifest', 'false');
   try {
     const response = await fetcher(url.toString(), {
-      method: 'GET', headers: {
-        Accept: 'application/json', 'X-Phantombuster-Key': apiKey,
-      },
+      method: 'GET', headers: phantomBusterRequestHeaders(apiKey),
       redirect: 'error', cache: 'no-store', credentials: 'omit',
       signal: AbortSignal.timeout(8000),
     });

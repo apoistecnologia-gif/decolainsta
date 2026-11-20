@@ -153,7 +153,7 @@ test('provider report requires matching single run result and explicit follow su
       assert.equal(opts?.redirect,'error');
       if(url.includes('fetch-result-object'))
         return new Response(JSON.stringify({resultObject:[row]}),{status:200});
-      return new Response(JSON.stringify({output:'Successful authentication\\n1 profile followed'}),{status:200});
+      return new Response(JSON.stringify({output:'Successful authentication\n1 profile followed'}),{status:200});
     });
   assert.equal(urls.length,2);
   assert.ok(urls.every(url=>new URL(url).searchParams.get('id')===container));

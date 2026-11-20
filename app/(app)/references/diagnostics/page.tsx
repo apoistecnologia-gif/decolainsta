@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/layouts/page-header';
 import { ReferenceHistoryPanel } from '../_components/reference-history-panel';
 import { OperatorCollectorIntakePanel } from '../_components/operator-collector-intake-panel';
+import { FirstOperatorActivationPanel } from '../_components/first-operator-activation-panel';
 import { ReferenceWorkflowPanel } from '../_components/reference-workflow-panel';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,11 @@ export default async function ReferencesDiagnosticsPage() {
   const operator = userId ? await prisma.user.findUnique({
     where: { id: userId }, select: { role: true },
   }) : null;
+  // Only the currently signed-in, sole account may see the bootstrap form.
+  // The POST route repeats all these conditions inside a serializable transaction.
+  const canActivateFirstOperator = operator?.role === 'user' &&
+    await prisma.user.count() === 1 &&
+    await prisma.user.count({ where: { role: 'admin' } }) === 0;
   return (
     <div className="space-y-6">
       <Link href="/references" className="inline-block text-sm underline underline-offset-4">
@@ -23,6 +29,7 @@ export default async function ReferencesDiagnosticsPage() {
         title="Diagnóstico experimental"
         description="Ferramentas técnicas de coleta, importação, histórico e revisão manual. Não executam follows ou unfollows."
       />
+      {canActivateFirstOperator && <FirstOperatorActivationPanel />}
       {operator?.role === 'admin' && <OperatorCollectorIntakePanel />}
       <ReferenceWorkflowPanel />
       <details className="rounded-lg border p-4">

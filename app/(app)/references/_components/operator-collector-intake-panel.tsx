@@ -3,6 +3,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
+type WorkspaceCapacity = {
+  status: 'ok' | 'invalid-key' | 'rate-limited' | 'unavailable' | 'unexpected-response';
+  agents: number | null;
+  resourcesRead: boolean;
+  slotMetrics: Array<{ field: string; value: number }>;
+  exactFreeSlotsKnown: false;
+};
 type ProvisioningPlan = {
   total: number;
   linked: number;
@@ -39,12 +46,27 @@ type Result = {
 
 export function OperatorCollectorIntakePanel() {
   const [busy, setBusy] = useState(false);
+  const [capacity, setCapacity] = useState<WorkspaceCapacity | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [queue, setQueue] = useState<ProvisioningPlan | null>(null);
   const [draftOutcome, setDraftOutcome] = useState<DraftOutcome | null>(null);
   const [reconciled, setReconciled] = useState<Reconciled | null>(null);
   const [reconciliationOffset, setReconciliationOffset] = useState(0);
   const [error, setError] = useState('');
+  async function checkCapacity() {
+    if (busy) return;
+    setBusy(true); setError(''); setCapacity(null);
+    try {
+      const response = await fetch('/api/provider/phantombuster/workspace-capacity', {
+        method: 'GET', credentials: 'same-origin',
+        cache: 'no-store', redirect: 'error',
+      });
+      if (!response.ok) throw Error('Consulta à capacidade não autorizada.');
+      setCapacity(await response.json() as WorkspaceCapacity);
+    } catch {
+      setError('Não foi possível conferir a capacidade do PhantomBuster.');
+    } finally { setBusy(false); }
+  }
   async function reconcilePrepared() {
     if (busy) return;
     setBusy(true); setError(''); setReconciled(null);
@@ -133,6 +155,31 @@ export function OperatorCollectorIntakePanel() {
         após conferir o alvo exato; nunca cria ou executa agentes. Referências
         iguais em clientes diferentes ficam pendentes de revisão.
       </p>
+      <div className="rounded-md border p-3 space-y-2">
+        <h3 className="text-sm font-medium">Capacidade da sua workspace PhantomBuster</h3>
+        <p className="text-xs text-muted-foreground">
+          Consulta as métricas de recursos e a quantidade de coletores sem
+          criar, executar ou modificar agentes.
+        </p>
+        <Button type="button" variant="outline" disabled={busy}
+          onClick={() => void checkCapacity()}>
+          {busy ? 'Consultando...' : 'Validar capacidade do provedor'}
+        </Button>
+        {capacity && <div role="status" className="text-sm space-y-1">
+          <p>{capacity.status === 'ok'
+            ? 'Provedor respondeu à consulta de recursos.'
+            : 'Capacidade não confirmada: ' + capacity.status} </p>
+          {capacity.status === 'ok' && <p>
+            Coletores na workspace: {capacity.agents ?? 'desconhecido'}.
+          </p>}
+          {capacity.slotMetrics.map(metric => <p key={metric.field}>
+            {metric.field}: {metric.value}
+          </p>)}
+          {capacity.status === 'ok' && capacity.slotMetrics.length === 0 &&
+            <p>O provedor não informou números de vagas em formato reconhecido.
+              Não é possível afirmar quantas vagas restam.</p>}
+        </div>}
+      </div>
       <Button type="button" variant="outline" disabled={busy}
         onClick={() => void matchAll()}>
         {busy ? 'Verificando coletores...' : 'Vincular coletores disponíveis'}

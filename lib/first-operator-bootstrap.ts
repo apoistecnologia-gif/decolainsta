@@ -20,7 +20,7 @@ export type FirstOperatorSnapshot = {
 
 export function eligibleFirstOperator(snapshot: FirstOperatorSnapshot): boolean {
   const email = snapshot.requestedEmail.trim().toLowerCase();
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) ||
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
       email.length > 254 || snapshot.knownUserCount !== 1 ||
       snapshot.adminCount !== 0 || !snapshot.candidate ||
       snapshot.candidate.email.trim().toLowerCase() !== email ||

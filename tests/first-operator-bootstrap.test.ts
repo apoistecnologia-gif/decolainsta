@@ -49,15 +49,18 @@ test('only exact approval can enable a first-operator write', () => {
 
 test('admin activation is offline, password checked and transactionally guarded', () => {
   const source = readFileSync('scripts/bootstrap-first-operator.ts','utf8');
-  assert.match(source,/process\\.env\\.FIRST_OPERATOR_MODE \\?\\? 'check'/);
-  assert.match(source,/explicitFirstOperatorApproval\\(/);
-  assert.match(source,/pg_advisory_xact_lock/);
-  assert.match(source,/eligibleFirstOperator\\(/);
-  assert.match(source,/bcrypt\\.compare\\(password, candidate\\.password\\)/);
-  assert.match(source,/if \\(mode === 'check'\\) return 'verified-without-write'/);
-  assert.match(source,/tx\\.user\\.updateMany\\(/);
-  assert.match(source,/Prisma\\.TransactionIsolationLevel\\.Serializable/);
-  assert.doesNotMatch(source,/fetch\\(|NextResponse|export async function POST|user\\.create\\(/);
+  for (const token of [
+    "process.env.FIRST_OPERATOR_MODE ?? 'check'",
+    'explicitFirstOperatorApproval(',
+    'pg_advisory_xact_lock',
+    'eligibleFirstOperator(',
+    'bcrypt.compare(password, candidate.password)',
+    "if (mode === 'check') return 'verified-without-write'",
+    'tx.user.updateMany(',
+    'Prisma.TransactionIsolationLevel.Serializable',
+  ]) assert.ok(source.includes(token), token);
+  for (const forbidden of ['fetch(', 'NextResponse', 'export async function POST', 'user.create('])
+    assert.ok(!source.includes(forbidden), forbidden);
   const seed = readFileSync('scripts/seed.ts','utf8');
   assert.match(seed,/Seed não alterou a senha nem o nível de acesso/);
 });

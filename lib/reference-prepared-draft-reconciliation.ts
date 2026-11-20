@@ -28,7 +28,8 @@ export function planPreparedDraftReconciliation(
   existing: AudienceRefreshSource[],
   revoked: ReadonlySet<string>,
   maxChecks = 3,
-): { candidates: PreparedPair[]; pending: number; ambiguous: number } {
+  scanOffset = 0,
+): { candidates: PreparedPair[]; pending: number; ambiguous: number; nextOffset: number | null } {
   const key = (a: string, r: string) => a + ':' + r;
   const activeKeys = new Set(existing.map(b => key(b.accountId, b.referenceId)));
   const activeAgents = new Set(existing.map(b => b.collectorAgentId));
@@ -49,11 +50,11 @@ export function planPreparedDraftReconciliation(
   }
 
   let pending = 0, ambiguous = 0;
-  const candidates: PreparedPair[] = [];
+  const eligible: Array<{ index: number; pair: PreparedPair }> = [];
   const sorted = [...references].sort((a,b) =>
     a.createdAt.getTime() - b.createdAt.getTime() ||
     a.accountId.localeCompare(b.accountId) || a.id.localeCompare(b.id));
-  for (const ref of sorted) {
+  for (const [index, ref] of sorted.entries()) {
     const k = key(ref.accountId, ref.id);
     if (revoked.has(k) || activeKeys.has(k)) continue;
     const log = latest.get(k);
@@ -66,11 +67,22 @@ export function planPreparedDraftReconciliation(
         activeAgents.has(event.agentId)) { ambiguous++; continue; }
     if (!/^[a-z0-9._]{1,30}$/.test(ref.username.toLowerCase())) continue;
     pending++;
-    if (candidates.length < Math.max(0, Math.min(3, maxChecks)))
-      candidates.push({
+    eligible.push({
+      index,
+      pair: {
         accountId: ref.accountId, referenceId: ref.id,
         username: ref.username.toLowerCase(), agentId: event.agentId,
-      });
+      },
+    });
   }
-  return { candidates, pending, ambiguous };
+  // Cursor is an offset in ALL sorted references, not the shrinking eligible
+  // set. Binding earlier pages must not cause later references to be skipped.
+  const start = Number.isInteger(scanOffset) && scanOffset >= 0 ? scanOffset : 0;
+  const remaining = eligible.filter(entry => entry.index >= start);
+  const limit = Math.max(0, Math.min(3, maxChecks));
+  const window = remaining.slice(0, limit);
+  const nextOffset = remaining.length > window.length && window.length > 0
+    ? window[window.length - 1].index + 1 : null;
+  return { candidates: window.map(entry => entry.pair),
+    pending, ambiguous, nextOffset };
 }

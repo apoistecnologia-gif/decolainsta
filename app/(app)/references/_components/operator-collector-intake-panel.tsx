@@ -24,6 +24,7 @@ type Reconciled = {
   notConfigured: number;
   unverified: number;
   ambiguous: number;
+  nextOffset: number | null;
 };
 type Result = {
   matched: number;
@@ -42,6 +43,7 @@ export function OperatorCollectorIntakePanel() {
   const [queue, setQueue] = useState<ProvisioningPlan | null>(null);
   const [draftOutcome, setDraftOutcome] = useState<DraftOutcome | null>(null);
   const [reconciled, setReconciled] = useState<Reconciled | null>(null);
+  const [reconciliationOffset, setReconciliationOffset] = useState(0);
   const [error, setError] = useState('');
   async function reconcilePrepared() {
     if (busy) return;
@@ -51,7 +53,9 @@ export function OperatorCollectorIntakePanel() {
         method: 'POST', credentials: 'same-origin',
         cache: 'no-store', redirect: 'error',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({operation:'reconcile-prepared'}),
+        body: JSON.stringify(reconciliationOffset
+          ? { operation:'reconcile-prepared', offset: reconciliationOffset }
+          : { operation:'reconcile-prepared' }),
       });
       const data: unknown = await response.json();
       if (!response.ok) {
@@ -60,7 +64,10 @@ export function OperatorCollectorIntakePanel() {
           : 'Não foi possível validar os rascunhos';
         throw new Error(detail);
       }
-      setReconciled(data as Reconciled);
+      const outcome = data as Reconciled;
+      setReconciled(outcome);
+      setReconciliationOffset(typeof outcome.nextOffset === 'number'
+        ? outcome.nextOffset : 0);
       setQueue(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha na validação de coletores');
@@ -145,7 +152,8 @@ export function OperatorCollectorIntakePanel() {
         </p>
         <Button type="button" variant="outline" disabled={busy}
           onClick={() => void reconcilePrepared()}>
-          {busy ? 'Verificando...' : 'Conferir rascunhos configurados'}
+          {busy ? 'Verificando...' : reconciliationOffset > 0
+            ? 'Conferir próximos rascunhos' : 'Conferir rascunhos configurados'}
         </Button>
         {reconciled && <p role="status" className="text-sm">
           Verificados: {reconciled.checked}. Novas fontes vinculadas: {reconciled.bound}.
@@ -153,6 +161,7 @@ export function OperatorCollectorIntakePanel() {
           Configuração incompleta: {reconciled.notConfigured}.
           Identidade não confirmada: {reconciled.unverified}.
           Conflitos de titularidade: {reconciled.ambiguous}.
+          {reconciled.nextOffset !== null && ' Existem outras referências para verificar.'}
         </p>}
         <h3 className="text-sm font-semibold pt-2">Fila de preparação de novos coletores</h3>
         <p className="text-xs text-muted-foreground">

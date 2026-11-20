@@ -34,7 +34,7 @@ test('distinct deterministic prepared agents can be matched to customers with sa
       {accountId:'customer_b',referenceId:'ref_b',username:'shared_reference',
         agentId:'2222222222222222'},
     ],
-    pending:2,ambiguous:0,
+    pending:2,ambiguous:0,nextOffset:null,
   });
 });
 
@@ -81,7 +81,7 @@ test('unknown, malformed, claimed and unconfirmed attempts cannot produce a sour
       details:JSON.stringify(makeCollectorDraftEvent('ref_c','unconfirmed'))},
   ];
   assert.deepEqual(planPreparedDraftReconciliation(refs,badEvents,[],new Set()),{
-    candidates:[],pending:0,ambiguous:0,
+    candidates:[],pending:0,ambiguous:0,nextOffset:null,
   });
   const past=draft('customer_a','ref_a','1111111111111111');
   const newer:PreparedDraft={
@@ -103,6 +103,23 @@ test('the reconciliation batch inspects no more than three prepared sources',()=
   assert.equal(p.pending,6);
   assert.equal(p.candidates.length,3);
   assert.deepEqual(p.candidates.map(x=>x.referenceId),['r0','r1','r2']);
+  assert.equal(p.nextOffset,3);
+  const second = planPreparedDraftReconciliation(accounts,events,[],
+    new Set(),3,p.nextOffset);
+  assert.deepEqual(second.candidates.map(x=>x.referenceId),['r3','r4','r5']);
+  assert.equal(second.nextOffset,null);
+  // Earlier pages can become linked without shifting the stable cursor.
+  const firstBound = p.candidates.map(c=>({
+    accountId:c.accountId,referenceId:c.referenceId,collectorAgentId:c.agentId,
+  }));
+  const afterBinding = planPreparedDraftReconciliation(accounts,events,
+    firstBound,new Set(),3,p.nextOffset);
+  assert.deepEqual(afterBinding.candidates.map(x=>x.referenceId),['r3','r4','r5']);
+  assert.equal(afterBinding.pending,3);
+  assert.equal(afterBinding.nextOffset,null);
+  // Replaying a page after binding is safe: it never proposes the old links.
+  assert.deepEqual(planPreparedDraftReconciliation(accounts,events,
+    firstBound,new Set()).candidates.map(x=>x.referenceId),['r3','r4','r5']);
 });
 
 test('operator reconciliation checks provider identity and config before serializable binding',()=>{
@@ -119,6 +136,10 @@ test('operator reconciliation checks provider identity and config before seriali
   assert.match(route,/tx\.activityLog\.createMany/);
   assert.match(route,/Prisma\.TransactionIsolationLevel\.Serializable/);
   assert.match(route,/const fresh = await load\(tx as typeof prisma\)/);
+  assert.match(route,/Number\.isInteger\(body\.offset\)/);
+  assert.match(route,/scanOffset = typeof body\.offset/);
+  assert.match(route,/disabledAudienceReferenceKeys\(bindings\), 3, scanOffset/);
+  assert.match(route,/nextOffset: planned\.nextOffset/);
   assert.match(route,/makeAudienceSourceBinding/);
   assert.match(route,/instagramActionsExecuted: 0/);
   assert.doesNotMatch(route,/agents\/launch|agents\/save|user_follow|user_unfollow|sessionCookie|followAction\.create/);

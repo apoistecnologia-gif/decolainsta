@@ -56,10 +56,17 @@ export async function POST(request: Request) {
   if (!raw || raw.length > 100) return deny('Parâmetros inválidos', 400);
   let value: unknown;
   try { value = JSON.parse(raw) as unknown; } catch { value = null; }
-  if (!value || typeof value !== 'object' || Array.isArray(value) ||
-      Object.keys(value).length !== 1 ||
-      (value as Record<string, unknown>).operation !== 'reconcile-prepared')
+  if (!value || typeof value !== 'object' || Array.isArray(value))
     return deny('Operação inválida', 400);
+  const body = value as Record<string, unknown>;
+  const keys = Object.keys(body);
+  if (body.operation !== 'reconcile-prepared' || keys.length > 2 ||
+      keys.some(key => key !== 'operation' && key !== 'offset') ||
+      (body.offset !== undefined &&
+        (typeof body.offset !== 'number' || !Number.isInteger(body.offset) ||
+          body.offset < 0 || body.offset > 1000)))
+    return deny('Operação inválida', 400);
+  const scanOffset = typeof body.offset === 'number' ? body.offset : 0;
   const apiKey = process.env.PHANTOMBUSTER_API_KEY;
   if (!isConfiguredPhantomBusterKey(apiKey))
     return deny('Integração não configurada', 409);
@@ -100,7 +107,7 @@ export async function POST(request: Request) {
     }));
     return planPreparedDraftReconciliation(refs, events,
       resolveLatestAudienceBindings(bindings),
-      disabledAudienceReferenceKeys(bindings), 3);
+      disabledAudienceReferenceKeys(bindings), 3, scanOffset);
   };
 
   const planned = await load(prisma).catch(()=>null);
@@ -126,6 +133,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       checked: planned.candidates.length, bound: 0, pending: planned.pending,
       notConfigured, unverified, ambiguous: planned.ambiguous,
+      nextOffset: planned.nextOffset,
       createsCollectors: false, launchesCollectors: false,
       instagramActionsExecuted: 0, actionsEnabled: false,
     }, { headers: HEADERS });
@@ -168,7 +176,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         checked: planned.candidates.length, bound,
         pending: planned.pending, notConfigured, unverified,
-        ambiguous: planned.ambiguous,
+        ambiguous: planned.ambiguous, nextOffset: planned.nextOffset,
         createsCollectors: false, launchesCollectors: false,
         instagramActionsExecuted: 0, actionsEnabled: false,
       }, { headers: HEADERS });

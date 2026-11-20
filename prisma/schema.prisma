@@ -93,6 +93,8 @@ model InstagramAccount {
   followActions   FollowAction[]
   activityLogs    ActivityLog[]
   scheduledPosts  ScheduledInstagramPost[]
+  messagingConnection InstagramMessagingConnection?
+  messagingContacts InstagramMessagingContact[]
   alerts          Alert[]
   whitelist       Whitelist[]
 
@@ -222,4 +224,36 @@ model ScheduledInstagramPost {
 
   @@index([status, scheduledFor])
   @@index([instagramAccountId, createdAt])
+}
+
+
+/** Separate Instagram Login token (NOT the Facebook Business Integration token). */
+model InstagramMessagingConnection {
+  id                   String   @id @default(cuid())
+  instagramAccountId   String   @unique
+  instagramUserId      String
+  encryptedAccessToken String   @db.Text
+  tokenExpiresAt       DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  instagramAccount     InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@index([instagramUserId])
+}
+
+/** Only sender IDs from signed incoming messaging webhooks; no message text. */
+model InstagramMessagingContact {
+  id                        String   @id @default(cuid())
+  instagramAccountId        String
+  senderIgsid               String
+  firstInboundAt            DateTime
+  lastInboundAt             DateTime
+  firstFollowConfirmedAt    DateTime?
+  lastRelationshipCheckedAt DateTime?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  instagramAccount          InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([instagramAccountId, senderIgsid])
+  @@index([instagramAccountId, lastInboundAt])
 }

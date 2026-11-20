@@ -210,7 +210,7 @@ export async function inspectConfiguredFollowerCollector(
   apiKey: string, agentId: string, targetUsername: string,
   fetcher: Fetcher = fetch,
 ): Promise<CollectorInspectionStatus> {
-  if (!apiKey || !/^\\d{10,25}$/.test(agentId)) return 'unavailable';
+  if (!apiKey || !/^\d{10,25}$/.test(agentId)) return 'unavailable';
   const expected = parseSingleInstagramReference(targetUsername);
   if (!expected) return 'mismatch';
   const url = new URL('https://api.phantombuster.com/api/v2/agents/fetch');

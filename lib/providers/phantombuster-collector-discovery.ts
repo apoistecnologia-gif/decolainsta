@@ -68,7 +68,15 @@ export function configuredFollowerCollectorReference(argument: unknown): string 
       data[key] !== null && data[key] !== '')) return null;
   const candidates = KNOWN_TARGET_KEYS.filter(key =>
     data[key] !== undefined && data[key] !== null && data[key] !== '')
-    .map(key => parseSingleInstagramReference(data[key]));
+    .map(key => {
+      // Input-source fields must be exact Instagram HTTPS profile links.
+      // Do not mistake an arbitrary string or username for a data-source URL.
+      if (['spreadsheetUrl', 'spreadsheetURL', 'inputUrl'].includes(key) &&
+          (typeof data[key] !== 'string' ||
+            !data[key].trim().toLowerCase().startsWith('https://')))
+        return null;
+      return parseSingleInstagramReference(data[key]);
+    });
   if (!candidates.length || candidates.some(x => x === null)) return null;
   return candidates.every(value => value === candidates[0]) ? candidates[0] : null;
 }

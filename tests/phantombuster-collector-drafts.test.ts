@@ -23,8 +23,8 @@ test('draft is deterministic per account+reference and never schedules or author
   assert.equal(prepareCollectorDraft(accountId,'reference_b','example_ref')?.name ===
     draft.name, false);
   assert.deepEqual(Object.keys(draft).sort(),
-    ['branch','idempotencyKey','launchType','name','script']);
-  assert.equal(Object.prototype.hasOwnProperty.call(draft,'org'),false);
+    ['branch','idempotencyKey','launchType','name','org','script']);
+  assert.equal(draft.org,'phantombuster');
   assert.equal(draft.script,'Instagram Follower Collector.js');
   assert.equal(draft.branch,'master');
   assert.equal(draft.launchType,'manually');
@@ -47,6 +47,8 @@ test('create adapter uses official endpoint, idempotency and NO argument or auto
         'server-api-key');
       const payload = JSON.parse(String(init?.body)) as Record<string,unknown>;
       assert.deepEqual(payload,draft);
+      // Required script-template org from the official /agents/save contract.
+      assert.equal(payload.org,'phantombuster');
       assert.equal(Object.prototype.hasOwnProperty.call(payload,'argument'),false);
       assert.equal(Object.prototype.hasOwnProperty.call(payload,'id'),false);
       assert.equal(Object.prototype.hasOwnProperty.call(payload,'launchOnceAt'),false);
@@ -58,6 +60,16 @@ test('create adapter uses official endpoint, idempotency and NO argument or auto
   assert.equal(calls,1);
   assert.deepEqual(result,{status:'created',agentId:ID});
   assert.doesNotMatch(JSON.stringify(result),/SECRET_COOKIE|server-api-key/);
+});
+
+test('draft cannot impersonate a workspace or other template organization', async () => {
+  const unsafe = {...draft, org:'some-client-workspace' as const};
+  let requests = 0;
+  const outcome = await createUnconfiguredCollectorDraft(
+    'server-api-key', unsafe as typeof draft,
+    async () => {requests++; return new Response('{}',{status:200});});
+  assert.deepEqual(outcome,{status:'rejected'});
+  assert.equal(requests,0);
 });
 
 test('remote failures disclose no provider body and never retry ambiguous requests',async () => {

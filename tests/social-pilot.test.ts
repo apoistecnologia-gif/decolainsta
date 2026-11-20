@@ -39,9 +39,9 @@ test('launch sends only agent id and does not claim action succeeded',async()=>{
   assert.equal(calls,1);
   assert.deepEqual(result,{status:'accepted',containerId:'987654321012345'});
   assert.equal((await launchSingleSocialAgent('key',agentId,
-    async()=>new Response('no',{status:429})).status),'rate-limited');
+    async()=>new Response('no',{status:429})).status,'rate-limited');
   assert.equal((await launchSingleSocialAgent('key',agentId,
-    async()=>{throw Error('private-cookie');})).status),'uncertain');
+    async()=>{throw Error('private-cookie');})).status,'uncertain');
 });
 test('only a real completed run can make an action confirmed',()=>{
   const record={version:1 as const,action:'follow' as const,referenceId:'ref01',

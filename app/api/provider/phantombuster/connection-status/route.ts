@@ -7,6 +7,12 @@ import { prisma } from '@/lib/db';
 import { checkPhantomBusterWorkspace } from '@/lib/providers/phantombuster';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import { loadActiveAudienceSources } from '@/lib/server/reference-audience-source-store';
+import { inspectConfiguredFollowerCollector } from '@/lib/providers/phantombuster-collector-discovery';
+import { AUDIENCE_REFRESH_ACTION } from '@/lib/reference-audience-refresh';
+import {
+  lastReadStatusFromDetails, presentCollectorReadHealth,
+  type CollectorMetadataCheck,
+} from '@/lib/reference-audience-last-read';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
@@ -44,6 +50,46 @@ export async function GET(request: Request) {
   const status = !configuredKey ? 'not-configured' : !readsEnabled ? 'disabled'
     : (await checkPhantomBusterWorkspace(process.env.PHANTOMBUSTER_API_KEY!)).status;
   const isConnected = status === 'verified';
+
+  // The last read attempt is scoped to the account AND currently bound refs;
+  // its details contain only internal status codes, never raw provider data.
+  const sourceIds = sources.map(source => source.referenceId);
+  const lastAttempt = sourceIds.length ? await prisma.activityLog.findFirst({
+    where: {
+      instagramAccountId: account.id,
+      targetUsername: { in: sourceIds },
+      action: AUDIENCE_REFRESH_ACTION,
+    },
+    select: { createdAt: true, details: true },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+  }) : null;
+  const lastReadStatus = lastReadStatusFromDetails(lastAttempt?.details ?? null);
+
+  // Workspace authentication does NOT prove that a particular collector is
+  // accessible or still targets its original reference. Inspect at most three
+  // account-owned bindings in this user-triggered diagnostic, with NO launches.
+  let collectorCheck: CollectorMetadataCheck = 'not-checked';
+  if (isConnected && sources.length) {
+    const bound = sources.slice(0, 3);
+    const referencesToCheck = await prisma.targetAccount.findMany({
+      where: { instagramAccountId: account.id, id: { in: bound.map(s => s.referenceId) } },
+      select: { id: true, username: true },
+    });
+    const usernameById = new Map(referencesToCheck.map(r => [r.id, r.username]));
+    const checks: CollectorMetadataCheck[] = [];
+    for (const source of bound) {
+      const username = usernameById.get(source.referenceId);
+      checks.push(username ? await inspectConfiguredFollowerCollector(
+        process.env.PHANTOMBUSTER_API_KEY!, source.collectorAgentId, username)
+        : 'mismatch');
+    }
+    const problems: CollectorMetadataCheck[] = [
+      'invalid-key', 'rate-limited', 'not-found', 'mismatch', 'unavailable',
+    ];
+    collectorCheck = problems.find(problem => checks.includes(problem)) ??
+      (sources.length > 3 ? 'not-checked' : 'matched');
+  }
+
   return NextResponse.json({
     status,
     providerReached: isConnected,
@@ -53,6 +99,10 @@ export async function GET(request: Request) {
     linkedCollectors: sources.length,
     waitingForCollectors: Math.max(0, references - sources.length),
     configuredToReadCompletedResults: isConnected && readsEnabled && sources.length > 0,
+    collectorCheck,
+    lastReadStatus,
+    lastReadAt: lastAttempt?.createdAt.toISOString() ?? null,
+    readHealth: presentCollectorReadHealth(lastReadStatus, collectorCheck),
     collectionVerifiedByMeta: false,
     anyCollectorLaunched: false,
     instagramActionsExecuted: 0,

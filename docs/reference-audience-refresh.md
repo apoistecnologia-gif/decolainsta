@@ -406,3 +406,44 @@ aprovação explícita do operador e verificação de disponibilidade/custos de
 vagas. O histórico do piloto não é excluído ou misturado com novos clientes.
 A API oficial da Meta não disponibiliza seguimento de seguidores arbitrários
 nem follow/unfollow para este produto; nenhum desses recursos foi ligado.
+
+## Reconciliação de coletores preparados após configuração (Preview)
+
+Depois que o operador configura e autoriza um rascunho no PhantomBuster,
+pode usar **Conferir rascunhos configurados** em
+`/references/diagnostics`. O sistema não pede IDs de agentes nem
+seleção de perfis.
+
+A rota `POST /api/provider/phantombuster/reconcile-prepared` exige
+operador autenticado com `role=admin`, origem válida, ambiente Preview,
+flags de leitura ativas e operação exata `reconcile-prepared`.
+Usa apenas rascunhos **previamente criados e atribuídos** à respectiva
+conta/referência no registro de provisionamento. Examina até três
+rascunhos por solicitação, sem tentar criar ou iniciar coletas.
+
+Para cada registro, verifica no provedor (1) o nome determinístico do
+agente para a dupla conta+referência, (2) o ID retornado pelo inventário,
+(3) o tipo `Instagram Follower Collector.js`, (4) o modo manual
+e (5) que o argumento configurado contém exatamente **uma** referência
+Instagram, correspondente àquela cadastrada. Não aceita apenas
+coincidência de `@username` ou de nome de Phantom. Não lê, armazena
+ou devolve cookies, argumentos completos ou tokens.
+
+Um vínculo novo é registrado somente após uma segunda leitura do
+registro **global** dentro de transação serializável; referências
+removidas, revogadas, já vinculadas, agentes em uso por outro cliente
+e IDs ambíguos são descartados. Referências homônimas de diferentes
+clientes podem ser associadas com segurança apenas se houver agentes
+determinísticos **distintos** atribuídos a cada cliente.
+
+A reconciliação não garante que uma coleta tenha ocorrido. O leitor de
+resultados mantém o controle de proveniência: importa somente a execução
+**concluída após o vínculo**, respeitando o intervalo de consultas, os
+limites de histórico e a separação por conta. Os nomes do piloto
+continuam sendo dados isolados, não registros obrigatórios da plataforma.
+
+A rota não concede privilégios administrativos a usuários, não ativa
+`PHANTOMBUSTER_DRAFT_CREATION_ENABLED`, não cria agentes, não lança
+coletas nem executa seguir/deixar de seguir. Sem um operador autorizado
+e vagas/configuração apropriadas no provedor, um novo cliente permanece
+"aguardando preparação" no painel simples.

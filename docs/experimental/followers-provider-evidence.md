@@ -95,3 +95,23 @@ A mesma conta de teste, referência e operador autenticado são obrigatórios.
 - Consulta repetida reutiliza dado salvo e não faz polling adicional.
   A interface é apenas administrativa, sem controles técnicos para cliente.
 - Nenhum follow/unfollow real, nenhuma migração e nenhum cron novo.
+
+
+## Verificação do filtro no manifesto do agente (somente leitura)
+
+A API oficial suporta `GET /api/v2/agents/fetch?withManifest=true`,
+mas os nomes dos argumentos variam por automação.
+
+- `readSavedPrivateFilter` só considera o agente manual correto, a conta
+  de referência correta, limite 1 e um único campo booleano inequivocamente
+  rotulado **Exclude private profiles** no esquema/formulário do manifesto.
+- Manifesto ausente, campo indefinido, múltiplos campos ou valor não booleano
+  retornam **unverified**. Nunca deduzir a chave com base em palpites.
+- O diagnóstico do operador expõe apenas `enabled`, `disabled`,
+  `unverified` ou motivo sanitizado, e a configuração `skipPrivateProfiles`
+  isolada da conta cadastrada. Sem cookies, argumentos ou credenciais.
+- Antes de **qualquer lançamento futuro** o backend exige preferência de
+  exclusão ativa na conta e filtro `enabled` no manifesto. Não há
+  automatização nova, nem alteração nas configurações do PhantomBuster.
+- A tentativa anterior `requested` permanece preservada e nenhum
+  cron ou unfollow automático é ativado.

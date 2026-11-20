@@ -78,3 +78,74 @@ test('preview-only admin diagnostic has no social-action endpoints',()=>{
   assert.match(h,/api\/v2\/agents\/fetch/);
   assert.doesNotMatch(h,/agents\/launch|agents\/save/);
 });
+
+test('reads private exclusion by exact manifest schema, never by guessed key',async()=>{
+  const {readSavedPrivateFilter,inspectSavedPrivateFilter}=
+    await import('../lib/providers/phantombuster-private-filter');
+  const config={...agent({privateSwitch:true}),manifest:{
+    argumentSchema:{properties:{privateSwitch:{
+      type:'boolean',title:'Exclude private profiles',
+    }}},
+  }};
+  assert.equal(readSavedPrivateFilter({data:config},id,ref),'enabled');
+  assert.equal(readSavedPrivateFilter({data:{...config,
+    argument:agent({privateSwitch:false}).argument}},id,ref),'disabled');
+  assert.equal(readSavedPrivateFilter(agent({privateSwitch:true}),id,ref),'unverified');
+  assert.equal(readSavedPrivateFilter({...config,manifest:{
+    argumentSchema:{properties:{privateSwitch:{
+      type:'string',title:'Exclude private profiles',
+    }}},
+  }},id,ref),'unverified');
+  assert.equal(readSavedPrivateFilter({...config,manifest:{
+    argumentSchema:{properties:{
+      privateSwitch:{type:'boolean',title:'Exclude private profiles'},
+      otherSwitch:{type:'boolean',title:'Exclude private profiles'},
+    }},
+  }},id,ref),'unverified');
+  assert.equal(readSavedPrivateFilter({...config,
+    script:'Instagram Auto Follow.js'},id,ref),'agent-mismatch');
+  let requests=0;
+  const status=await inspectSavedPrivateFilter('SECRET_API_KEY',id,ref,
+    async(url,opts)=>{
+      requests++;
+      assert.equal(new URL(url).pathname,'/api/v2/agents/fetch');
+      assert.equal(new URL(url).searchParams.get('withManifest'),'true');
+      assert.equal(new URL(url).searchParams.get('withCode'),'false');
+      assert.equal(opts?.method,'GET');
+      assert.equal(opts?.redirect,'error');
+      assert.equal(opts?.credentials,'omit');
+      return new Response(JSON.stringify({data:{...config,
+        sessionCookie:'DO_NOT_EXPOSE'}}),{status:200});
+    });
+  assert.equal(status,'enabled');
+  assert.equal(requests,1);
+  assert.doesNotMatch(status,/SECRET|COOKIE/);
+});
+test('explicitly typed checkbox can map an argument; unknown types cannot',async()=>{
+  const {readSavedPrivateFilter}=await import(
+    '../lib/providers/phantombuster-private-filter');
+  const entry={...agent({privateSwitch:true}),manifest:{
+    argumentForm:{steps:[{fields:[{
+      label:'Exclude private profiles (optional)',
+      inputType:'checkbox',name:'privateSwitch',
+    }]}]},
+  }};
+  assert.equal(readSavedPrivateFilter(entry,id,ref),'enabled');
+  assert.equal(readSavedPrivateFilter({...entry,manifest:{
+    argumentForm:{steps:[{fields:[{
+      label:'Exclude private profiles',inputType:'text',name:'privateSwitch',
+    }]}]},
+  }},id,ref),'unverified');
+});
+test('admin readiness and any future launch block unverified exclusion',()=>{
+  const readiness=readFileSync('app/api/operator/followers-auto-follow-readiness/route.ts','utf8');
+  const runner=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
+  assert.match(readiness,/privateExclusionVerified:/);
+  assert.match(readiness,/settings:\{select:\{skipPrivateProfiles:true\}\}/);
+  assert.match(runner,/ctx.account.settings\?\.skipPrivateProfiles===false/);
+  assert.match(runner,/privateExclusion!=='enabled'/);
+  assert.match(runner,/inspectSavedPrivateFilter/);
+  const src=readFileSync('lib/providers/phantombuster-private-filter.ts','utf8');
+  assert.match(src,/withManifest','true'/);
+  assert.doesNotMatch(src,/agents\/launch|agents\/save/);
+});

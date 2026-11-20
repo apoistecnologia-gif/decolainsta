@@ -6,6 +6,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import { inspectFollowersAutoFollowAgent } from '@/lib/providers/phantombuster-followers-auto-follow';
+import { inspectSavedPrivateFilter } from '@/lib/providers/phantombuster-private-filter';
 
 const HEADERS = { 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' };
 
@@ -40,7 +41,7 @@ export async function GET() {
     isConfiguredPhantomBusterKey(apiKey);
   const account = configured ? await prisma.instagramAccount.findFirst({
     where:{ username:accountUsername, userId },
-    select:{ id:true },
+    select:{ id:true,settings:{select:{skipPrivateProfiles:true}} },
   }) : null;
   const reference = account ? await prisma.targetAccount.findFirst({
     where:{ instagramAccountId:account.id, username:referenceUsername },
@@ -51,7 +52,14 @@ export async function GET() {
   const providerCheck = reference && configured
     ? await inspectFollowersAutoFollowAgent(apiKey!,agentId,referenceUsername)
     : 'missing-configuration';
+  const privateExclusionRequested=account?.settings?.skipPrivateProfiles??true;
+  const privateExclusionStatus=providerCheck==='matched'&&reference
+    ? await inspectSavedPrivateFilter(apiKey!,agentId,referenceUsername)
+    : 'unverified';
   return NextResponse.json({
+    privateExclusionRequested,
+    privateExclusionStatus,
+    privateExclusionVerified:privateExclusionRequested&&privateExclusionStatus==='enabled',
     accountRegistered:Boolean(account),
     referenceRegistered:Boolean(reference),
     agentConfigured:configured,

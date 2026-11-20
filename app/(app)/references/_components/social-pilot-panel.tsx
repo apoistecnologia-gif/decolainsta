@@ -7,6 +7,8 @@ import {FOLLOWERS_TRIAL_APPROVAL} from '@/lib/reference-followers-trial';
 type Inspection={
   accountRegistered:boolean;referenceRegistered:boolean;agentConfigured:boolean;
   providerCheck:string;oneFollowPerLaunchVerified:boolean;agentLaunchEnabled:false;
+  privateExclusionRequested:boolean;privateExclusionStatus:string;
+  privateExclusionVerified:boolean;
 };
 type Attempt={
   stage:string;requestedAt:string|null;followConfirmed:false;
@@ -52,7 +54,8 @@ export function SocialPilotPanel(){
     if(busy)return;
     if(operation==='launch-one' &&
         (!approved||!trial?.enabled||typedName!==trial.accountName||
-         inspection?.providerCheck!=='matched'||trial.attempted))return;
+         inspection?.providerCheck!=='matched'||
+         !inspection.privateExclusionVerified||trial.attempted))return;
     setBusy(true);setNotice('');
     try{
       const payload=operation==='launch-one'?
@@ -99,7 +102,8 @@ export function SocialPilotPanel(){
     }catch{setNotice('Resposta incerta; nenhuma repetição automática será feita.');}
     finally{setBusy(false);}
   }
-  const launchReady=Boolean(inspection?.providerCheck==='matched'&&
+  const launchReady=Boolean(inspection?.privateExclusionVerified&&
+    inspection?.providerCheck==='matched'&&
     trial?.enabled&&!trial.attempted&&approved&&typedName===trial.accountName);
   return <section className="rounded-lg border p-4 space-y-3">
     <h2 className="text-sm font-semibold">Teste real isolado — Followers Auto Follow</h2>
@@ -116,6 +120,12 @@ export function SocialPilotPanel(){
     {inspection&&trial&&<div role="status" className="text-xs space-y-2">
       <p>Agente: {inspection.providerCheck}.
         Um perfil por lançamento: {inspection.oneFollowPerLaunchVerified?'confirmado':'não confirmado'}.</p>
+      <p>Filtro de perfis privados: <strong>{
+        inspection.privateExclusionStatus==='enabled'?'habilitado (manifesto e argumento)':
+        inspection.privateExclusionStatus==='disabled'?'desabilitado':
+        'não verificado'}</strong>.
+        Preferência da conta: {inspection.privateExclusionRequested
+          ?'excluir privados':'não exige exclusão'}.</p>
       <p>Conta registrada: {inspection.accountRegistered?'sim':'não'}.
         Referência: {inspection.referenceRegistered?'sim':'não'}.</p>
       <p>Lançamento real: {trial.enabled?'habilitado para confirmação manual':'bloqueado no Preview'}.
@@ -123,6 +133,7 @@ export function SocialPilotPanel(){
       <p>A sessão foi informada como @contateste6699 pelo titular,
         mas sua identidade não é comprovada pela API do PhantomBuster.</p>
       {trial.enabled&&!trial.attempted&&inspection.providerCheck==='matched'&&
+        inspection.privateExclusionVerified&&
         <div className="border-t pt-2 space-y-2">
           <label className="flex gap-2 items-start">
             <input type="checkbox" checked={approved} disabled={busy}

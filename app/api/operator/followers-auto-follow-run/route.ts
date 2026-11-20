@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { inspectFollowersAutoFollowAgent } from '@/lib/providers/phantombuster-followers-auto-follow';
+import { inspectSavedPrivateFilter } from '@/lib/providers/phantombuster-private-filter';
 import {
   launchFollowersTrial,inspectTrialContainer,
 } from '@/lib/providers/phantombuster-followers-trial';
@@ -37,7 +38,7 @@ async function scope(){
      !/^\d{10,25}$/.test(agentId)||!isConfiguredPhantomBusterKey(apiKey))
     return null;
   const account=await prisma.instagramAccount.findFirst({
-    where:{userId:uid,username:accountName},select:{id:true,username:true},
+    where:{userId:uid,username:accountName},select:{id:true,username:true,settings:{select:{skipPrivateProfiles:true}}},
   });
   if(!account)return null;
   const reference=await prisma.targetAccount.findFirst({
@@ -128,6 +129,12 @@ export async function POST(req:Request){
       ctx.apiKey,ctx.agentId,ctx.referenceName);
     if(check!=='matched')
       return fail('Agente deixou de corresponder à referência/limite',409);
+    if(ctx.account.settings?.skipPrivateProfiles===false)
+      return fail('Exclusão de perfis privados desativada na conta',409);
+    const privateExclusion=await inspectSavedPrivateFilter(
+      ctx.apiKey,ctx.agentId,ctx.referenceName);
+    if(privateExclusion!=='enabled')
+      return fail('Filtro de perfis privados não comprovado no agente',409);
     // Reserve BEFORE any request that could make a real follow. An ambiguous
     // launch is never retried, including after network/database failures.
     let claim:string|null=null;

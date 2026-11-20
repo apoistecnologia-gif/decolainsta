@@ -121,17 +121,33 @@ test('agendamento justo alcança a quarta referência e respeita backoff', () =>
 
 test('importação parcial ocupa o último lote e contabiliza nomes adiados', () => {
   const names = Array.from({length: 45},(_,i)=>'user'+i);
-  assert.deepEqual(boundAudienceDelta(names, 59), {
+  assert.deepEqual(boundAudienceDelta(names, 59, 60), {
     importable: names.slice(0,10), deferred: 35,
   });
-  assert.deepEqual(boundAudienceDelta(names, 60), {
+  assert.deepEqual(boundAudienceDelta(names, 60, 60), {
     importable: [], deferred: 45,
   });
-  assert.deepEqual(boundAudienceDelta(names, 55), {
+  assert.deepEqual(boundAudienceDelta(names, 55, 60), {
     importable: names, deferred: 0,
   });
-  assert.deepEqual(boundAudienceDelta(names, -1), {
+  assert.deepEqual(boundAudienceDelta(names, -1, 60), {
     importable: [], deferred: 45,
+  });
+});
+
+test('340 deferred names from the 60-batch pilot can be recovered by new safe 200-batch cap', () => {
+  const historical = Array.from({length:340},(_,i)=>'additional'+i);
+  assert.deepEqual(boundAudienceDelta(historical,60), {
+    importable: historical,
+    deferred: 0,
+  });
+  assert.deepEqual(boundAudienceDelta(historical,200), {
+    importable: [],
+    deferred: 340,
+  });
+  assert.deepEqual(boundAudienceDelta(historical,199), {
+    importable: historical.slice(0,10),
+    deferred: 330,
   });
 });
 

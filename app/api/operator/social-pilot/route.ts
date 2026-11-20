@@ -61,8 +61,8 @@ export async function GET() {
   }):[];
   const candidate=saved.some(row=>{
     const item=parseCandidateEvidence(row.details);
-    return item?.referenceId===ref?.id &&
-      item.referenceUsername===referenceUsername;
+    return Boolean(item && item.referenceId===ref?.id &&
+      item.referenceUsername===referenceUsername);
   });
   const protectedName=account?await prisma.whitelist.findUnique({
     where:{instagramAccountId_username:{

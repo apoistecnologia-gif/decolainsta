@@ -45,6 +45,8 @@ export type MessagingRelationshipInput={
 };
 const id=(v:unknown):v is string=>
   typeof v==='string'&&/^\d{1,30}$/.test(v);
+const accountId=(v:unknown):v is string=>
+  typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v);
 const record=(v:unknown):Record<string,unknown>|null=>
   v!==null&&typeof v==='object'&&!Array.isArray(v)
     ?v as Record<string,unknown>:null;

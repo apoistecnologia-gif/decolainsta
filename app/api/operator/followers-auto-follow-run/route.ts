@@ -13,9 +13,10 @@ import {
   FOLLOWERS_TRIAL_ACTION,FOLLOWERS_TRIAL_APPROVAL,
   makeTrialEvidence,parseTrialEvidence,observedRelationship,
   FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION,
+  FOLLOWERS_PRIVACY_OBSERVATION_ACTION,
 } from '@/lib/reference-followers-trial';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
-import { fetchFollowersRunReport } from '@/lib/providers/phantombuster-followers-result';
+import { fetchFollowersRunReport,fetchSavedRunPrivacy } from '@/lib/providers/phantombuster-followers-result';
 
 const HEADERS={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
 function fail(error:string,status:number) {
@@ -107,7 +108,8 @@ export async function POST(req:Request){
   const allowed=operation==='launch-one'?
     ['operation','approval','accountConfirmation']:
     operation==='record-relationship'?['operation','observedStatus']:
-    operation==='check-result'||operation==='check-provider-report'
+    operation==='check-result'||operation==='check-provider-report'||
+    operation==='check-profile-privacy'
       ? ['operation'] : [];
   if(!allowed.length||Object.keys(input).length!==allowed.length||
     Object.keys(input).some(k=>!allowed.includes(k)))
@@ -243,6 +245,67 @@ export async function POST(req:Request){
       relationshipObservedAt:next.relationshipObservedAt,
       followConfirmed:false,unfollowEligibleAt:null,
       unfollowScheduled:false,
+    },{headers:HEADERS});
+  }
+
+  if(operation==='check-profile-privacy'){
+    if(evidence.stage!=='provider-reported'||!evidence.providerReportedUsername)
+      return fail('Nenhum perfil reportado para consultar privacidade',409);
+    // A saved boolean is immutable evidence from the provider result.
+    // Never refresh or silently overwrite historical claims.
+    if(typeof evidence.providerReportedPrivate==='boolean')
+      return NextResponse.json({
+        providerPrivacyStatus:evidence.providerReportedPrivate?'private':'public',
+        providerReportedPrivate:evidence.providerReportedPrivate,
+        providerPrivacyReadAt:evidence.providerPrivacyReadAt??null,
+        followConfirmed:false,unfollowScheduled:false,
+      },{headers:HEADERS});
+
+    const reported=await fetchSavedRunPrivacy(
+      ctx.apiKey,evidence.containerId,ctx.referenceName);
+    if(reported.status!=='reported')
+      return NextResponse.json({
+        providerPrivacyStatus:reported.status,providerReportedPrivate:null,
+        followConfirmed:false,unfollowScheduled:false,
+      },{headers:HEADERS});
+    // A provider reply about any OTHER profile must never be persisted.
+    if(reported.username!==evidence.providerReportedUsername)
+      return fail('O resultado não corresponde ao perfil registrado',409);
+
+    const privacyReadAt=new Date().toISOString();
+    const next=makeTrialEvidence({...evidence,
+      providerReportedPrivate:reported.isPrivate,
+      providerPrivacyReadAt:privacyReadAt,
+    });
+    if(!next)return fail('Evidência de privacidade inválida',409);
+    try{
+      const stored=await prisma.$transaction(async tx=>{
+        const updated=await tx.activityLog.updateMany({
+          where:{id:record.id,instagramAccountId:ctx.account.id,
+            action:FOLLOWERS_TRIAL_ACTION,details:record.details},
+          data:{details:JSON.stringify(next),success:false},
+        });
+        if(updated.count!==1)return false;
+        await tx.activityLog.create({data:{
+          instagramAccountId:ctx.account.id,
+          action:FOLLOWERS_PRIVACY_OBSERVATION_ACTION,
+          targetUsername:evidence.providerReportedUsername,
+          success:false,
+          details:JSON.stringify({
+            version:1,trialId:record.id,referenceId:ctx.reference.id,
+            isPrivate:reported.isPrivate,observedAt:privacyReadAt,
+            source:'phantombuster-saved-run',
+          }),
+        }});
+        return true;
+      },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+      if(!stored)return fail('Evidência alterada; atualize o diagnóstico',409);
+    }catch{return fail('Não foi possível salvar a evidência',503);}
+    return NextResponse.json({
+      providerPrivacyStatus:reported.isPrivate?'private':'public',
+      providerReportedPrivate:reported.isPrivate,
+      providerPrivacyReadAt:privacyReadAt,
+      followConfirmed:false,unfollowScheduled:false,
     },{headers:HEADERS});
   }
   if(operation==='check-provider-report'){

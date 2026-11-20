@@ -74,3 +74,24 @@ https://support.phantombuster.com/hc/en-us/articles/26971112664722-How-to-Use-th
   **Nenhum provedor atual está ligado como fonte de confirmação independente.**
 - Não cria FollowAction, não altera agendamento/credenciais, não executa
   follow/unfollow e não faz polling externo automático.
+
+## Consulta de privacidade de execução antiga (leitura somente)
+
+No diagnóstico administrativo do Preview, a operação
+`{operation:"check-profile-privacy"}` consulta APENAS o resultado do
+contêiner ID salvo, pela rota GET do PhantomBuster
+`/api/v2/containers/fetch-result-object`. A API não lança nenhum agente.
+A mesma conta de teste, referência e operador autenticado são obrigatórios.
+
+- Exige tentativa em `provider-reported` com nome de perfil já conhecido.
+- Exige resultado com **um único perfil**, URL, nome e referência compatíveis,
+  e o mesmo nome de usuário já salvo na tentativa original.
+- Aceita somente `isPrivate` booleano. Ausente, string, ambiguidades,
+  429 e erros não são convertidos em perfil público.
+- Quando houver dado válido, atualiza apenas os campos históricos de
+  privacidade por compare-and-swap e cria auditoria separada com data e
+  origem `phantombuster-saved-run`. Dados existentes de relacionamento
+  (incluindo `requested`) nunca são apagados ou promovidos a follow.
+- Consulta repetida reutiliza dado salvo e não faz polling adicional.
+  A interface é apenas administrativa, sem controles técnicos para cliente.
+- Nenhum follow/unfollow real, nenhuma migração e nenhum cron novo.

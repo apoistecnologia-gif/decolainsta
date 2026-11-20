@@ -91,6 +91,38 @@ export function parseReportedFollowSummary(value:unknown):boolean{
   return /\b1\s+profile\s+followed\b/i.test(raw) &&
     !/\b(?:0|[2-9]|[1-9]\d+)\s+profiles?\s+followed\b/i.test(raw);
 }
+/**
+ * Private/public is a PhantomBuster profile-property CLAIM, not Instagram
+ * relationship verification. Only the previously saved container is read.
+ */
+export type SavedRunPrivacy =
+  | {status:'reported';username:string;isPrivate:boolean}
+  | {status:'missing'|'ambiguous'|'unavailable'|'invalid-key'|'rate-limited'};
+export async function fetchSavedRunPrivacy(
+  apiKey:string,containerId:string,reference:string,fetcher:Fetcher=fetch,
+):Promise<SavedRunPrivacy>{
+  if(!apiKey||apiKey.length>512||!numericId(containerId)||!name(reference))
+    return {status:'unavailable'};
+  try{
+    const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch-result-object');
+    url.searchParams.set('id',containerId);
+    const response=await fetcher(url.toString(),{
+      method:'GET',headers:phantomBusterRequestHeaders(apiKey),
+      credentials:'omit',redirect:'error',cache:'no-store',
+      signal:AbortSignal.timeout(8000),
+    });
+    if(response.status===401||response.status===403)return {status:'invalid-key'};
+    if(response.status===429)return {status:'rate-limited'};
+    if(!response.ok)return {status:'unavailable'};
+    const payload=await bounded(response,80000);
+    if(payload===null)return {status:'unavailable'};
+    const profile=parseSingleRunProfileEvidence(payload,reference);
+    if(!profile)return {status:'ambiguous'};
+    if(profile.isPrivate===undefined)return {status:'missing'};
+    return {status:'reported',username:profile.username,isPrivate:profile.isPrivate};
+  }catch{return {status:'unavailable'};}
+}
+
 export async function fetchFollowersRunReport(
   apiKey:string,containerId:string,reference:string,fetcher:Fetcher=fetch,
 ):Promise<FollowersReport>{

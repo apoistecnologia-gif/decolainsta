@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {
   FOLLOWERS_TRIAL_ACTION,makeTrialEvidence,parseTrialEvidence,
   FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION,
+  FOLLOWERS_PRIVACY_OBSERVATION_ACTION,
   shouldStartUnfollowClock,observedRelationship,
 } from '../lib/reference-followers-trial';
 import {
@@ -12,7 +13,7 @@ import {
 } from '../lib/providers/phantombuster-followers-trial';
 import {
   parseSingleRunProfile,parseSingleRunProfileEvidence,
-  parseReportedFollowSummary,fetchFollowersRunReport,
+  parseReportedFollowSummary,fetchFollowersRunReport,fetchSavedRunPrivacy,
 } from '../lib/providers/phantombuster-followers-result';
 const agent='1838046655144130',container='1234567890123';
 test('one-shot launch sends only one controlled launch and never returns follower identities',async()=>{
@@ -309,4 +310,59 @@ test('provider privacy field is evidence, missing field is unknown, not public',
   assert.match(route,/providerReportedPrivate:report.isPrivate/);
   assert.match(route,/providerPrivacyReadAt:new Date\(\).toISOString\(\)/);
   assert.match(route,/followConfirmed:false/);
+});
+
+
+test('saved-run privacy looks up only its container and never launches',async()=>{
+  let calls=0;
+  const result=await fetchSavedRunPrivacy('secret',container,'mameto_lueji',
+    async(url,opts)=>{
+      calls++;
+      assert.equal(new URL(url).pathname,
+        '/api/v2/containers/fetch-result-object');
+      assert.equal(new URL(url).searchParams.get('id'),container);
+      assert.equal(opts?.method,'GET');
+      assert.equal(opts?.redirect,'error');
+      assert.equal(opts?.credentials,'omit');
+      return new Response(JSON.stringify({resultObject:[{
+        profileUrl:'https://instagram.com/dellmyra_souza/',
+        profileName:'dellmyra_souza',
+        query:'https://instagram.com/mameto_lueji/',
+        isPrivate:true,sessionCookie:'SECRET_SHOULD_NOT_LEAK',
+      }]}),{status:200});
+    });
+  assert.equal(calls,1);
+  assert.deepEqual(result,{status:'reported',
+    username:'dellmyra_souza',isPrivate:true});
+  assert.doesNotMatch(JSON.stringify(result),/SECRET_SHOULD_NOT_LEAK|secret/);
+});
+test('missing/ambiguous/invalid provider privacy never means public',async()=>{
+  const row={profileUrl:'https://instagram.com/dellmyra_souza/',
+    profileName:'dellmyra_souza',query:'https://instagram.com/mameto_lueji/'};
+  for(const [body,wanted] of [
+    [{resultObject:[row]},'missing'],
+    [{resultObject:[{...row,isPrivate:'false'}]},'missing'],
+    [{resultObject:[{...row,isPrivate:true},{...row,isPrivate:false}]},'ambiguous'],
+    [{resultObject:[{...row,profileName:'other',isPrivate:false}]},'ambiguous'],
+  ] as const){
+    const r=await fetchSavedRunPrivacy('key',container,'mameto_lueji',
+      async()=>new Response(JSON.stringify(body),{status:200}));
+    assert.equal(r.status,wanted);
+  }
+  const limited=await fetchSavedRunPrivacy('key',container,'mameto_lueji',
+    async()=>new Response('rate limited',{status:429}));
+  assert.deepEqual(limited,{status:'rate-limited'});
+});
+test('privacy backfill is an admin-only CAS update with a separate audit entry',()=>{
+  assert.equal(FOLLOWERS_PRIVACY_OBSERVATION_ACTION,
+    'reference_followers_privacy_observation_v1');
+  const src=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
+  assert.match(src,/operation==='check-profile-privacy'/);
+  assert.match(src,/evidence.stage!=='provider-reported'/);
+  assert.match(src,/reported.username!==evidence.providerReportedUsername/);
+  assert.match(src,/tx.activityLog.updateMany/);
+  assert.match(src,/FOLLOWERS_PRIVACY_OBSERVATION_ACTION/);
+  assert.match(src,/source:'phantombuster-saved-run'/);
+  assert.match(src,/followConfirmed:false,unfollowScheduled:false/);
+  assert.doesNotMatch(src,/agents\/save|unfollowScheduledAt:|unfollowedAt:/);
 });

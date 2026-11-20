@@ -6,6 +6,8 @@ export const FOLLOWERS_TRIAL_ACTION = 'reference_followers_trial_v1';
 export const FOLLOWERS_TRIAL_APPROVAL = 'AUTHORIZE_ONE_FOLLOWERS_PHANTOM_TEST';
 export const FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION =
   'reference_followers_relationship_observation_v1';
+export const FOLLOWERS_PRIVACY_OBSERVATION_ACTION =
+  'reference_followers_privacy_observation_v1';
 export type ObservedRelationship = 'requested' | 'following' | 'none';
 export function observedRelationship(v:unknown):v is ObservedRelationship {
   return v==='requested'||v==='following'||v==='none';

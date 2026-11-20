@@ -14,6 +14,8 @@ type Attempt={
   providerReportedUsername?:string|null;providerReportedCount?:number;
   relationshipObservation?:'requested'|'following'|'none'|'unknown';
   relationshipObservedAt?:string|null;
+  providerReportedPrivate?:boolean|null;
+  providerPrivacyReadAt?:string|null;
   unfollowEligibleAt?:null;
 };
 type Trial={
@@ -46,7 +48,7 @@ export function SocialPilotPanel(){
     finally{setBusy(false);}
   }
   async function send(operation:'launch-one'|'check-result'|
-    'check-provider-report'|'record-relationship'){
+    'check-provider-report'|'record-relationship'|'check-profile-privacy'){
     if(busy)return;
     if(operation==='launch-one' &&
         (!approved||!trial?.enabled||typedName!==trial.accountName||
@@ -64,6 +66,7 @@ export function SocialPilotPanel(){
       const result=await response.json() as {
         status?:string;containerStatus?:string;providerStatus?:string;
         providerReportedUsername?:string|null;relationshipObservation?:string;
+        providerPrivacyStatus?:string;
       };
       setNotice(response.ok?
         operation==='launch-one'
@@ -72,6 +75,13 @@ export function SocialPilotPanel(){
             ?'Situação observada no aplicativo registrada: '+
               (result.relationshipObservation??'sem confirmação')+
               '. O prazo de 48 horas não foi iniciado.'
+          :operation==='check-profile-privacy'
+            ?result.providerPrivacyStatus==='private'
+              ?'O PhantomBuster informou que o perfil é privado. A solicitação pendente continua sem follow confirmado.'
+              :result.providerPrivacyStatus==='public'
+                ?'O PhantomBuster informou que o perfil é público. Isso não comprova relacionamento.'
+                :'Privacidade não comprovada pelo resultado salvo: '+
+                  (result.providerPrivacyStatus??'indisponível')+'.'
           :operation==='check-provider-report'
             ?result.providerStatus==='provider-reported'
               ?'O PhantomBuster reportou 1 perfil seguido: @'+
@@ -146,6 +156,15 @@ export function SocialPilotPanel(){
           <p>PhantomBuster reportou uma ação para
             <strong> @{trial.attempt.providerReportedUsername}</strong>.
             Isso pode ser só uma solicitação para perfil privado.</p>
+          <p>Privacidade informada pelo PhantomBuster: <strong>{
+            trial.attempt.providerReportedPrivate===true?'privado':
+              trial.attempt.providerReportedPrivate===false?'público':
+                'não informada'}</strong>. Não comprova follow.</p>
+          {trial.attempt.providerReportedPrivate==null&&
+            <Button type="button" variant="outline" disabled={busy}
+              onClick={()=>void send('check-profile-privacy')}>
+              Consultar privacidade da execução salva
+            </Button>}
           <p>Situação observada no Instagram:
             <strong> {trial.attempt.relationshipObservation==='requested'
               ?'Solicitado — aguardando aprovação'

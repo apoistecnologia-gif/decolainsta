@@ -2,118 +2,116 @@
 
 import {useState} from 'react';
 import {Button} from '@/components/ui/button';
-import {SOCIAL_PILOT_FOLLOW_CONFIRMATION} from '@/lib/reference-social-pilot';
+import {FOLLOWERS_TRIAL_APPROVAL} from '@/lib/reference-followers-trial';
 
-type Ready={
-  enabled:boolean;configured:boolean;accountRegistered:boolean;
-  ownerConnectedByMeta:boolean;providerSessionOwnerConfirmed:boolean;
-  referenceRegistered:boolean;
-  candidateIndexed:boolean;candidateExcluded:boolean;previousAttempts:number;
-  liveActionReady:boolean;oneTestActionOnly:true;unfollowEnabled:false;
+type Inspection={
+  accountRegistered:boolean;referenceRegistered:boolean;agentConfigured:boolean;
+  providerCheck:string;oneFollowPerLaunchVerified:boolean;agentLaunchEnabled:false;
+};
+type Attempt={
+  stage:string;requestedAt:string|null;followConfirmed:false;
+  recipientKnown:false;mayRetryAutomatically:false;
+};
+type Trial={
+  enabled:boolean;accountName:string;referenceRegistered:boolean;
+  attempted:boolean;attempt:Attempt|null;
+  sessionOwnerVerifiedByProvider:false;followConfirmed:false;unfollowEnabled:false;
 };
 export function SocialPilotPanel(){
-  const [ready,setReady]=useState<Ready|null>(null);
-  const [followersReadiness,setFollowersReadiness]=useState<{
-    accountRegistered:boolean;referenceRegistered:boolean;
-    agentConfigured:boolean;providerCheck:string;
-    oneFollowPerLaunchVerified:boolean;agentLaunchEnabled:false;
-  }|null>(null);
-  const [busy,setBusy]=useState(false);
+  const [inspection,setInspection]=useState<Inspection|null>(null);
+  const [trial,setTrial]=useState<Trial|null>(null);
   const [approved,setApproved]=useState(false);
+  const [typedName,setTypedName]=useState('');
+  const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
-  async function checkFollowersAgent(){
-    if(busy)return;
-    setBusy(true);setNotice('');
-    try{
-      const r=await fetch('/api/operator/followers-auto-follow-readiness',{
-        method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error'});
-      if(!r.ok)throw Error('readiness');
-      setFollowersReadiness(await r.json());
-    }catch{
-      setNotice('Não foi possível conferir o agente Followers Auto Follow.');
-    }finally{setBusy(false);}
-  }
   async function check(){
+    if(busy)return;setBusy(true);setNotice('');
+    try{
+      const [a,b]=await Promise.all([
+        fetch('/api/operator/followers-auto-follow-readiness',{
+          method:'GET',credentials:'same-origin',cache:'no-store'}),
+        fetch('/api/operator/followers-auto-follow-run',{
+          method:'GET',credentials:'same-origin',cache:'no-store'}),
+      ]);
+      if(!a.ok||!b.ok)throw Error('Consulta recusada');
+      setInspection(await a.json() as Inspection);
+      setTrial(await b.json() as Trial);
+    }catch{setNotice('Não foi possível conferir a preparação do teste.');}
+    finally{setBusy(false);}
+  }
+  async function send(operation:'launch-one'|'check-result'){
     if(busy)return;
+    if(operation==='launch-one' &&
+        (!approved||!trial?.enabled||typedName!==trial.accountName||
+         inspection?.providerCheck!=='matched'||trial.attempted))return;
     setBusy(true);setNotice('');
     try{
-      const r=await fetch('/api/operator/social-pilot',{
-        method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error'});
-      if(!r.ok)throw Error('diagnóstico');
-      setReady(await r.json() as Ready);
-    }catch{setNotice('Não foi possível consultar o preparo da conta de teste.');}
-    finally{setBusy(false);}
-  }
-  async function launch(){
-    if(busy||!approved||!ready?.liveActionReady)return;
-    setBusy(true);setNotice('');
-    try{
-      const r=await fetch('/api/operator/social-pilot',{
+      const payload=operation==='launch-one'?
+        {operation,approval:FOLLOWERS_TRIAL_APPROVAL,accountConfirmation:typedName}:
+        {operation};
+      const response=await fetch('/api/operator/followers-auto-follow-run',{
         method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({operation:'launch-one-follow',
-          confirm:SOCIAL_PILOT_FOLLOW_CONFIRMATION}),
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),
       });
-      const status=await r.json() as {status?:string};
-      setNotice(r.status===202&&status.status==='launch-request-accepted'
-        ? 'A execução foi solicitada. Ainda é necessário confirmar o resultado real no provedor.'
-        : 'O lançamento não foi confirmado. Não repetir a tentativa automaticamente.');
-      setReady(null);
-    }catch{setNotice('Lançamento incerto. Não repetir automaticamente.');}
+      const result=await response.json() as {status?:string;containerStatus?:string};
+      setNotice(response.ok?
+        operation==='launch-one'
+          ?'Lançamento solicitado. Isso não comprova que o Instagram seguiu alguém.'
+          :'Consulta concluída: '+(result.containerStatus??'resultado registrado')+
+            '. Ainda não há confirmação de follow.':
+        'Resultado não confirmado. Não repita a execução automaticamente.');
+      setApproved(false);setTypedName('');
+      const state=await fetch('/api/operator/followers-auto-follow-run',{
+        method:'GET',credentials:'same-origin',cache:'no-store'});
+      if(state.ok)setTrial(await state.json() as Trial);
+    }catch{setNotice('Resposta incerta; nenhuma repetição automática será feita.');}
     finally{setBusy(false);}
   }
+  const launchReady=Boolean(inspection?.providerCheck==='matched'&&
+    trial?.enabled&&!trial.attempted&&approved&&typedName===trial.accountName);
   return <section className="rounded-lg border p-4 space-y-3">
-    <h2 className="text-sm font-semibold">Teste real isolado — seguir/deixar de seguir</h2>
+    <h2 className="text-sm font-semibold">Teste real isolado — Followers Auto Follow</h2>
     <p className="text-xs text-muted-foreground">
-      Preparação de uma única ação com uma conta Instagram de teste separada.
-      Usa uma automação PhantomBuster já configurada, nunca a conta de coleta
-      atual. O teste não marca follow como concluído por receber HTTP 200.
-      Não há execução automática de unfollow sem comprovação do follow e da
-      relação entre as contas.
+      Conta de teste: @contateste6699. Referência: @mameto_lueji.
+      Um único lançamento, sem agendamento e sem unfollow automático.
+      O PhantomBuster escolhe o seguidor: não podemos verificar a lista de exclusões
+      antecipadamente. O resultado do contêiner não comprova um follow.
     </p>
-    <div className="rounded-md border p-3 space-y-2">
-      <h3 className="text-sm font-medium">Agente existente — Followers Auto Follow</h3>
-      <p className="text-xs text-muted-foreground">
-        Verificação apenas de leitura do agente já salvo: referência
-        cadastrada, lançamento manual e exatamente um perfil por execução.
-        Não inicia o agente.
-      </p>
-      <Button type="button" variant="outline" disabled={busy}
-        onClick={()=>void checkFollowersAgent()}>
-        {busy?'Verificando...':'Conferir agente de seguidores existente'}
-      </Button>
-      {followersReadiness&&<div role="status" className="text-xs space-y-1">
-        <p>Conta de teste no sistema: {followersReadiness.accountRegistered?'sim':'pendente'}.
-          Referência cadastrada: {followersReadiness.referenceRegistered?'sim':'pendente'}.</p>
-        <p>Configuração no PhantomBuster: {followersReadiness.providerCheck}.
-          Limite de uma ação confirmado: {followersReadiness.oneFollowPerLaunchVerified?'sim':'não confirmado'}.</p>
-        <p>Agente mantido desligado. Identidade da sessão informada pelo titular;
-          ainda não verificada pela API do provedor.</p>
-      </div>}
-    </div>
-    <Button type="button" variant="outline" disabled={busy} onClick={()=>void check()}>
-      {busy?'Verificando...':'Verificar prontidão da conta de teste'}
+    <Button type="button" variant="outline" disabled={busy}
+      onClick={()=>void check()}>
+      {busy?'Verificando...':'Conferir agente e estado do teste'}
     </Button>
-    {ready&&<div role="status" className="text-xs space-y-1">
-      <p>Ativação explícita: {ready.enabled?'sim':'pendente'}.
-        Automação configurada: {ready.configured?'sim':'pendente'}.</p>
-      <p>Conta cadastrada: {ready.accountRegistered?'sim':'pendente'}.
-        Sessão da conta de teste conferida no PhantomBuster: {ready.providerSessionOwnerConfirmed?'sim':'pendente'}.</p>
-      <p>Referência: {ready.referenceRegistered?'sim':'pendente'}.
-        Candidato: {ready.candidateIndexed?'disponível':'pendente'}.
-        Perfil excluído: {ready.candidateExcluded?'sim':'não'}.</p>
-      <p>Tentativas anteriores: {ready.previousAttempts}.
-        Início permitido: {ready.liveActionReady?'sim':'não'}.</p>
-      {ready.liveActionReady&&<div className="space-y-2 pt-2">
-        <label className="flex gap-2 items-start">
-          <input type="checkbox" checked={approved}
-            onChange={e=>setApproved(e.target.checked)} />
-          <span>Autorizo exatamente UMA tentativa real de seguir, utilizando
-            exclusivamente a conta de teste configurada.</span>
-        </label>
-        <Button type="button" disabled={busy||!approved} variant="outline"
-          onClick={()=>void launch()}>Executar uma ação de teste</Button>
-      </div>}
+    {inspection&&trial&&<div role="status" className="text-xs space-y-2">
+      <p>Agente: {inspection.providerCheck}.
+        Um perfil por lançamento: {inspection.oneFollowPerLaunchVerified?'confirmado':'não confirmado'}.</p>
+      <p>Conta registrada: {inspection.accountRegistered?'sim':'não'}.
+        Referência: {inspection.referenceRegistered?'sim':'não'}.</p>
+      <p>Lançamento real: {trial.enabled?'habilitado para confirmação manual':'bloqueado no Preview'}.
+        Tentativa anterior: {trial.attempt?.stage??'nenhuma'}.</p>
+      <p>A sessão foi informada como @contateste6699 pelo titular,
+        mas sua identidade não é comprovada pela API do PhantomBuster.</p>
+      {trial.enabled&&!trial.attempted&&inspection.providerCheck==='matched'&&
+        <div className="border-t pt-2 space-y-2">
+          <label className="flex gap-2 items-start">
+            <input type="checkbox" checked={approved} disabled={busy}
+              onChange={e=>setApproved(e.target.checked)} />
+            <span>Confirmo que a sessão ativa é de @contateste6699.
+              Autorizo apenas um lançamento real que pode seguir um seguidor
+              escolhido pelo PhantomBuster.</span>
+          </label>
+          <label className="block" htmlFor="trial-account-name">
+            Digite o nome da conta de teste para confirmar
+          </label>
+          <input id="trial-account-name" value={typedName}
+            onChange={e=>setTypedName(e.target.value)}
+            className="rounded border px-2 py-1" autoComplete="off" />
+          <Button type="button" variant="outline" disabled={!launchReady||busy}
+            onClick={()=>void send('launch-one')}>Autorizar uma execução real</Button>
+        </div>}
+      {trial.attempt&&
+        <Button type="button" variant="outline" disabled={busy}
+          onClick={()=>void send('check-result')}>Consultar execução registrada</Button>}
+      <p>Follows confirmados: 0. Unfollow automático: desativado.</p>
     </div>}
     {notice&&<p role="alert" className="text-sm">{notice}</p>}
   </section>;

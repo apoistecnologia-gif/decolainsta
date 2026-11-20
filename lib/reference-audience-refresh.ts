@@ -1,3 +1,5 @@
+import { MAX_HISTORY_BATCHES } from './reference-audience-history';
+
 /**
  * Configuration for read-only polling of completed, externally scheduled collector runs.
  * A source is explicit and account-scoped; collector output alone does not prove
@@ -124,7 +126,7 @@ export function dueRefreshSources(
  * the part that fits; never silently drop an entire update when a reference\n * approaches the configured history batch limit.
  */
 export function boundAudienceDelta(
-  fresh: string[], existingBatches: number, maxBatches = 200,
+  fresh: string[], existingBatches: number, maxBatches = MAX_HISTORY_BATCHES,
 ): { importable: string[]; deferred: number } {
   if (!Number.isSafeInteger(existingBatches) || existingBatches < 0 ||
       !Number.isSafeInteger(maxBatches) || maxBatches < 0)

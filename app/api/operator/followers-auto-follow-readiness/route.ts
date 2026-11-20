@@ -6,7 +6,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import { inspectFollowersAutoFollowAgent } from '@/lib/providers/phantombuster-followers-auto-follow';
-import { inspectSavedPrivateFilter } from '@/lib/providers/phantombuster-private-filter';
+import { inspectSavedPrivateFilterDetails } from '@/lib/providers/phantombuster-private-filter';
 
 const HEADERS = { 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' };
 
@@ -53,12 +53,14 @@ export async function GET() {
     ? await inspectFollowersAutoFollowAgent(apiKey!,agentId,referenceUsername)
     : 'missing-configuration';
   const privateExclusionRequested=account?.settings?.skipPrivateProfiles??true;
-  const privateExclusionStatus=providerCheck==='matched'&&reference
-    ? await inspectSavedPrivateFilter(apiKey!,agentId,referenceUsername)
-    : 'unverified';
+  const exclusion=providerCheck==='matched'&&reference
+    ? await inspectSavedPrivateFilterDetails(apiKey!,agentId,referenceUsername)
+    : {status:'unverified' as const,reason:'agent-mismatch' as const};
+  const privateExclusionStatus=exclusion.status;
   return NextResponse.json({
     privateExclusionRequested,
     privateExclusionStatus,
+    privateExclusionReason:exclusion.reason,
     privateExclusionVerified:privateExclusionRequested&&privateExclusionStatus==='enabled',
     accountRegistered:Boolean(account),
     referenceRegistered:Boolean(reference),

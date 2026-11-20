@@ -149,3 +149,54 @@ test('admin readiness and any future launch block unverified exclusion',()=>{
   assert.match(src,/withManifest','true'/);
   assert.doesNotMatch(src,/agents\/launch|agents\/save/);
 });
+
+test('filter diagnosis distinguishes missing manifest, field and saved value',async()=>{
+  const {diagnoseSavedPrivateFilter,inspectSavedPrivateFilterDetails}=
+    await import('../lib/providers/phantombuster-private-filter');
+  const base={...agent({privateSwitch:true}),manifest:{
+    argumentSchema:{properties:{privateSwitch:{
+      type:'boolean',title:'Exclude private profiles',
+    }}},
+  }};
+  assert.deepEqual(diagnoseSavedPrivateFilter(base,id,ref),
+    {status:'enabled',reason:'verified'});
+  const missing={...base};
+  delete (missing as {manifest?:unknown}).manifest;
+  assert.equal(diagnoseSavedPrivateFilter(missing,id,ref).reason,'manifest-absent');
+  assert.equal(diagnoseSavedPrivateFilter({...base,manifest:'bad-json'},
+    id,ref).reason,'manifest-invalid');
+  assert.equal(diagnoseSavedPrivateFilter({...base,
+    manifest:JSON.stringify(base.manifest)},id,ref).status,'enabled');
+  assert.equal(diagnoseSavedPrivateFilter({...base,
+    manifest:{argumentSchema:{properties:{}}}},id,ref).reason,
+    'filter-not-described');
+  assert.equal(diagnoseSavedPrivateFilter({...base,manifest:{
+    argumentSchema:{properties:{
+      privateSwitch:{type:'boolean',title:'Exclude private profiles'},
+      another:{type:'boolean',title:'Exclude private profiles'},
+    }},
+  }},id,ref).reason,'filter-ambiguous');
+  const noField={...base,argument:agent().argument};
+  assert.equal(diagnoseSavedPrivateFilter(noField,id,ref).reason,
+    'saved-argument-missing');
+  assert.equal(diagnoseSavedPrivateFilter({...base,
+    argument:agent({privateSwitch:'true'}).argument},id,ref).reason,
+    'saved-value-invalid');
+  const result=await inspectSavedPrivateFilterDetails('KEY',id,ref,
+    async()=>new Response(JSON.stringify({data:base}),{status:200}));
+  assert.deepEqual(result,{status:'enabled',reason:'verified'});
+  const limited=await inspectSavedPrivateFilterDetails('KEY',id,ref,
+    async()=>new Response('429',{status:429}));
+  assert.deepEqual(limited,{status:'rate-limited',reason:'provider-rate-limited'});
+});
+test('client does not advertise a completed launch as enabled or repeat result import',()=>{
+  const source=readFileSync(
+    'app/(app)/references/_components/social-pilot-panel.tsx','utf8');
+  assert.match(source,/trial\.attempted/);
+  assert.match(source,/a tentativa única já foi utilizada/);
+  assert.match(source,/privateExclusionReason/);
+  assert.match(source,/trial\.attempt\.stage==='container-finished'/);
+  const readiness=readFileSync(
+    'app/api/operator/followers-auto-follow-readiness/route.ts','utf8');
+  assert.match(readiness,/privateExclusionReason:exclusion.reason/);
+});

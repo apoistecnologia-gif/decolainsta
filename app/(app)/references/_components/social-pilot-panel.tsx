@@ -8,7 +8,7 @@ type Inspection={
   accountRegistered:boolean;referenceRegistered:boolean;agentConfigured:boolean;
   providerCheck:string;oneFollowPerLaunchVerified:boolean;agentLaunchEnabled:false;
   privateExclusionRequested:boolean;privateExclusionStatus:string;
-  privateExclusionVerified:boolean;
+  privateExclusionReason?:string;privateExclusionVerified:boolean;
 };
 type Attempt={
   stage:string;requestedAt:string|null;followConfirmed:false;
@@ -126,9 +126,27 @@ export function SocialPilotPanel(){
         'não verificado'}</strong>.
         Preferência da conta: {inspection.privateExclusionRequested
           ?'excluir privados':'não exige exclusão'}.</p>
+      {inspection.privateExclusionStatus!=='enabled'&&
+        <p>Motivo do filtro não confirmado: {{
+          'manifest-absent':'o provedor não retornou o manifesto do agente',
+          'manifest-invalid':'o manifesto não pôde ser interpretado',
+          'filter-not-described':'o campo de exclusão não foi identificado no manifesto',
+          'filter-ambiguous':'o manifesto apresenta mais de um campo compatível',
+          'saved-argument-missing':'a configuração salva não contém o campo identificado',
+          'saved-value-invalid':'o valor salvo não é um booleano verificável',
+          'agent-mismatch':'a identidade ou configuração do agente não corresponde',
+          'provider-unavailable':'a resposta do provedor não estava disponível',
+          'provider-auth-failed':'o provedor recusou a autenticação',
+          'provider-rate-limited':'o provedor limitou a consulta',
+        } as Record<string,string>)[inspection.privateExclusionReason??'']??
+          'a configuração do agente não foi comprovada'}.</p>}
       <p>Conta registrada: {inspection.accountRegistered?'sim':'não'}.
         Referência: {inspection.referenceRegistered?'sim':'não'}.</p>
-      <p>Lançamento real: {trial.enabled?'habilitado para confirmação manual':'bloqueado no Preview'}.
+      <p>Lançamento real: {trial.attempted
+        ?'encerrado — a tentativa única já foi utilizada'
+        :trial.enabled&&inspection.privateExclusionVerified
+          ?'disponível somente mediante autorização manual'
+          :'bloqueado até validar os requisitos'}.
         Tentativa anterior: {trial.attempt?.stage??'nenhuma'}.</p>
       <p>A sessão foi informada como @contateste6699 pelo titular,
         mas sua identidade não é comprovada pela API do PhantomBuster.</p>
@@ -156,8 +174,7 @@ export function SocialPilotPanel(){
           trial.attempt.stage)&&
         <Button type="button" variant="outline" disabled={busy}
           onClick={()=>void send('check-result')}>Consultar execução registrada</Button>}
-      {trial.attempt&&['container-finished','provider-reported'].includes(
-        trial.attempt.stage)&&
+      {trial.attempt&&trial.attempt.stage==='container-finished'&&
         <Button type="button" variant="outline" disabled={busy}
           onClick={()=>void send('check-provider-report')}>
           Importar resultado desta execução

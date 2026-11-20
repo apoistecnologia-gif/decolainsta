@@ -115,3 +115,22 @@ mas os nomes dos argumentos variam por automação.
   automatização nova, nem alteração nas configurações do PhantomBuster.
 - A tentativa anterior `requested` permanece preservada e nenhum
   cron ou unfollow automático é ativado.
+
+
+## Diagnóstico sanitizado de filtro não confirmado (melhoria)
+
+A operação administrativa de verificação continua de leitura somente. Em
+vez de retornar apenas `unverified`, ela fornece um motivo delimitado:
+manifesto ausente/inválido, campo não descrito/ambíguo, argumento ausente,
+valor inválido ou erro de consulta do provedor. O motivo é **um enum fixo**,
+sem dados brutos da sessão, configurações ou credenciais.
+
+- Aceita o manifesto JSON como objeto ou texto JSON válido, com limite
+  de tamanho. Mapeamento do campo permanece estrito: rótulo oficial,
+  tipo booleano e chave única, com valor salvo booleano.
+- Falta de evidência não equivale a filtro desabilitado.
+- O painel não mostra mais "lançamento habilitado" quando já existe uma
+  tentativa única registrada; o botão redundante de importar resultado é
+  ocultado após `provider-reported`.
+- O primeiro histórico e a observação `requested` não são alterados.
+  Nenhuma execução extra de follow/unfollow foi iniciada.

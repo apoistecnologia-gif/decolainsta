@@ -234,7 +234,9 @@ async function inspectFromAgentInventory(
     const agents = Array.isArray(payload) ? payload :
       Array.isArray(outer?.data) ? outer.data :
       Array.isArray(outer?.agents) ? outer.agents : null;
-    if (!agents || agents.length !== 1) return 'unavailable';
+    if (!agents) return 'unavailable';
+    if (agents.length === 0) return 'not-found';
+    if (agents.length !== 1) return 'unavailable';
     const agent = obj(agents[0]);
     if (!agent || String(agent.id ?? agent._id ?? '') !== agentId ||
         agent.script !== 'Instagram Follower Collector.js') return 'mismatch';
@@ -266,7 +268,8 @@ export async function inspectConfiguredFollowerCollector(
       signal: AbortSignal.timeout(8000),
     });
     if (response.status === 401 || response.status === 403) return 'invalid-key';
-    if (response.status === 404) return 'not-found';
+    if (response.status === 404)
+      return inspectFromAgentInventory(apiKey, agentId, expected, fetcher);
     if (response.status === 429) return 'rate-limited';
     if (!response.ok) return response.status >= 500
       ? inspectFromAgentInventory(apiKey, agentId, expected, fetcher) : 'unavailable';

@@ -3,6 +3,8 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
   FOLLOWERS_TRIAL_ACTION,makeTrialEvidence,parseTrialEvidence,
+  FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION,
+  shouldStartUnfollowClock,observedRelationship,
 } from '../lib/reference-followers-trial';
 import {
   launchFollowersTrial,inspectTrialContainer,parseTrialContainer,
@@ -196,6 +198,56 @@ test('audit record never fabricates target username or follow success',()=>{
     followConfirmed:true})),null);
   assert.equal(makeTrialEvidence({...evidence,
     stage:'provider-reported',containerId:container}),null);
+});
+test('pending private-profile request never starts a follow or 48-hour timer',()=>{
+  assert.equal(FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION,
+    'reference_followers_relationship_observation_v1');
+  assert.equal(observedRelationship('requested'),true);
+  assert.equal(observedRelationship('following'),true);
+  assert.equal(observedRelationship('none'),true);
+  assert.equal(observedRelationship('unknown'),false);
+  assert.equal(shouldStartUnfollowClock({
+    relationship:'requested',verifiedFollowAt:new Date(),
+  }),false);
+  assert.equal(shouldStartUnfollowClock({
+    relationship:'following',verifiedFollowAt:null,
+  }),false);
+  assert.equal(shouldStartUnfollowClock({
+    relationship:'following',verifiedFollowAt:new Date('2026-11-20T16:00:00.000Z'),
+  }),true);
+  const base=makeTrialEvidence({
+    version:1,referenceId:'refA',agentId:agent,
+    containerId:container,stage:'provider-reported',
+    providerReportedUsername:'dellmyra_souza',providerReportedCount:1,
+    followConfirmed:false,sessionOwnerVerifiedByProvider:false,recipientKnown:false,
+  });
+  assert.ok(base);
+  const pending=makeTrialEvidence({...base!,
+    relationshipObservation:'requested',relationshipSource:'owner-visual-check',
+    relationshipObservedAt:'2026-11-20T20:00:00.000Z'});
+  assert.ok(pending);
+  assert.equal(pending?.followConfirmed,false);
+  assert.equal(parseTrialEvidence(JSON.stringify(pending))?.relationshipObservation,
+    'requested');
+  assert.equal(makeTrialEvidence({...base!,
+    relationshipObservation:'requested'}),null);
+  assert.equal(makeTrialEvidence({...base!,stage:'launch-accepted',
+    providerReportedUsername:undefined,providerReportedCount:undefined,
+    relationshipObservation:'requested',relationshipSource:'owner-visual-check',
+    relationshipObservedAt:'2026-11-20T20:00:00.000Z'}),null);
+  assert.equal(parseTrialEvidence(JSON.stringify({...pending,
+    relationshipSource:'external-script'})),null);
+});
+test('operator manual relationship observation is bounded and auditable',()=>{
+  const src=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
+  assert.match(src,/operation==='record-relationship'/);
+  assert.match(src,/observedRelationship\(input.observedStatus\)/);
+  assert.match(src,/evidence.stage!=='provider-reported'/);
+  assert.match(src,/tx.activityLog.updateMany/);
+  assert.match(src,/FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION/);
+  assert.match(src,/source:'owner-visual-check'/);
+  assert.match(src,/unfollowEligibleAt:null/);
+  assert.doesNotMatch(src,/unfollowedAt:|unfollowScheduledAt:/);
 });
 test('route is admin Preview only, idempotent and separate from read-only cron',()=>{
   const route=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');

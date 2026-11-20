@@ -12,6 +12,9 @@ type Attempt={
   stage:string;requestedAt:string|null;followConfirmed:false;
   recipientKnown:false;mayRetryAutomatically:false;
   providerReportedUsername?:string|null;providerReportedCount?:number;
+  relationshipObservation?:'requested'|'following'|'none'|'unknown';
+  relationshipObservedAt?:string|null;
+  unfollowEligibleAt?:null;
 };
 type Trial={
   enabled:boolean;accountName:string;referenceRegistered:boolean;
@@ -23,6 +26,8 @@ export function SocialPilotPanel(){
   const [trial,setTrial]=useState<Trial|null>(null);
   const [approved,setApproved]=useState(false);
   const [typedName,setTypedName]=useState('');
+  const [observedStatus,setObservedStatus]=useState<'requested'|'following'|'none'>(
+    'requested');
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   async function check(){
@@ -40,7 +45,8 @@ export function SocialPilotPanel(){
     }catch{setNotice('Não foi possível conferir a preparação do teste.');}
     finally{setBusy(false);}
   }
-  async function send(operation:'launch-one'|'check-result'|'check-provider-report'){
+  async function send(operation:'launch-one'|'check-result'|
+    'check-provider-report'|'record-relationship'){
     if(busy)return;
     if(operation==='launch-one' &&
         (!approved||!trial?.enabled||typedName!==trial.accountName||
@@ -49,18 +55,23 @@ export function SocialPilotPanel(){
     try{
       const payload=operation==='launch-one'?
         {operation,approval:FOLLOWERS_TRIAL_APPROVAL,accountConfirmation:typedName}:
-        {operation};
+        operation==='record-relationship'?
+          {operation,observedStatus}:{operation};
       const response=await fetch('/api/operator/followers-auto-follow-run',{
         method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
         headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),
       });
       const result=await response.json() as {
         status?:string;containerStatus?:string;providerStatus?:string;
-        providerReportedUsername?:string|null;
+        providerReportedUsername?:string|null;relationshipObservation?:string;
       };
       setNotice(response.ok?
         operation==='launch-one'
           ?'Lançamento solicitado. Isso não comprova que o Instagram seguiu alguém.'
+          :operation==='record-relationship'
+            ?'Situação observada no aplicativo registrada: '+
+              (result.relationshipObservation??'sem confirmação')+
+              '. O prazo de 48 horas não foi iniciado.'
           :operation==='check-provider-report'
             ?result.providerStatus==='provider-reported'
               ?'O PhantomBuster reportou 1 perfil seguido: @'+
@@ -131,14 +142,42 @@ export function SocialPilotPanel(){
           Importar resultado desta execução
         </Button>}
       {trial.attempt?.providerReportedUsername&&
-        <p>PhantomBuster reportou 1 perfil seguido:
-          <strong> @{trial.attempt.providerReportedUsername}</strong>.
-          Conferência independente no Instagram: pendente.</p>}
+        <div className="space-y-2">
+          <p>PhantomBuster reportou uma ação para
+            <strong> @{trial.attempt.providerReportedUsername}</strong>.
+            Isso pode ser só uma solicitação para perfil privado.</p>
+          <p>Situação observada no Instagram:
+            <strong> {trial.attempt.relationshipObservation==='requested'
+              ?'Solicitado — aguardando aprovação'
+              :trial.attempt.relationshipObservation==='following'
+                ?'Seguindo — informado pelo titular'
+                :trial.attempt.relationshipObservation==='none'
+                  ?'Sem solicitação ou follow ativo'
+                  :'Ainda não registrada'}</strong>.</p>
+          <label htmlFor="observed-relationship" className="block">
+            Após conferir o perfil no aplicativo, registre a situação
+          </label>
+          <select id="observed-relationship" value={observedStatus}
+            disabled={busy} onChange={e=>setObservedStatus(
+              e.target.value as 'requested'|'following'|'none')}
+            className="rounded border px-2 py-1">
+            <option value="requested">Solicitado (aguardando aprovação)</option>
+            <option value="following">Seguindo (aprovado)</option>
+            <option value="none">Não está seguindo / sem pedido</option>
+          </select>
+          <Button type="button" variant="outline" disabled={busy}
+            onClick={()=>void send('record-relationship')}>
+            Salvar situação conferida
+          </Button>
+          <p>Esta informação é uma observação do titular. Não ativa ações,
+            não confirma follow por API e não inicia o prazo de 48 horas.</p>
+        </div>}
       {trial.attempt&&['reserved','uncertain'].includes(trial.attempt.stage)&&
         <p>A tentativa não tem contêiner confirmado. Não repita o lançamento;
           confira diretamente o histórico do agente no PhantomBuster.</p>}
-      <p>Follows reportados pelo PhantomBuster: {trial.attempt?.providerReportedCount??0}.
-        Follows confirmados independentemente: 0.
+      <p>Ações reportadas pelo PhantomBuster: {trial.attempt?.providerReportedCount??0}.
+        Pedidos pendentes observados: {trial.attempt?.relationshipObservation==='requested'?1:0}.
+        Follows comprovados tecnicamente: 0.
         Unfollow automático: desativado.</p>
     </div>}
     {notice&&<p role="alert" className="text-sm">{notice}</p>}

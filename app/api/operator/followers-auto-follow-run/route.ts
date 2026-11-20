@@ -11,7 +11,8 @@ import {
 } from '@/lib/providers/phantombuster-followers-trial';
 import {
   FOLLOWERS_TRIAL_ACTION,FOLLOWERS_TRIAL_APPROVAL,
-  makeTrialEvidence,parseTrialEvidence,
+  makeTrialEvidence,parseTrialEvidence,observedRelationship,
+  FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION,
 } from '@/lib/reference-followers-trial';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import { fetchFollowersRunReport } from '@/lib/providers/phantombuster-followers-result';
@@ -52,12 +53,17 @@ const safeAttempt=(a:{
     stage:evidence.stage, requestedAt:a?.createdAt.toISOString()??null,
     providerReportedUsername:evidence.providerReportedUsername??null,
     providerReportedCount:evidence.providerReportedCount??0,
+    relationshipObservation:evidence.relationshipObservation??'unknown',
+    relationshipObservedAt:evidence.relationshipObservedAt??null,
     followConfirmed:false,recipientKnown:false,
+    unfollowEligibleAt:null,
     mayRetryAutomatically:false,
   }:a?{
     stage:'uncertain',requestedAt:a.createdAt.toISOString(),
     providerReportedUsername:null,providerReportedCount:0,
-    followConfirmed:false,recipientKnown:false,mayRetryAutomatically:false,
+    relationshipObservation:'unknown',relationshipObservedAt:null,
+    followConfirmed:false,recipientKnown:false,unfollowEligibleAt:null,
+    mayRetryAutomatically:false,
   }:null;
 };
 
@@ -97,6 +103,7 @@ export async function POST(req:Request){
   const operation=input.operation;
   const allowed=operation==='launch-one'?
     ['operation','approval','accountConfirmation']:
+    operation==='record-relationship'?['operation','observedStatus']:
     operation==='check-result'||operation==='check-provider-report'
       ? ['operation'] : [];
   if(!allowed.length||Object.keys(input).length!==allowed.length||
@@ -184,6 +191,57 @@ export async function POST(req:Request){
   if(!record||!evidence||evidence.agentId!==ctx.agentId||
      evidence.referenceId!==ctx.reference.id||!evidence.containerId)
     return fail('Nenhuma execução rastreável para consultar',409);
+
+  if(operation==='record-relationship'){
+    if(evidence.stage!=='provider-reported'||
+      !evidence.providerReportedUsername||
+      !observedRelationship(input.observedStatus))
+      return fail('Informe uma situação válida para o perfil reportado',409);
+    if(evidence.relationshipObservation===input.observedStatus)
+      return NextResponse.json({
+        relationshipObservation:evidence.relationshipObservation,
+        followConfirmed:false,unfollowEligibleAt:null,
+      },{headers:HEADERS});
+    const observedAt=new Date().toISOString();
+    const next=makeTrialEvidence({
+      ...evidence,
+      relationshipObservation:input.observedStatus,
+      relationshipObservedAt:observedAt,
+      relationshipSource:'owner-visual-check',
+    });
+    if(!next)return fail('Registro de situação inválido',409);
+    try{
+      const saved=await prisma.$transaction(async tx=>{
+        const updated=await tx.activityLog.updateMany({
+          where:{id:record.id,instagramAccountId:ctx.account.id,
+            action:FOLLOWERS_TRIAL_ACTION,details:record.details},
+          data:{details:JSON.stringify(next),success:false},
+        });
+        if(updated.count!==1)return false;
+        // Immutable audit event, scoped to the test account and the
+        // exact recipient from the previously verified provider report.
+        await tx.activityLog.create({data:{
+          instagramAccountId:ctx.account.id,
+          action:FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION,
+          targetUsername:evidence.providerReportedUsername,
+          success:false,
+          details:JSON.stringify({
+            version:1,trialId:record.id,referenceId:ctx.reference.id,
+            relationship:input.observedStatus,observedAt,
+            source:'owner-visual-check',
+          }),
+        }});
+        return true;
+      },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+      if(!saved)return fail('Situação alterada; atualize o diagnóstico',409);
+    }catch{return fail('Falha ao registrar situação; tente consultar novamente',503);}
+    return NextResponse.json({
+      relationshipObservation:next.relationshipObservation,
+      relationshipObservedAt:next.relationshipObservedAt,
+      followConfirmed:false,unfollowEligibleAt:null,
+      unfollowScheduled:false,
+    },{headers:HEADERS});
+  }
   if(operation==='check-provider-report'){
     if(evidence.stage==='provider-reported')
       return NextResponse.json({

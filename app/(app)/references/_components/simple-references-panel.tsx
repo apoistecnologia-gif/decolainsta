@@ -12,7 +12,9 @@ type Reference = { id: string; username: string };
 type Workflow = { references: Reference[] };
 type SyncResult = { status: 'synced' | 'capacity-reached'; synced?: number; total?: number };
 type CollectionStatus = {
-  statuses: { referenceId: string; state: 'source-linked' | 'awaiting-collector' }[];
+  statuses: { referenceId: string; state: 'source-linked' | 'awaiting-collector' |
+    'awaiting-provider-setup' | 'awaiting-provider-capacity' |
+    'needs-operator-review' }[];
   linked: number;
   awaiting: number;
 };
@@ -401,6 +403,12 @@ export function SimpleReferencesPanel() {
                       <p className="text-xs text-muted-foreground">
                         {readinessByReference.get(reference.id) === 'source-linked'
                           ? 'Fonte de dados vinculada'
+                          : readinessByReference.get(reference.id) === 'awaiting-provider-setup'
+                            ? 'Aguardando configuração da fonte'
+                          : readinessByReference.get(reference.id) === 'awaiting-provider-capacity'
+                            ? 'Preparação pendente: capacidade do provedor'
+                          : readinessByReference.get(reference.id) === 'needs-operator-review'
+                            ? 'Preparação pendente de revisão'
                           : 'Aguardando preparação'}
                       </p>
                     )}

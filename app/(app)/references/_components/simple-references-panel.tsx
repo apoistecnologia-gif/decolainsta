@@ -144,9 +144,22 @@ export function SimpleReferencesPanel() {
           body: JSON.stringify({ accountId, operation: 'match-existing' }),
         });
         if (matched.ok) {
-          const result = await matched.json() as { matched?: number };
+          const result = await matched.json() as {
+            matched?: number; unmatched?: number; ambiguousOrInUse?: number;
+            excludedByOwner?: number;
+          };
           if ((result.matched ?? 0) > 0)
-            phases.push((result.matched ?? 0) + ' coletor(es) vinculados às referências.');
+            phases.push((result.matched ?? 0) + ' coletor(es) existentes vinculados às referências.');
+          else if ((result.ambiguousOrInUse ?? 0) > 0)
+            phases.push('Vínculo pendente: mais de um coletor possível ou coletor já utilizado.');
+          else if ((result.unmatched ?? 0) > 0)
+            phases.push('Coletores existentes não correspondem às referências cadastradas.');
+          else if ((result.excludedByOwner ?? 0) > 0)
+            phases.push('Há referências com associação de coleta revogada.');
+        } else if (matched.status === 403) {
+          const detail = await matched.json().catch(() => null) as { error?: string } | null;
+          if (detail?.error === 'Acesso restrito ao administrador')
+            phases.push('Vínculo do coletor depende de autorização administrativa.');
         }
       } catch {
         // Provider discovery must never block saved reference records.
@@ -161,9 +174,12 @@ export function SimpleReferencesPanel() {
         if (response.ok) {
           const info = await response.json() as {
             enabled?: boolean; examined?: number; newCandidatesObserved?: number;
+            historicalOnly?: number;
           };
           if (info.enabled && (info.newCandidatesObserved ?? 0) > 0)
-            phases.push((info.newCandidatesObserved ?? 0) + ' candidato(s) novos da coleta concluída.');
+            phases.push((info.newCandidatesObserved ?? 0) + ' candidato(s) novos de coleta posterior ao vínculo.');
+          if (info.enabled && (info.historicalOnly ?? 0) > 0)
+            phases.push('Resultado antigo encontrado: registros históricos preservados, sem nova importação.');
         }
       } catch {
         // Previously stored data remains readable when the provider is unavailable.

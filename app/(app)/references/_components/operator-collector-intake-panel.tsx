@@ -17,6 +17,14 @@ type DraftOutcome = {
   state: 'created' | 'existing-draft' | 'capacity-reached' |
     'rejected' | 'unconfirmed';
 };
+type Reconciled = {
+  checked: number;
+  bound: number;
+  pending: number;
+  notConfigured: number;
+  unverified: number;
+  ambiguous: number;
+};
 type Result = {
   matched: number;
   alreadyBound: number;
@@ -33,7 +41,31 @@ export function OperatorCollectorIntakePanel() {
   const [result, setResult] = useState<Result | null>(null);
   const [queue, setQueue] = useState<ProvisioningPlan | null>(null);
   const [draftOutcome, setDraftOutcome] = useState<DraftOutcome | null>(null);
+  const [reconciled, setReconciled] = useState<Reconciled | null>(null);
   const [error, setError] = useState('');
+  async function reconcilePrepared() {
+    if (busy) return;
+    setBusy(true); setError(''); setReconciled(null);
+    try {
+      const response = await fetch('/api/provider/phantombuster/reconcile-prepared', {
+        method: 'POST', credentials: 'same-origin',
+        cache: 'no-store', redirect: 'error',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({operation:'reconcile-prepared'}),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) {
+        const detail = data && typeof data === 'object' && 'error' in data
+          ? String((data as {error: unknown}).error)
+          : 'Não foi possível validar os rascunhos';
+        throw new Error(detail);
+      }
+      setReconciled(data as Reconciled);
+      setQueue(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha na validação de coletores');
+    } finally { setBusy(false); }
+  }
   async function matchAll() {
     if (busy) return;
     setBusy(true); setError(''); setResult(null);
@@ -105,7 +137,24 @@ export function OperatorCollectorIntakePanel() {
         Revogadas: {result.revoked}. Aguardando próxima rodada: {result.deferred}.
       </p>}
       <div className="border-t pt-3 space-y-2">
-        <h3 className="text-sm font-semibold">Fila de preparação de novos coletores</h3>
+        <h3 className="text-sm font-semibold">Concluir configuração dos coletores preparados</h3>
+        <p className="text-xs text-muted-foreground">
+          Após configurar um rascunho autorizado no PhantomBuster, confira sua
+          identidade e referência para vinculá-lo automaticamente à conta correta.
+          Esta operação só consulta configurações; não inicia coletas.
+        </p>
+        <Button type="button" variant="outline" disabled={busy}
+          onClick={() => void reconcilePrepared()}>
+          {busy ? 'Verificando...' : 'Conferir rascunhos configurados'}
+        </Button>
+        {reconciled && <p role="status" className="text-sm">
+          Verificados: {reconciled.checked}. Novas fontes vinculadas: {reconciled.bound}.
+          Aguardando preparação: {reconciled.pending - reconciled.bound}.
+          Configuração incompleta: {reconciled.notConfigured}.
+          Identidade não confirmada: {reconciled.unverified}.
+          Conflitos de titularidade: {reconciled.ambiguous}.
+        </p>}
+        <h3 className="text-sm font-semibold pt-2">Fila de preparação de novos coletores</h3>
         <p className="text-xs text-muted-foreground">
           Consulta todas as referências cadastradas, sem escolher clientes
           individualmente. A verificação não ocupa vagas no provedor.

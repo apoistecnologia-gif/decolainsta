@@ -219,7 +219,7 @@ export function SimpleReferencesPanel() {
             const diagnostics: Record<string, string> = {
               'invalid-key': 'A API não autorizou a consulta ao coletor vinculado.',
               'rate-limited': 'O PhantomBuster limitou temporariamente a consulta ao coletor.',
-              'not-found': 'Coletor vinculado não encontrado na workspace.',
+              'not-found': 'A chave da API não consegue localizar este coletor no workspace configurado.',
               'mismatch': 'A configuração do coletor não corresponde à referência cadastrada.',
               'unavailable': 'A API responde, mas não foi possível consultar os detalhes do coletor.',
             };

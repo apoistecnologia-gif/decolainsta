@@ -5,6 +5,9 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { loadActiveAudienceSources } from '@/lib/server/reference-audience-source-store';
+import {
+  COLLECTOR_DRAFT_ACTION, parseCollectorDraftEvent,
+} from '@/lib/reference-collector-draft-events';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
@@ -25,26 +28,42 @@ export async function GET(request: Request) {
   if (!account)
     return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404, headers: HEADERS });
   try {
-    const [refs, bound] = await Promise.all([
+    const [refs, bound, drafts] = await Promise.all([
       prisma.targetAccount.findMany({
         where: { instagramAccountId: account.id },
         select: { id: true }, take: 1001,
       }),
       loadActiveAudienceSources(account.id),
+      prisma.activityLog.findMany({
+        where: { instagramAccountId: account.id, action: COLLECTOR_DRAFT_ACTION },
+        select: { targetUsername: true, details: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1001,
+      }),
     ]);
-    if (refs.length > 1000)
+    if (refs.length > 1000 || drafts.length > 1000)
       return NextResponse.json({ error: 'Limite de referências excedido' },
         { status: 409, headers: HEADERS });
     const assigned = new Set(bound.map(b => b.referenceId));
-    const statuses = refs.map(ref => ({
-      referenceId: ref.id,
-      state: assigned.has(ref.id) ? 'source-linked' : 'awaiting-collector',
-    }));
+    const lastDraftByRef = new Map<string, ReturnType<typeof parseCollectorDraftEvent>>();
+    for (const row of drafts) {
+      if (row.targetUsername && !lastDraftByRef.has(row.targetUsername))
+        lastDraftByRef.set(row.targetUsername, parseCollectorDraftEvent(row.details));
+    }
+    const statuses = refs.map(ref => {
+      const draft = lastDraftByRef.get(ref.id);
+      const state = assigned.has(ref.id) ? 'source-linked'
+        : !lastDraftByRef.has(ref.id) ? 'awaiting-collector'
+        : draft?.state === 'created' || draft?.state === 'existing-draft'
+          ? 'awaiting-provider-setup'
+        : draft?.state === 'capacity-reached' ? 'awaiting-provider-capacity'
+        : 'needs-operator-review';
+      return { referenceId: ref.id, state };
+    });
     return NextResponse.json({
       statuses,
       references: refs.length,
       linked: statuses.filter(ref => ref.state === 'source-linked').length,
-      awaiting: statuses.filter(ref => ref.state === 'awaiting-collector').length,
+      awaiting: statuses.filter(ref => ref.state !== 'source-linked').length,
       // Binding is not collection nor an Instagram relationship attestation.
       collectionVerifiedByMeta: false,
       launchesCollectors: false,

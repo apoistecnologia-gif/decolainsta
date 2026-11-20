@@ -74,6 +74,7 @@ test('test endpoint remains preview-only, fully opt-in and one-shot',()=>{
     'tx.activityLog.count(',
     'Prisma.TransactionIsolationLevel.Serializable',
     'instagramUserId:{not:null}',
+    'userId:operatorId',
     'parseCandidateEvidence',
     'prisma.whitelist.findUnique',
     "stage:'requested'",

@@ -19,19 +19,20 @@ const HEADERS = {'Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
 const error=(message:string,code:number)=>
   NextResponse.json({error:message},{status:code,headers:HEADERS});
 
-async function operator() {
+async function operator(): Promise<string | null> {
   const session=await auth();
   const userId=(session?.user as {id?:string}|undefined)?.id;
-  if (!userId) return false;
+  if (!userId) return null;
   const user=await prisma.user.findUnique({where:{id:userId},select:{role:true}});
-  return user?.role==='admin';
+  return user?.role==='admin' ? userId : null;
 }
 
 /** Readiness only: never exposes agent IDs, passwords or provider arguments. */
 export async function GET() {
   if (process.env.VERCEL_ENV!=='preview')
     return error('Somente Preview',403);
-  if (!await operator()) return error('Operador não autorizado',403);
+  const operatorId=await operator();
+  if (!operatorId) return error('Operador não autorizado',403);
   const enabled=process.env.PHANTOMBUSTER_SOCIAL_PILOT_ENABLED==='yes';
   const accountUsername=process.env.PHANTOMBUSTER_SOCIAL_PILOT_ACCOUNT??'';
   const referenceUsername=process.env.PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE??'';
@@ -45,7 +46,7 @@ export async function GET() {
     isConfiguredPhantomBusterKey(process.env.PHANTOMBUSTER_API_KEY),
   );
   const account=configured?await prisma.instagramAccount.findFirst({
-    where:{username:accountUsername},
+    where:{username:accountUsername,userId:operatorId},
     select:{id:true,username:true,instagramUserId:true},
   }):null;
   const ref=account?await prisma.targetAccount.findFirst({
@@ -89,7 +90,8 @@ export async function POST(request:Request) {
   if (process.env.VERCEL_ENV!=='preview' ||
       process.env.PHANTOMBUSTER_SOCIAL_PILOT_ENABLED!=='yes')
     return error('Teste real ainda não habilitado',403);
-  if (!await operator()) return error('Operador não autorizado',403);
+  const operatorId=await operator();
+  if (!operatorId) return error('Operador não autorizado',403);
   if (request.headers.get('origin')!==new URL(request.url).origin)
     return error('Origem inválida',403);
   if (!request.headers.get('content-type')?.startsWith('application/json'))
@@ -120,7 +122,8 @@ export async function POST(request:Request) {
       accountUsername===targetUsername||referenceUsername===targetUsername)
     return error('Configuração de teste incompleta',409);
   const account=await prisma.instagramAccount.findFirst({
-    where:{username:accountUsername,instagramUserId:{not:null}},
+    where:{username:accountUsername,userId:operatorId,
+      instagramUserId:{not:null}},
     select:{id:true,username:true},
   });
   if (!account) return error('Conta de teste não conectada',409);

@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layouts/page-header';
 import { ReferenceHistoryPanel } from '../_components/reference-history-panel';
 import { OperatorCollectorIntakePanel } from '../_components/operator-collector-intake-panel';
 import { FirstOperatorActivationPanel } from '../_components/first-operator-activation-panel';
+import { SocialPilotPanel } from '../_components/social-pilot-panel';
 import { ReferenceWorkflowPanel } from '../_components/reference-workflow-panel';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,7 @@ export default async function ReferencesDiagnosticsPage() {
         description="Ferramentas técnicas de coleta, importação, histórico e revisão manual. Não executam follows ou unfollows."
       />
       {canActivateFirstOperator && <FirstOperatorActivationPanel />}
+      {operator?.role === 'admin' && <SocialPilotPanel />}
       {operator?.role === 'admin' && <OperatorCollectorIntakePanel />}
       <ReferenceWorkflowPanel />
       <details className="rounded-lg border p-4">

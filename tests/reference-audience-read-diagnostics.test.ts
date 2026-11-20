@@ -88,3 +88,70 @@ test('customer connection check is scoped to owned Instagram account and bound r
   assert.match(ui,/connection\.collectorCheck/);
   assert.match(ui,/Atualizar dados/);
 });
+
+test('fallback checks only bound agent ID via official filtered inventory when details are missing', async () => {
+  const seen: string[] = [];
+  const output = await inspectConfiguredFollowerCollector('key',agentId,'reference_a',
+    async (url,init) => {
+      seen.push(url);
+      assert.equal(init?.method,'GET');
+      if (url.includes('/agents/fetch-all')) {
+        const params = new URL(url).searchParams;
+        assert.equal(params.get('agentIds'),agentId);
+        assert.equal(params.get('withArgument'),'true');
+        return new Response(JSON.stringify([{id:agentId,
+          script:'Instagram Follower Collector.js',
+          argument:JSON.stringify({
+            spreadsheetUrl:'https://www.instagram.com/reference_a/',
+            sessionCookie:'DO_NOT_LEAK',
+          })}]),{status:200});
+      }
+      return new Response(JSON.stringify({
+        id:agentId, script:'Instagram Follower Collector.js',
+      }),{status:200});
+    });
+  assert.equal(output,'matched');
+  assert.equal(seen.length,2);
+  assert.doesNotMatch(JSON.stringify(output),/DO_NOT_LEAK/);
+});
+
+test('temporary agent details 5xx falls back safely, but 429 and auth errors never retry', async () => {
+  let calls=0;
+  const recovered = await inspectConfiguredFollowerCollector('key',agentId,'reference_a',
+    async (url) => {
+      calls++;
+      return url.includes('/agents/fetch-all')
+        ? new Response(JSON.stringify({data:[{
+            id:agentId, script:'Instagram Follower Collector.js',
+            argument:JSON.stringify({profileUrl:'@reference_a'}),
+          }]}),{status:200})
+        : new Response('hidden provider failure',{status:502});
+    });
+  assert.equal(recovered,'matched');
+  assert.equal(calls,2);
+  for(const code of [401,403,404,429]){
+    calls=0;
+    const result = await inspectConfiguredFollowerCollector('key',agentId,'reference_a',
+      async () => {calls++; return new Response(null,{status:code});});
+    assert.equal(calls,1);
+    assert.equal(result,code===404?'not-found':code===429?'rate-limited':'invalid-key');
+  }
+});
+
+test('fallback refuses ambiguous list, wrong agent, wrong target and missing argument',async () => {
+  const fake = (id=agentId, profile='reference_a') => ({
+    id, script:'Instagram Follower Collector.js',
+    argument:JSON.stringify({spreadsheetUrl:'https://www.instagram.com/'+profile+'/'}),
+  });
+  for(const payload of [
+    [fake(), fake()], [fake('1111111111111111')],
+    [fake(agentId,'other_ref')],
+    [{id:agentId,script:'Instagram Follower Collector.js'}],
+  ]) {
+    const result = await inspectConfiguredFollowerCollector('key',agentId,'reference_a',
+      async (url) => url.includes('/fetch-all')
+        ? new Response(JSON.stringify(payload)) :
+        new Response(JSON.stringify({id:agentId,script:'Instagram Follower Collector.js'})));
+    assert.notEqual(result,'matched');
+  }
+});

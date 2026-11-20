@@ -7,6 +7,8 @@
  *
  * API reference: https://hub.phantombuster.com/reference/get_agents-fetch-all
  */
+import { phantomBusterRequestHeaders } from './phantombuster-request-headers';
+
 export type PhantomBusterStatus =
   | 'verified'
   | 'not-configured'
@@ -48,10 +50,7 @@ export async function checkPhantomBusterWorkspace(
     if (agentId) url.searchParams.set('agentIds', agentId);
     const response = await fetcher(url.toString(), {
       method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'X-Phantombuster-Key': apiKey,
-      },
+      headers: phantomBusterRequestHeaders(apiKey),
       cache: 'no-store',
       redirect: 'error',
       signal: AbortSignal.timeout(8000),

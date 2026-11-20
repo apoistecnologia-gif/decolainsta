@@ -150,3 +150,23 @@ A consulta com `withManifest=true` agora classifica separadamente:
 
 Referência da API:
 https://hub.phantombuster.com/reference/get_agents-fetch
+
+
+## Reconciliação de 404 na consulta com manifesto
+
+O endpoint `/agents/fetch` com `withManifest=true` pode responder 404
+mesmo quando a validação de agente existente é `matched` via inventário.
+A interface agora **não conclui que o agente foi excluído** apenas a
+partir desse 404.
+
+Após 404, o adaptador tenta exclusivamente GET
+`/agents/fetch-all?agentIds=<ID>&withArgument=true`, e exige
+exatamente uma entrada com ID, tipo, agendamento, referência e
+limite de um perfil correspondentes. Se o inventário não trouxer
+manifesto válido e valor booleano explícito da opção, retorna
+`listed-agent-manifest-unavailable`, com o filtro **não verificado**.
+Caso o manifesto esteja presente e seja inequívoco, mantém a mesma
+validação rigorosa do caminho principal.
+
+É apenas leitura: nenhum follow, unfollow, alteração de agente,
+permissão ou credencial. A tentativa original permanece intacta.

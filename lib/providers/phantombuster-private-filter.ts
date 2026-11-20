@@ -17,7 +17,8 @@ export type PrivateFilterReason=
   'provider-rate-limited'|'manifest-access-denied'|'agent-not-found'|
   'agent-script-missing'|'manifest-request-rejected'|
   'provider-service-error'|'response-too-large'|'response-malformed'|
-  'provider-timeout'|'provider-forbidden';
+  'provider-timeout'|'provider-forbidden'|
+  'listed-agent-manifest-unavailable'|'inventory-unavailable'|'inventory-mismatch';
 export type PrivateFilterDiagnosis={
   status:PrivateFilterStatus;reason:PrivateFilterReason;
 };
@@ -126,6 +127,38 @@ async function boundedJson(response:Response):Promise<
   }catch{return {ok:false,reason:'response-malformed'};}
   finally{reader.releaseLock();}
 }
+/** Validate the exact, single inventory entry if detail fetch returned 404.
+ * Inventory is a legitimate fallback for agent identity, not evidence that
+ * the private-profile filter is enabled. Require the SAME manifest proof.
+ */
+async function inspectInventoryFallback(
+  agentId:string,reference:string,fetcher:Fetcher,opts:RequestInit,
+):Promise<PrivateFilterDiagnosis>{
+  const url=new URL('https://api.phantombuster.com/api/v2/agents/fetch-all');
+  url.searchParams.set('agentIds',agentId);
+  url.searchParams.set('withArgument','true');
+  try{
+    const response=await fetcher(url.toString(),opts);
+    if(!response.ok)return unverified('inventory-unavailable');
+    const payload=await boundedJson(response);
+    if(!payload.ok)return unverified('inventory-unavailable');
+    const value=obj(payload.value);
+    const rows=Array.isArray(payload.value)?payload.value:
+      Array.isArray(value?.data)?value.data:
+      Array.isArray(value?.agents)?value.agents:null;
+    if(!rows||rows.length!==1)return unverified('inventory-unavailable');
+    const candidate=obj(rows[0]);
+    if(!candidate||String(candidate.id??candidate._id??'')!==agentId)
+      return unverified('inventory-mismatch');
+    if(inspectFollowersAutoFollowDocument(candidate,agentId,reference)!=='matched')
+      return {status:'agent-mismatch',reason:'agent-mismatch'};
+    const diagnosis=diagnoseSavedPrivateFilter(candidate,agentId,reference);
+    // The documented inventory API does not promise manifest metadata.
+    // A correct ID and arguments cannot establish exclusion by themselves.
+    return diagnosis.reason==='manifest-absent'
+      ? unverified('listed-agent-manifest-unavailable'):diagnosis;
+  }catch{return unverified('inventory-unavailable');}
+}
 export async function inspectSavedPrivateFilterDetails(
   apiKey:string,agentId:string,reference:string,fetcher:Fetcher=fetch,
 ):Promise<PrivateFilterDiagnosis>{
@@ -139,11 +172,12 @@ export async function inspectSavedPrivateFilterDetails(
     url.searchParams.set('id',agentId);
     url.searchParams.set('withManifest','true');
     url.searchParams.set('withCode','false');
-    const res=await fetcher(url.toString(),{
+    const opts:RequestInit={
       method:'GET',headers:phantomBusterRequestHeaders(apiKey),
       credentials:'omit',redirect:'error',cache:'no-store',
       signal:AbortSignal.timeout(8000),
-    });
+    };
+    const res=await fetcher(url.toString(),opts);
     // The official /agents/fetch documentation distinguishes a 401 for
     // inaccessible manifest from general authentication on plain /fetch.
     // This request includes withManifest=true, so do NOT claim the API key
@@ -151,7 +185,8 @@ export async function inspectSavedPrivateFilterDetails(
     if(res.status===401)
       return unverified('manifest-access-denied');
     if(res.status===403)return unverified('provider-forbidden');
-    if(res.status===404)return unverified('agent-not-found');
+    if(res.status===404)
+      return inspectInventoryFallback(agentId,reference,fetcher,opts);
     if(res.status===412)return unverified('agent-script-missing');
     if(res.status===400)return unverified('manifest-request-rejected');
     if(res.status===429)

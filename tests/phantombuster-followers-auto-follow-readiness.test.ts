@@ -208,7 +208,7 @@ test('official withManifest API errors have precise sanitized outcomes',async()=
     [400,'manifest-request-rejected','unverified'],
     [401,'manifest-access-denied','unverified'],
     [403,'provider-forbidden','unverified'],
-    [404,'agent-not-found','unverified'],
+
     [412,'agent-script-missing','unverified'],
     [429,'provider-rate-limited','rate-limited'],
     [500,'provider-service-error','unavailable'],
@@ -239,4 +239,75 @@ test('large, malformed and missing manifest responses cannot imply enabled',asyn
     assert.equal(result.reason,reason);
     assert.notEqual(result.status,'enabled');
   }
+});
+
+test('404 detail is reconciled with verified inventory entry, never assumed deletion',async()=>{
+  const {inspectSavedPrivateFilterDetails}=await import(
+    '../lib/providers/phantombuster-private-filter');
+  const calls:string[]=[];
+  const entry=agent({privateSwitch:true});
+  const result=await inspectSavedPrivateFilterDetails('SECRET_KEY',id,ref,
+    async(url,opts)=>{
+      calls.push(url);
+      assert.equal(opts?.method,'GET');
+      assert.equal(opts?.redirect,'error');
+      assert.equal(opts?.credentials,'omit');
+      if(new URL(url).pathname==='/api/v2/agents/fetch'){
+        assert.equal(new URL(url).searchParams.get('withManifest'),'true');
+        return new Response('NOT_FOUND_BODY',{status:404});
+      }
+      assert.equal(new URL(url).pathname,'/api/v2/agents/fetch-all');
+      assert.equal(new URL(url).searchParams.get('agentIds'),id);
+      assert.equal(new URL(url).searchParams.get('withArgument'),'true');
+      return new Response(JSON.stringify({data:[{...entry,
+        sessionCookie:'NEVER_EXPOSE'}]}),{status:200});
+    });
+  assert.deepEqual(result,{
+    status:'unverified',reason:'listed-agent-manifest-unavailable',
+  });
+  assert.equal(calls.length,2);
+  assert.doesNotMatch(JSON.stringify(result),/SECRET|COOKIE|BODY/);
+});
+test('inventory can verify exclusion only when manifest and argument agree',async()=>{
+  const {inspectSavedPrivateFilterDetails}=await import(
+    '../lib/providers/phantombuster-private-filter');
+  const withManifest={...agent({privateSwitch:true}),manifest:{
+    argumentSchema:{properties:{
+      privateSwitch:{type:'boolean',title:'Exclude private profiles'},
+    }},
+  }};
+  const result=await inspectSavedPrivateFilterDetails('KEY',id,ref,
+    async(url)=>{
+      if(url.includes('/agents/fetch?'))
+        return new Response('',{status:404});
+      return new Response(JSON.stringify({data:[withManifest]}),{status:200});
+    });
+  assert.deepEqual(result,{status:'enabled',reason:'verified'});
+  const wrong=await inspectSavedPrivateFilterDetails('KEY',id,ref,
+    async(url)=>{
+      if(url.includes('/agents/fetch?'))
+        return new Response('',{status:404});
+      return new Response(JSON.stringify({data:[{...withManifest,
+        id:'9999999999999'}]}),{status:200});
+    });
+  assert.deepEqual(wrong,{status:'unverified',reason:'inventory-mismatch'});
+  const empty=await inspectSavedPrivateFilterDetails('KEY',id,ref,
+    async(url)=>{
+      if(url.includes('/agents/fetch?'))
+        return new Response('',{status:404});
+      return new Response(JSON.stringify({data:[]}),{status:200});
+    });
+  assert.deepEqual(empty,{status:'unverified',reason:'inventory-unavailable'});
+  const failed=await inspectSavedPrivateFilterDetails('KEY',id,ref,
+    async()=>new Response('',{status:404}));
+  assert.deepEqual(failed,{status:'unverified',reason:'inventory-unavailable'});
+});
+test('privacy fallback remains read-only and no invalid manifest grants execution',()=>{
+  const src=readFileSync('lib/providers/phantombuster-private-filter.ts','utf8');
+  assert.match(src,/inspectInventoryFallback/);
+  assert.match(src,/if\(res\.status===404\)/);
+  assert.match(src,/url\.searchParams\.set\('agentIds',agentId\)/);
+  assert.doesNotMatch(src,/agents\/save|agents\/launch|user_unfollow/);
+  const route=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
+  assert.match(route,/privateExclusion!=='enabled'/);
 });

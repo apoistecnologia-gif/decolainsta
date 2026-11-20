@@ -121,10 +121,10 @@ export function dueRefreshSources(
 
 /**
  * The legacy history schema permits only ten names in each snapshot. Store
- * the part that fits; never silently drop the entire update at 59/60 batches.
+ * the part that fits; never silently drop an entire update when a reference\n * approaches the configured history batch limit.
  */
 export function boundAudienceDelta(
-  fresh: string[], existingBatches: number, maxBatches = 60,
+  fresh: string[], existingBatches: number, maxBatches = 200,
 ): { importable: string[]; deferred: number } {
   if (!Number.isSafeInteger(existingBatches) || existingBatches < 0 ||
       !Number.isSafeInteger(maxBatches) || maxBatches < 0)

@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     references,
     linkedCollectors: sources.length,
     waitingForCollectors: Math.max(0, references - sources.length),
-    configuredToReadCompletedResults: isConnected && readsEnabled && sources.length > 0,
+    configuredToReadCompletedResults: isConnected && readsEnabled && sources.length > 0 && collectorCheck === 'matched',
     collectorCheck,
     lastReadStatus,
     lastReadAt: lastAttempt?.createdAt.toISOString() ?? null,

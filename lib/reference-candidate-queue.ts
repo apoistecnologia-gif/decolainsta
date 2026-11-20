@@ -2,9 +2,9 @@ import { AUDIENCE_HISTORY_ACTION, parseAudienceSnapshot } from '@/lib/reference-
 
 /** A persistent index of already-saved snapshots, never an Instagram execution queue. */
 export const AUDIENCE_CANDIDATE_ACTION = 'reference_audience_candidate_v1';
-export const MAX_CANDIDATES_PER_ACCOUNT = 500;
+export const MAX_CANDIDATES_PER_ACCOUNT = 2000;
 export const MAX_SNAPSHOTS_PER_SYNC = 2500;
-export const MAX_QUEUE_ENTRIES_PER_SYNC = 500;
+export const MAX_QUEUE_ENTRIES_PER_SYNC = MAX_CANDIDATES_PER_ACCOUNT;
 
 export type CandidateEvidence = {
   version: 1;
@@ -66,7 +66,7 @@ export function parseCandidateEvidence(details: unknown): CandidateEvidence | nu
 }
 
 /**
- * Assemble at most 500 distinct usernames from saved, owned, validated
+ * Assemble at most 2,000 distinct usernames from saved, owned, validated
  * references. Round-robin between references; existing names and exclusions
  * are never inserted again. No external request, timing, or social actions.
  */

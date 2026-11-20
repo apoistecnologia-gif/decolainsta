@@ -4,6 +4,8 @@
  * The operator associates a Collector agent with a saved reference; PhantomBuster
  * output by itself does NOT verify follower-of-reference provenance.
  */
+import { phantomBusterRequestHeaders } from './phantombuster-request-headers';
+
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 export type AudiencePreview = {
   status: 'found' | 'no-run' | 'no-results' | 'unsupported-result' |
@@ -147,7 +149,7 @@ async function readCollectorResult(
   try {
     const opts: RequestInit = {
       method: 'GET',
-      headers: { Accept: 'application/json', 'X-Phantombuster-Key': apiKey },
+      headers: phantomBusterRequestHeaders(apiKey),
       cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000),
     };
     const listUrl = new URL('https://api.phantombuster.com/api/v2/containers/fetch-all');

@@ -9,7 +9,8 @@
     "test:smoke": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "preflight": "node scripts/preflight.mjs",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "admin:first-operator": "tsx --require dotenv/config scripts/bootstrap-first-operator.ts"
   },
   "prisma": {
     "seed": "tsx --require dotenv/config scripts/safe-seed.ts"

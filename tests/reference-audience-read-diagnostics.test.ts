@@ -62,7 +62,7 @@ test('provider-specific failure codes are distinct and do not leak response bodi
       called++;
       return new Response('COOKIE_PRIVATE',{status});
     });
-    assert.equal(called,1);
+    assert.equal(called,code >= 500 ? 2 : 1);
     assert.equal(output,result);
     assert.doesNotMatch(JSON.stringify(output),/COOKIE_PRIVATE/);
   }

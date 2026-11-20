@@ -45,6 +45,7 @@ export async function GET(){
     integrationEnabled:enabled,oauthConfigured,webhookConfigured,
     migrationReady,messagingConnected,
     accountRegistered:Boolean(account),
+    accountId:account?.id??null,
     businessTokenPresent:Boolean(account?.encryptedAccessToken),
     businessTokenCompatibleWithMessaging:false,
     currentAccountMetaIdKnown:Boolean(account?.instagramUserId),

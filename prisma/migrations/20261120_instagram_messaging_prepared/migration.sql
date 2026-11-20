@@ -12,7 +12,7 @@ CREATE TABLE "InstagramMessagingConnection" (
 );
 CREATE UNIQUE INDEX "InstagramMessagingConnection_instagramAccountId_key"
   ON "InstagramMessagingConnection"("instagramAccountId");
-CREATE INDEX "InstagramMessagingConnection_instagramUserId_idx"
+CREATE UNIQUE INDEX "InstagramMessagingConnection_instagramUserId_key"
   ON "InstagramMessagingConnection"("instagramUserId");
 ALTER TABLE "InstagramMessagingConnection"
   ADD CONSTRAINT "InstagramMessagingConnection_instagramAccountId_fkey"

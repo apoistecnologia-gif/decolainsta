@@ -18,6 +18,13 @@ type CollectionStatus = {
   linked: number;
   awaiting: number;
 };
+type RelationshipSummary={
+  providerActions:number;pendingObserved:number;followingObserved:number;
+  endedObserved:number;unknownRelationships:number;
+  followBackYesObserved:number;followBackNoObserved:number;
+  independentlyConfirmedFollows:0;independentlyConfirmedFollowBacks:0;
+  eligibleForAutomaticUnfollow:0;unfollowAutomationEnabled:false;
+};
 type Index = {
   persistedCandidates: number;
   byReference: { referenceId: string; referenceUsername: string; candidates: number }[];
@@ -41,6 +48,7 @@ export function SimpleReferencesPanel() {
   const [references, setReferences] = useState<Reference[]>([]);
   const [index, setIndex] = useState<Index | null>(null);
   const [collection, setCollection] = useState<CollectionStatus | null>(null);
+  const [relationships,setRelationships]=useState<RelationshipSummary|null>(null);
   const [referenceUsername, setReferenceUsername] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -51,12 +59,14 @@ export function SimpleReferencesPanel() {
   const [loading, setLoading] = useState(true);
 
   const loadAccount = useCallback(async (id: string, signal?: AbortSignal) => {
-    const [referenceResponse, indexResponse, statusResponse] = await Promise.all([
+    const [referenceResponse, indexResponse, statusResponse, relationshipResponse] = await Promise.all([
       fetch('/api/reference-workflow?accountId=' + encodeURIComponent(id),
         { cache: 'no-store', credentials: 'same-origin', signal }),
       fetch('/api/reference-candidate-queue?accountId=' + encodeURIComponent(id),
         { cache: 'no-store', credentials: 'same-origin', signal }),
       fetch('/api/reference-collection-status?accountId=' + encodeURIComponent(id),
+        { cache: 'no-store', credentials: 'same-origin', signal }),
+      fetch('/api/reference-relationships?accountId=' + encodeURIComponent(id),
         { cache: 'no-store', credentials: 'same-origin', signal }),
     ]);
     const workflow = await readJson<Workflow>(referenceResponse);
@@ -65,7 +75,9 @@ export function SimpleReferencesPanel() {
     const summary = indexResponse.ok ? await readJson<Index>(indexResponse) : null;
     const collectionStatus = statusResponse.ok
       ? await readJson<CollectionStatus>(statusResponse) : null;
-    return { references: workflow.references, index: summary, collection: collectionStatus };
+    const relationships=relationshipResponse.ok
+      ? await readJson<RelationshipSummary>(relationshipResponse) : null;
+    return { references: workflow.references, index: summary, collection: collectionStatus, relationships };
   }, []);
 
   useEffect(() => {
@@ -94,6 +106,7 @@ export function SimpleReferencesPanel() {
 
   useEffect(() => {
     if (!accountId) return;
+    setRelationships(null);
     const controller = new AbortController();
     void loadAccount(accountId, controller.signal)
       .then(result => {
@@ -101,6 +114,7 @@ export function SimpleReferencesPanel() {
           setReferences(result.references);
           setIndex(result.index);
           setCollection(result.collection);
+          setRelationships(result.relationships);
           setLoading(false);
         }
       })
@@ -133,6 +147,7 @@ export function SimpleReferencesPanel() {
       setReferences(updated.references);
       setIndex(updated.index);
       setCollection(updated.collection);
+      setRelationships(updated.relationships);
       setMessage('Referência cadastrada. Nenhuma coleta ou ação foi iniciada.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível cadastrar a referência');
@@ -226,6 +241,7 @@ export function SimpleReferencesPanel() {
       setReferences(updated.references);
       setIndex(updated.index);
       setCollection(updated.collection);
+      setRelationships(updated.relationships);
       try {
         const connectionResponse = await fetch(
           '/api/provider/phantombuster/connection-status?accountId=' +
@@ -308,6 +324,7 @@ export function SimpleReferencesPanel() {
       setReferences(updated.references);
       setIndex(updated.index);
       setCollection(updated.collection);
+      setRelationships(updated.relationships);
       setMessage('Referência removida. Seus históricos antigos foram preservados, mas não entram nos totais ativos.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível remover a referência');
@@ -464,6 +481,22 @@ export function SimpleReferencesPanel() {
         </CardContent>
       </Card>
 
+      {relationships&&relationships.providerActions>0&&
+        <Card>
+          <CardContent className="p-4 space-y-1">
+            <p className="text-sm font-medium">Situação observada da conta selecionada</p>
+            <p className="text-sm">
+              Pedidos pendentes observados: {relationships.pendingObserved}.
+              Seguindo, conforme o titular: {relationships.followingObserved}.
+              Follows comprovados tecnicamente: {relationships.independentlyConfirmedFollows}.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Follow-backs relatados: {relationships.followBackYesObserved}.
+              Unfollow automático: desativado. São registros de evidências,
+              não uma consulta em tempo real ao Instagram.
+            </p>
+          </CardContent>
+        </Card>}
       <Card>
         <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-sm">

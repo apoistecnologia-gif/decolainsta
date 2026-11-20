@@ -62,7 +62,7 @@ export function makeTrialEvidence(value:TrialEvidence):TrialEvidence|null {
           !observedRelationship(value.relationshipObservation)||
           value.relationshipSource!=='owner-visual-check'||
           typeof value.relationshipObservedAt!=='string'||
-          !/^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z$/.test(value.relationshipObservedAt)||
+          !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value.relationshipObservedAt)||
           !Number.isFinite(Date.parse(value.relationshipObservedAt))))||
       (value.relationshipObservation===undefined &&
         (value.relationshipObservedAt!==undefined||

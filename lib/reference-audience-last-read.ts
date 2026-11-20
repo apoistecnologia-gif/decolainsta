@@ -1,7 +1,8 @@
 /** Only known read-only statuses may be shown to an account owner. */
 export type AudienceLastReadStatus =
   | 'imported' | 'unchanged' | 'historical-only'
-  | 'source-unavailable' | 'source-mismatch'
+  | 'source-unavailable' | 'source-mismatch' | 'source-not-found'
+  | 'source-unauthorized' | 'source-rate-limited'
   | 'invalid-key' | 'rate-limited' | 'unavailable'
   | 'no-run' | 'no-results' | 'unsupported-result'
   | 'latest-file-not-audited' | 'unverified-container-timestamp-or-binding'
@@ -9,6 +10,7 @@ export type AudienceLastReadStatus =
 
 const ALLOWED = new Set<AudienceLastReadStatus>([
   'imported','unchanged','historical-only','source-unavailable','source-mismatch',
+  'source-not-found','source-unauthorized','source-rate-limited',
   'invalid-key','rate-limited','unavailable','no-run','no-results','unsupported-result',
   'latest-file-not-audited','unverified-container-timestamp-or-binding',
   'history-limit','failed','claimed',

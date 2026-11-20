@@ -11,7 +11,7 @@ const HEADERS = { 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' };
 
 /**
  * Operator-only, read-only readiness check for the already saved follower
- * agent. Does not call /agents/launch, /agents/save or Instagram.
+ * agent. Never performs provider writes or Instagram actions.
  * A configured provider session must still be checked by the account owner.
  */
 export async function GET() {

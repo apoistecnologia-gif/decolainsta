@@ -199,11 +199,18 @@ export function matchUniqueCollectorForReference(
  * Re-check the agent's CURRENT configuration before a completed-run read.
  * This is NOT proof that the past run came from this target; no Meta attestation.
  */
-export async function verifyConfiguredFollowerCollector(
+export type CollectorInspectionStatus =
+  | 'matched' | 'mismatch' | 'unavailable'
+  | 'invalid-key' | 'rate-limited' | 'not-found';
+
+/** Check a SINGLE already-bound collector; do not launch or expose arguments.
+ * Returned codes are allowlisted, never raw provider error text or credentials.
+ */
+export async function inspectConfiguredFollowerCollector(
   apiKey: string, agentId: string, targetUsername: string,
   fetcher: Fetcher = fetch,
-): Promise<'matched' | 'mismatch' | 'unavailable'> {
-  if (!apiKey || !/^\d{10,25}$/.test(agentId)) return 'unavailable';
+): Promise<CollectorInspectionStatus> {
+  if (!apiKey || !/^\\d{10,25}$/.test(agentId)) return 'unavailable';
   const expected = parseSingleInstagramReference(targetUsername);
   if (!expected) return 'mismatch';
   const url = new URL('https://api.phantombuster.com/api/v2/agents/fetch');
@@ -218,15 +225,28 @@ export async function verifyConfiguredFollowerCollector(
       cache: 'no-store', redirect: 'error', credentials: 'omit',
       signal: AbortSignal.timeout(8000),
     });
+    if (response.status === 401 || response.status === 403) return 'invalid-key';
+    if (response.status === 404) return 'not-found';
+    if (response.status === 429) return 'rate-limited';
     if (!response.ok) return 'unavailable';
     const payload = await boundedJson(response);
     const outer = obj(payload);
     const agent = obj(outer?.data) ?? outer;
-    if (!agent || String(agent.id ?? '') !== agentId ||
+    if (!agent || String(agent.id ?? agent._id ?? '') !== agentId ||
         agent.script !== 'Instagram Follower Collector.js') return 'mismatch';
     return configuredFollowerCollectorReference(agent.argument) === expected
       ? 'matched' : 'mismatch';
   } catch {
     return 'unavailable';
   }
+}
+
+/** Compatibility adapter for read-only importer and existing tests. */
+export async function verifyConfiguredFollowerCollector(
+  apiKey: string, agentId: string, targetUsername: string,
+  fetcher: Fetcher = fetch,
+): Promise<'matched' | 'mismatch' | 'unavailable'> {
+  const status = await inspectConfiguredFollowerCollector(
+    apiKey, agentId, targetUsername, fetcher);
+  return status === 'matched' || status === 'mismatch' ? status : 'unavailable';
 }

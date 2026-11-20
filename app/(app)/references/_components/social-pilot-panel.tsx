@@ -68,6 +68,13 @@ export function SocialPilotPanel(){
   const [followBackStatus,setFollowBackStatus]=useState<'yes'|'no'|'unknown'>('unknown');
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
+  function applyTrialState(next:Trial){
+    setTrial(next);
+    const relation=next.attempt?.relationshipObservation;
+    if(relation==='requested'||relation==='following'||relation==='none')
+      setObservedStatus(relation);
+    setFollowBackStatus(next.attempt?.followBackObservation??'unknown');
+  }
   async function check(){
     if(busy)return;setBusy(true);setNotice('');
     try{
@@ -79,7 +86,7 @@ export function SocialPilotPanel(){
       ]);
       if(!a.ok||!b.ok)throw Error('Consulta recusada');
       setInspection(await a.json() as Inspection);
-      setTrial(await b.json() as Trial);
+      applyTrialState(await b.json() as Trial);
     }catch{setNotice('Não foi possível conferir a preparação do teste.');}
     finally{setBusy(false);}
   }
@@ -136,7 +143,7 @@ export function SocialPilotPanel(){
       setApproved(false);setTypedName('');
       const state=await fetch('/api/operator/followers-auto-follow-run',{
         method:'GET',credentials:'same-origin',cache:'no-store'});
-      if(state.ok)setTrial(await state.json() as Trial);
+      if(state.ok)applyTrialState(await state.json() as Trial);
     }catch{setNotice('Resposta incerta; nenhuma repetição automática será feita.');}
     finally{setBusy(false);}
   }

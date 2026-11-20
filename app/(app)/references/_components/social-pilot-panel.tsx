@@ -13,9 +13,26 @@ type Ready={
 };
 export function SocialPilotPanel(){
   const [ready,setReady]=useState<Ready|null>(null);
+  const [followersReadiness,setFollowersReadiness]=useState<{
+    accountRegistered:boolean;referenceRegistered:boolean;
+    agentConfigured:boolean;providerCheck:string;
+    oneFollowPerLaunchVerified:boolean;agentLaunchEnabled:false;
+  }|null>(null);
   const [busy,setBusy]=useState(false);
   const [approved,setApproved]=useState(false);
   const [notice,setNotice]=useState('');
+  async function checkFollowersAgent(){
+    if(busy)return;
+    setBusy(true);setNotice('');
+    try{
+      const r=await fetch('/api/operator/followers-auto-follow-readiness',{
+        method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error'});
+      if(!r.ok)throw Error('readiness');
+      setFollowersReadiness(await r.json());
+    }catch{
+      setNotice('Não foi possível conferir o agente Followers Auto Follow.');
+    }finally{setBusy(false);}
+  }
   async function check(){
     if(busy)return;
     setBusy(true);setNotice('');
@@ -54,6 +71,26 @@ export function SocialPilotPanel(){
       Não há execução automática de unfollow sem comprovação do follow e da
       relação entre as contas.
     </p>
+    <div className="rounded-md border p-3 space-y-2">
+      <h3 className="text-sm font-medium">Agente existente — Followers Auto Follow</h3>
+      <p className="text-xs text-muted-foreground">
+        Verificação apenas de leitura do agente já salvo: referência
+        cadastrada, lançamento manual e exatamente um perfil por execução.
+        Não inicia o agente.
+      </p>
+      <Button type="button" variant="outline" disabled={busy}
+        onClick={()=>void checkFollowersAgent()}>
+        {busy?'Verificando...':'Conferir agente de seguidores existente'}
+      </Button>
+      {followersReadiness&&<div role="status" className="text-xs space-y-1">
+        <p>Conta de teste no sistema: {followersReadiness.accountRegistered?'sim':'pendente'}.
+          Referência cadastrada: {followersReadiness.referenceRegistered?'sim':'pendente'}.</p>
+        <p>Configuração no PhantomBuster: {followersReadiness.providerCheck}.
+          Limite de uma ação confirmado: {followersReadiness.oneFollowPerLaunchVerified?'sim':'não confirmado'}.</p>
+        <p>Agente mantido desligado. Identidade da sessão informada pelo titular;
+          ainda não verificada pela API do provedor.</p>
+      </div>}
+    </div>
     <Button type="button" variant="outline" disabled={busy} onClick={()=>void check()}>
       {busy?'Verificando...':'Verificar prontidão da conta de teste'}
     </Button>

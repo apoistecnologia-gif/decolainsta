@@ -73,7 +73,9 @@ test('active bindings and explicit revocations never get reprovisioned',()=>{
   assert.equal(p.linked,1);
   assert.equal(p.explicitlyRevoked,1);
   assert.equal(p.eligible,2);
-  assert.equal(p.next?.referenceId,'a_2');
+  // Account B has no prepared source; account A already has one bound.
+  // Revocations do not count as provisioned sources.
+  assert.equal(p.next?.referenceId,'b_2');
 });
 
 test('prior attempt for customer A never blocks matching reference ID of customer B',()=>{

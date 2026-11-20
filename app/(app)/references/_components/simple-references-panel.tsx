@@ -48,7 +48,9 @@ export function SimpleReferencesPanel() {
   const [references, setReferences] = useState<Reference[]>([]);
   const [index, setIndex] = useState<Index | null>(null);
   const [collection, setCollection] = useState<CollectionStatus | null>(null);
-  const [relationships,setRelationships]=useState<RelationshipSummary|null>(null);
+  const [relationships,setRelationships]=useState<{
+    accountId:string;summary:RelationshipSummary;
+  }|null>(null);
   const [referenceUsername, setReferenceUsername] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -77,7 +79,9 @@ export function SimpleReferencesPanel() {
       ? await readJson<CollectionStatus>(statusResponse) : null;
     const relationships=relationshipResponse.ok
       ? await readJson<RelationshipSummary>(relationshipResponse) : null;
-    return { references: workflow.references, index: summary, collection: collectionStatus, relationships };
+    return { references: workflow.references, index: summary,
+      collection: collectionStatus,
+      relationships: relationships ? {accountId:id,summary:relationships} : null };
   }, []);
 
   useEffect(() => {
@@ -106,7 +110,6 @@ export function SimpleReferencesPanel() {
 
   useEffect(() => {
     if (!accountId) return;
-    setRelationships(null);
     const controller = new AbortController();
     void loadAccount(accountId, controller.signal)
       .then(result => {
@@ -481,17 +484,18 @@ export function SimpleReferencesPanel() {
         </CardContent>
       </Card>
 
-      {relationships&&relationships.providerActions>0&&
+      {relationships&&relationships.accountId===accountId&&
+        relationships.summary.providerActions>0&&
         <Card>
           <CardContent className="p-4 space-y-1">
             <p className="text-sm font-medium">Situação observada da conta selecionada</p>
             <p className="text-sm">
-              Pedidos pendentes observados: {relationships.pendingObserved}.
-              Seguindo, conforme o titular: {relationships.followingObserved}.
-              Follows comprovados tecnicamente: {relationships.independentlyConfirmedFollows}.
+              Pedidos pendentes observados: {relationships.summary.pendingObserved}.
+              Seguindo, conforme o titular: {relationships.summary.followingObserved}.
+              Follows comprovados tecnicamente: {relationships.summary.independentlyConfirmedFollows}.
             </p>
             <p className="text-xs text-muted-foreground">
-              Follow-backs relatados: {relationships.followBackYesObserved}.
+              Follow-backs relatados: {relationships.summary.followBackYesObserved}.
               Unfollow automático: desativado. São registros de evidências,
               não uma consulta em tempo real ao Instagram.
             </p>

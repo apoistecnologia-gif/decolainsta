@@ -6,6 +6,7 @@ import {
 } from '../lib/reference-followers-trial';
 import {
   launchFollowersTrial,inspectTrialContainer,parseTrialContainer,
+  parseAgentScopedContainer,
 } from '../lib/providers/phantombuster-followers-trial';
 const agent='1838046655144130',container='1234567890123';
 test('one-shot launch sends only one controlled launch and never returns follower identities',async()=>{
@@ -57,6 +58,68 @@ test('container completion never becomes proof of a follow',async()=>{
       result:{sessionCookie:'DO_NOT_LEAK'}}),{status:200});
   });
   assert.equal(n,1);assert.equal(outcome,'finished');
+});
+test('missing agentId in container detail does not mean wrong agent',()=>{
+  assert.equal(parseTrialContainer({data:{
+    id:container,exitCode:0,
+  }},agent,container),'membership-unverified');
+  assert.equal(parseTrialContainer({data:{
+    containerId:container,exitCode:0,
+  }},agent,container),'membership-unverified');
+  assert.equal(parseAgentScopedContainer({data:[
+    {id:container,exitCode:0},
+    {id:'9876543219876',exitCode:1},
+  ]},agent,container,{data:{id:container,exitCode:0}}),'finished');
+  assert.equal(parseAgentScopedContainer({data:[
+    {id:'9876543219876',exitCode:0},
+  ]},agent,container,{data:{id:container,exitCode:0}}),
+  'membership-unverified');
+  assert.equal(parseAgentScopedContainer({data:[
+    {id:container,agentId:'9876543219876',exitCode:0},
+  ]},agent,container,{data:{id:container,exitCode:0}}),'mismatch');
+});
+
+test('uses only read-only agent-scoped history if detail has no agentId',async()=>{
+  const urls:string[]=[];
+  const outcome=await inspectTrialContainer('key',agent,container,async(url,options)=>{
+    urls.push(url);
+    assert.equal(options?.method,'GET');
+    assert.equal(options?.credentials,'omit');
+    assert.equal(options?.redirect,'error');
+    if(url.includes('/containers/fetch?'))
+      return new Response(JSON.stringify({data:{id:container,exitCode:0,
+        sessionCookie:'SECRET_NEVER_OUTPUT'}}),{status:200});
+    const u=new URL(url);
+    assert.equal(u.pathname,'/api/v2/containers/fetch-all');
+    assert.equal(u.searchParams.get('agentId'),agent);
+    assert.equal(u.searchParams.get('mode'),'all');
+    return new Response(JSON.stringify({data:[{id:container}]}),{status:200});
+  });
+  assert.deepEqual(urls.length,2);
+  assert.equal(outcome,'finished');
+  assert.doesNotMatch(outcome,/SECRET_NEVER_OUTPUT/);
+});
+test('fails closed on wrong membership or unavailable history',async()=>{
+  const cases=[
+    {data:[{id:'9999999999999'}]}, {data:[{id:container,agentId:'9999999999999'}]},
+    {data:[{id:container},{id:container}]}, {data:{unsupported:1}},
+  ];
+  for(const payload of cases){
+    const r=await inspectTrialContainer('key',agent,container,async url=>
+      new Response(JSON.stringify(url.includes('/fetch?')
+        ? {data:{id:container,exitCode:0}} : payload),{status:200}));
+    assert.ok(r==='membership-unverified'||r==='mismatch');
+    assert.notEqual(r,'finished');
+  }
+  let n=0;
+  const unavailable=await inspectTrialContainer('key',agent,container,async url=>{
+    n++;
+    return new Response(url.includes('/fetch?')
+      ? JSON.stringify({id:container,exitCode:0}) : 'private provider error',
+      {status:url.includes('/fetch?')?200:503});
+  });
+  assert.equal(unavailable,'membership-unverified');
+  assert.equal(n,2);
 });
 test('audit record never fabricates target username or follow success',()=>{
   assert.equal(FOLLOWERS_TRIAL_ACTION,'reference_followers_trial_v1');

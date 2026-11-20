@@ -192,8 +192,8 @@ test('audit record never fabricates target username or follow success',()=>{
   assert.equal(providerRecord?.followConfirmed,false);
   assert.equal(parseTrialEvidence(JSON.stringify(providerRecord))?.providerReportedUsername,
     'dellmyra_souza');
-  assert.equal(makeTrialEvidence({...providerRecord!,
-    followConfirmed:true}),null);
+  assert.equal(parseTrialEvidence(JSON.stringify({...providerRecord!,
+    followConfirmed:true})),null);
   assert.equal(makeTrialEvidence({...evidence,
     stage:'provider-reported',containerId:container}),null);
 });

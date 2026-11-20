@@ -3,6 +3,20 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
+type ProvisioningPlan = {
+  total: number;
+  linked: number;
+  pendingSetup: number;
+  previousAttemptNeedsReview: number;
+  explicitlyRevoked: number;
+  eligible: number;
+  next: boolean;
+  draftCreationEnabled: boolean;
+};
+type DraftOutcome = {
+  state: 'created' | 'existing-draft' | 'capacity-reached' |
+    'rejected' | 'unconfirmed';
+};
 type Result = {
   matched: number;
   alreadyBound: number;
@@ -17,6 +31,8 @@ type Result = {
 export function OperatorCollectorIntakePanel() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
+  const [queue, setQueue] = useState<ProvisioningPlan | null>(null);
+  const [draftOutcome, setDraftOutcome] = useState<DraftOutcome | null>(null);
   const [error, setError] = useState('');
   async function matchAll() {
     if (busy) return;
@@ -42,6 +58,34 @@ export function OperatorCollectorIntakePanel() {
       setBusy(false);
     }
   }
+  async function runProvisioning(operation: 'plan' | 'create-next-draft') {
+    if (busy) return;
+    setBusy(true); setError('');
+    if (operation === 'create-next-draft') setDraftOutcome(null);
+    try {
+      const response = await fetch('/api/provider/phantombuster/provision-all-customers', {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        redirect: 'error', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(operation === 'plan' ? { operation } :
+          { operation, confirmCreateUnconfiguredDraft: true }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) {
+        const detail = data && typeof data === 'object' && 'error' in data
+          ? String((data as {error: unknown}).error)
+          : 'Não foi possível consultar a fila';
+        throw new Error(detail);
+      }
+      if (operation === 'plan') setQueue(data as ProvisioningPlan);
+      else {
+        setDraftOutcome(data as DraftOutcome);
+        setQueue(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha na preparação');
+    } finally { setBusy(false); }
+  }
+
   return (
     <section className="rounded-lg border p-4 space-y-3">
       <h2 className="text-sm font-semibold">Preparação de referências de todos os clientes</h2>
@@ -60,6 +104,44 @@ export function OperatorCollectorIntakePanel() {
         Ambíguas: {result.ambiguousOrInUse + result.ambiguousAcrossCustomers}.
         Revogadas: {result.revoked}. Aguardando próxima rodada: {result.deferred}.
       </p>}
+      <div className="border-t pt-3 space-y-2">
+        <h3 className="text-sm font-semibold">Fila de preparação de novos coletores</h3>
+        <p className="text-xs text-muted-foreground">
+          Consulta todas as referências cadastradas, sem escolher clientes
+          individualmente. A verificação não ocupa vagas no provedor.
+        </p>
+        <Button type="button" variant="outline" disabled={busy}
+          onClick={() => void runProvisioning('plan')}>
+          {busy ? 'Verificando...' : 'Consultar fila de preparação'}
+        </Button>
+        {queue && <div className="text-sm space-y-1">
+          <p>Referências: {queue.total}. Fontes vinculadas: {queue.linked}.
+            Aguardando configuração: {queue.pendingSetup}.</p>
+          <p>Pendentes elegíveis: {queue.eligible}.
+            Exigem revisão: {queue.previousAttemptNeedsReview}.
+            Revogadas: {queue.explicitlyRevoked}.</p>
+          {queue.next && queue.draftCreationEnabled && (
+            <Button type="button" variant="outline" disabled={busy}
+              onClick={() => void runProvisioning('create-next-draft')}>
+              Criar 1 rascunho no PhantomBuster (ocupa vaga)
+            </Button>
+          )}
+          {!queue.draftCreationEnabled && <p className="text-xs text-muted-foreground">
+            Criação de agentes externos desativada pelo servidor.
+          </p>}
+          {!queue.next && <p className="text-xs text-muted-foreground">
+            Nenhuma referência elegível para um novo rascunho.
+          </p>}
+        </div>}
+        {draftOutcome && <p role="status" className="text-sm">
+          {draftOutcome.state === 'created' ||
+            draftOutcome.state === 'existing-draft'
+            ? 'Rascunho encontrado ou criado. Ainda requer configuração e autorização no provedor.'
+            : draftOutcome.state === 'capacity-reached'
+            ? 'Sem vagas para criar outro coletor no PhantomBuster.'
+            : 'Preparação não confirmada. Revisão do operador necessária; não repetir automaticamente.'}
+        </p>}
+      </div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </section>
   );

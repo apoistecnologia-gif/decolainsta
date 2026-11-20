@@ -93,7 +93,7 @@ export async function POST(request: Request) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const summary = await prisma.$transaction(async tx => {
-        const [rows, currentRefs, drafts] = await Promise.all([
+        const [rows, currentRefs, drafts, allRefs] = await Promise.all([
           tx.activityLog.findMany({
             where: { action: AUDIENCE_SOURCE_BINDING_ACTION },
             select: {
@@ -113,17 +113,35 @@ export async function POST(request: Request) {
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: COLLECTOR_DRAFT_MAX_LOGS + 1,
           }),
+          // Check ownership across EVERY customer, not only the chosen account.
+          // A public reference shared between clients cannot assign one agent.
+          tx.targetAccount.findMany({
+            select: { id: true, username: true, instagramAccountId: true },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take: 1001,
+          }),
         ]);
         if (rows.length > MAX_SOURCE_BINDING_LOGS ||
-            drafts.length > COLLECTOR_DRAFT_MAX_LOGS) return null;
+            drafts.length > COLLECTOR_DRAFT_MAX_LOGS ||
+            allRefs.length > 1000) return null;
         // Protect against deleted/renamed refs and concurrent binds.
         const active = resolveLatestAudienceBindings(rows);
         const suppressed = disabledAudienceReferenceKeys(rows);
+        const owners = new Map<string, Set<string>>();
+        for (const ref of allRefs) {
+          if (suppressed.has(ref.instagramAccountId + ':' + ref.id)) continue;
+          const name = ref.username.toLowerCase();
+          const set = owners.get(name) ?? new Set<string>();
+          set.add(ref.instagramAccountId);
+          owners.set(name, set);
+        }
         const mapped = currentRefs
           .filter(ref => !suppressed.has(accountId + ':' + ref.id))
           .map(ref => ({ id: ref.id, username: ref.username, accountId }));
+        const uniqueToCustomer = mapped.filter(ref =>
+          (owners.get(ref.username.toLowerCase())?.size ?? 0) === 1);
         const plan = planExactReadOnlyCollectorBindings(
-          mapped, discovered.collectors, active, 3,
+          uniqueToCustomer, discovered.collectors, active, 3,
           reservedCollectorDraftAgents(drafts));
         if (plan.candidates.length) await tx.activityLog.createMany({
           data: plan.candidates.map(source => ({
@@ -139,6 +157,7 @@ export async function POST(request: Request) {
           unmatched: plan.unmatched,
           ambiguousOrInUse: plan.ambiguousOrInUse,
           deferred: plan.deferred, referencesExamined: mapped.length,
+          ambiguousAcrossCustomers: mapped.length - uniqueToCustomer.length,
           excludedByOwner: currentRefs.length - mapped.length };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       if (!summary) return NextResponse.json({ error: 'Registro de vínculos atingiu o limite' },

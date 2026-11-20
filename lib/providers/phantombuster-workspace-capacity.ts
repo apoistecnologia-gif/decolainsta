@@ -79,12 +79,12 @@ export async function inspectWorkspaceCapacity(
   apiKey: string,
   fetcher: Fetcher = fetch,
 ): Promise<WorkspaceCapacity> {
-  const base = {
+  const base: Omit<WorkspaceCapacity, 'status'> = {
     agents: null, resourcesRead: false,
     slotMetrics: [], exactFreeSlotsKnown: false,
     createsAgents: false, launchesAgents: false,
     instagramActionsExecuted: 0,
-  } as const;
+  };
   if (!apiKey || apiKey.length > 512) return { ...base, status: 'unavailable' };
   const options: RequestInit = {
     method: 'GET', headers: phantomBusterRequestHeaders(apiKey),

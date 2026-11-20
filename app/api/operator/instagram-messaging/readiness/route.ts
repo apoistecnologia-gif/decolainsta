@@ -35,7 +35,7 @@ export async function GET(){
         select:{tokenExpiresAt:true},
       });
       migrationReady=true;
-      messagingConnected=Boolean(connected&&connected.tokenExpiresAt>Date.now());
+      messagingConnected=Boolean(connected&&connected.tokenExpiresAt.getTime()>Date.now());
     }catch{
       // Migration may not yet be applied. Do not claim successful setup.
     }

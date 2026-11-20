@@ -15,7 +15,7 @@ test('snapshot permits only ten allowlisted Instagram usernames with provenance 
   assert.equal(record.fingerprint.length, 64);
   assert.deepEqual(parseAudienceSnapshot(JSON.stringify(record)), record);
   assert.equal(AUDIENCE_HISTORY_ACTION, 'reference_audience_snapshot_v1');
-  assert.equal(MAX_HISTORY_BATCHES, 60);
+  assert.equal(MAX_HISTORY_BATCHES, 200);
 });
 
 test('snapshot is stable for exact repeated batches and changes for distinct provenance', () => {

@@ -88,8 +88,12 @@ export async function GET(){
     orderBy:[{createdAt:'desc'},{id:'desc'}],
   });
   const attempt=safeAttempt(last);
+  const observed=attempt?.relationshipObservation;
+  const relationship=observed==='requested'?'requested' as const:
+    observed==='following'?'following' as const:
+    observed==='none'?'none' as const:'unknown' as const;
   const review=assessUnfollowEligibility({
-    relationship:attempt?.relationshipObservation??'unknown',
+    relationship,
     confirmedFollowAt:null,
     confirmationSource:attempt?.relationshipObservation==='following'
       ?'owner-visual-check':'unknown',

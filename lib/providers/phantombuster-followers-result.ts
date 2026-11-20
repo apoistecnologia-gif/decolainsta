@@ -10,8 +10,8 @@ import { phantomBusterRequestHeaders } from './phantombuster-request-headers';
 
 type Fetcher=(url:string,init?:RequestInit)=>Promise<Response>;
 export type FollowersReport =
-  |{status:'provider-reported';username:string;reportedCount:1}
-  |{status:'result-only';username:string;reportedCount:1}
+  |{status:'provider-reported';username:string;reportedCount:1;isPrivate?:boolean}
+  |{status:'result-only';username:string;reportedCount:1;isPrivate?:boolean}
   |{status:'none'|'ambiguous'|'unavailable'|'invalid-key'|'rate-limited'};
 const obj=(v:unknown):Record<string,unknown>|null=>
   v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:null;
@@ -59,7 +59,9 @@ function runRows(response:unknown):unknown[]|null{
   if(Array.isArray(payloadObj?.profiles))return payloadObj.profiles;
   return null;
 }
-export function parseSingleRunProfile(response:unknown,reference:string):string|null{
+export function parseSingleRunProfileEvidence(
+  response:unknown,reference:string,
+):{username:string;isPrivate?:boolean}|null{
   if(!name(reference))return null;
   const rows=runRows(response);
   if(!rows||rows.length!==1)return null;
@@ -69,7 +71,15 @@ export function parseSingleRunProfile(response:unknown,reference:string):string|
   const fromName=row.profileName??row.username;
   if(!username||!name(fromName)||username!==fromName)return null;
   if(instagramUsername(row.query)!==reference)return null;
-  return username;
+  // Only a real JSON boolean from the documented provider result is evidence.
+  // An absent/invalid isPrivate value is UNKNOWN, never assumed public.
+  return {username,...(typeof row.isPrivate==='boolean'
+    ? {isPrivate:row.isPrivate} : {})};
+}
+export function parseSingleRunProfile(
+  response:unknown,reference:string,
+):string|null{
+  return parseSingleRunProfileEvidence(response,reference)?.username??null;
 }
 export function parseReportedFollowSummary(value:unknown):boolean{
   const box=obj(value);
@@ -108,16 +118,20 @@ export async function fetchFollowersRunReport(
   try{
     const result=await query('fetch-result-object',80000);
     if(result.status!=='ok')return {status:result.status};
-    const username=parseSingleRunProfile(result.value,reference);
-    if(!username){
+    const profile=parseSingleRunProfileEvidence(result.value,reference);
+    if(!profile){
       const rows=runRows(result.value);
       return {status:rows&&rows.length===0?'none':'ambiguous'};
     }
     const summary=await query('fetch-output',110000);
     if(summary.status==='invalid-key'||summary.status==='rate-limited')
       return {status:summary.status};
+    const safeProfile={
+      username:profile.username,reportedCount:1 as const,
+      ...(profile.isPrivate===undefined?{}:{isPrivate:profile.isPrivate}),
+    };
     if(summary.status==='ok'&&parseReportedFollowSummary(summary.value))
-      return {status:'provider-reported',username,reportedCount:1};
-    return {status:'result-only',username,reportedCount:1};
+      return {status:'provider-reported',...safeProfile};
+    return {status:'result-only',...safeProfile};
   }catch{return {status:'unavailable'};}
 }

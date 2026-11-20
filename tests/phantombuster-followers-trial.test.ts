@@ -11,7 +11,8 @@ import {
   parseAgentScopedContainer,
 } from '../lib/providers/phantombuster-followers-trial';
 import {
-  parseSingleRunProfile,parseReportedFollowSummary,fetchFollowersRunReport,
+  parseSingleRunProfile,parseSingleRunProfileEvidence,
+  parseReportedFollowSummary,fetchFollowersRunReport,
 } from '../lib/providers/phantombuster-followers-result';
 const agent='1838046655144130',container='1234567890123';
 test('one-shot launch sends only one controlled launch and never returns follower identities',async()=>{
@@ -269,4 +270,44 @@ test('route is admin Preview only, idempotent and separate from read-only cron',
   assert.doesNotMatch(route,/user_unfollow|agents\/save|sessionCookie/);
   assert.match(route,/launchFollowersTrial/);
   assert.match(route,/inspectTrialContainer/);
+});
+\n
+
+test('provider privacy field is evidence, missing field is unknown, not public',async()=>{
+  const row={profileUrl:'https://instagram.com/public_example/',
+    profileName:'public_example',query:'https://instagram.com/mameto_lueji/',
+    isPrivate:false};
+  assert.deepEqual(parseSingleRunProfileEvidence({resultObject:[row]},
+    'mameto_lueji'),{username:'public_example',isPrivate:false});
+  assert.deepEqual(parseSingleRunProfileEvidence({resultObject:[{
+    ...row,isPrivate:true}]},'mameto_lueji'),
+    {username:'public_example',isPrivate:true});
+  assert.deepEqual(parseSingleRunProfileEvidence({resultObject:[{
+    ...row,isPrivate:'false'}]},'mameto_lueji'),
+    {username:'public_example'});
+  const report=await fetchFollowersRunReport('key',container,'mameto_lueji',
+    async url=>new Response(JSON.stringify(url.includes('fetch-result-object')
+      ? {resultObject:[row]} : {output:'1 profile followed'}),{status:200}));
+  assert.deepEqual(report,{status:'provider-reported',
+    username:'public_example',reportedCount:1,isPrivate:false});
+  const legacy=makeTrialEvidence({version:1,referenceId:'refA',
+    agentId:agent,containerId:container,stage:'provider-reported',
+    providerReportedUsername:'public_example',providerReportedCount:1,
+    followConfirmed:false,recipientKnown:false,
+    sessionOwnerVerifiedByProvider:false});
+  assert.ok(legacy);
+  assert.ok(parseTrialEvidence(JSON.stringify(legacy)));
+  const priv=makeTrialEvidence({...legacy!,providerReportedPrivate:false,
+    providerPrivacyReadAt:'2026-11-20T21:00:00.000Z'});
+  assert.ok(priv);
+  assert.equal(parseTrialEvidence(JSON.stringify(priv))?.providerReportedPrivate,false);
+  assert.equal(makeTrialEvidence({...legacy!,
+    providerReportedPrivate:false}),null);
+  assert.equal(parseTrialEvidence(JSON.stringify({...legacy!,
+    providerReportedPrivate:'false',
+    providerPrivacyReadAt:'2026-11-20T21:00:00.000Z'})),null);
+  const route=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
+  assert.match(route,/providerReportedPrivate:report.isPrivate/);
+  assert.match(route,/providerPrivacyReadAt:new Date\(\).toISOString\(\)/);
+  assert.match(route,/followConfirmed:false/);
 });

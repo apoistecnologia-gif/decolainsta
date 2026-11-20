@@ -34,6 +34,8 @@ export type TrialEvidence = {
   recipientKnown: false;
   providerReportedUsername?: string;
   providerReportedCount?: 1;
+  providerReportedPrivate?: boolean;
+  providerPrivacyReadAt?: string;
   relationshipObservation?: ObservedRelationship;
   relationshipObservedAt?: string;
   relationshipSource?: 'owner-visual-check';
@@ -57,6 +59,13 @@ export function makeTrialEvidence(value:TrialEvidence):TrialEvidence|null {
             value.providerReportedCount===1)
         : value.providerReportedUsername!==undefined||
           value.providerReportedCount!==undefined)||
+      (value.providerReportedPrivate!==undefined &&
+        (value.stage!=='provider-reported'||
+          typeof value.providerReportedPrivate!=='boolean'||
+          typeof value.providerPrivacyReadAt!=='string'||
+          !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value.providerPrivacyReadAt)||
+          !Number.isFinite(Date.parse(value.providerPrivacyReadAt))))||
+      (value.providerReportedPrivate===undefined&&value.providerPrivacyReadAt!==undefined)||
       (value.relationshipObservation!==undefined &&
         (value.stage!=='provider-reported'||
           !observedRelationship(value.relationshipObservation)||
@@ -71,7 +80,7 @@ export function makeTrialEvidence(value:TrialEvidence):TrialEvidence|null {
   return {...value};
 }
 export function parseTrialEvidence(input:unknown):TrialEvidence|null {
-  if(typeof input!=='string'||input.length>600)return null;
+  if(typeof input!=='string'||input.length>800)return null;
   let decoded:unknown;
   try{decoded=JSON.parse(input) as unknown;}catch{return null;}
   if(!decoded||typeof decoded!=='object'||Array.isArray(decoded))return null;
@@ -80,6 +89,7 @@ export function parseTrialEvidence(input:unknown):TrialEvidence|null {
     'version','referenceId','agentId','stage','containerId',
     'followConfirmed','sessionOwnerVerifiedByProvider','recipientKnown',
     'providerReportedUsername','providerReportedCount',
+    'providerReportedPrivate','providerPrivacyReadAt',
     'relationshipObservation','relationshipObservedAt','relationshipSource',
   ].includes(key)))return null;
   return makeTrialEvidence(r as TrialEvidence);

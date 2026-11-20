@@ -48,3 +48,29 @@ independente. Mesmo quando o usuário indicar `following`, a confirmação
 técnica de follow permanece falsa, sem criar `FollowAction`, sem contadores
 oficiais, e o prazo de 48 horas permanece **não iniciado**.
 Um pedido pendente nunca é elegível para unfollow.
+
+
+## Privacidade reportada e elegibilidade conservadora (2026-11-20)
+
+Documentação oficial de "Instagram Followers Auto Follow" (atualizada em
+14/07/2026):
+https://support.phantombuster.com/hc/en-us/articles/26971112664722-How-to-Use-the-Instagram-Followers-Auto-Follow
+
+- O agente suporta a opção visível **Exclude private profiles**; a
+  documentação não identifica a chave JSON interna para alterá-la via API.
+  **Não tentar gravar configurações presumidas nem alegar que o filtro
+  está ativo no agente conectado.**
+- O resultado do agente documenta o campo `isPrivate`. A importação de
+  uma execução pode registrar `providerReportedPrivate` somente quando
+  `isPrivate` for booleano, com `providerPrivacyReadAt` (data de leitura
+  pelo DECOLA INSTA). Sem o campo, o estado é desconhecido, nunca público.
+- Esse valor é **informação do PhantomBuster**, não uma leitura de
+  relacionamento autenticada pelo Instagram. Os registros antigos continuam
+  legíveis e a solicitação pendente original permanece inalterada.
+- `assessUnfollowEligibility` é apenas uma função pura e inativa que
+  exige prova independente, relação atual seguindo, ausência de pedido
+  pendente, 48 horas completas, autorização, não pertencer a whitelist,
+  nenhuma proteção e confirmação de que não segue de volta.
+  **Nenhum provedor atual está ligado como fonte de confirmação independente.**
+- Não cria FollowAction, não altera agendamento/credenciais, não executa
+  follow/unfollow e não faz polling externo automático.

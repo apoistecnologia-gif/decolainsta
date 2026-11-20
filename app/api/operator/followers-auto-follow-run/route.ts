@@ -53,6 +53,8 @@ const safeAttempt=(a:{
     stage:evidence.stage, requestedAt:a?.createdAt.toISOString()??null,
     providerReportedUsername:evidence.providerReportedUsername??null,
     providerReportedCount:evidence.providerReportedCount??0,
+    providerReportedPrivate:evidence.providerReportedPrivate??null,
+    providerPrivacyReadAt:evidence.providerPrivacyReadAt??null,
     relationshipObservation:evidence.relationshipObservation??'unknown',
     relationshipObservedAt:evidence.relationshipObservedAt??null,
     followConfirmed:false,recipientKnown:false,
@@ -61,6 +63,7 @@ const safeAttempt=(a:{
   }:a?{
     stage:'uncertain',requestedAt:a.createdAt.toISOString(),
     providerReportedUsername:null,providerReportedCount:0,
+    providerReportedPrivate:null,providerPrivacyReadAt:null,
     relationshipObservation:'unknown',relationshipObservedAt:null,
     followConfirmed:false,recipientKnown:false,unfollowEligibleAt:null,
     mayRetryAutomatically:false,
@@ -259,6 +262,9 @@ export async function POST(req:Request){
         stage:'provider-reported',
         providerReportedUsername:report.username,
         providerReportedCount:1,
+        ...('isPrivate' in report&&typeof report.isPrivate==='boolean'
+          ? {providerReportedPrivate:report.isPrivate,
+              providerPrivacyReadAt:new Date().toISOString()} : {}),
       });
       if(updated){
         await prisma.activityLog.updateMany({
@@ -272,6 +278,7 @@ export async function POST(req:Request){
       providerStatus:report.status,
       providerReportedUsername:'username' in report?report.username:null,
       providerReportedCount:'reportedCount' in report?report.reportedCount:0,
+      providerReportedPrivate:'isPrivate' in report?report.isPrivate:null,
       followConfirmed:false,unfollowScheduled:false,
     },{headers:HEADERS});
   }

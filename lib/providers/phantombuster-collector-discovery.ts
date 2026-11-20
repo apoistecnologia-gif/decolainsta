@@ -206,6 +206,45 @@ export type CollectorInspectionStatus =
 /** Check a SINGLE already-bound collector; do not launch or expose arguments.
  * Returned codes are allowlisted, never raw provider error text or credentials.
  */
+/** Verified exact-one-agent fallback using the provider's documented
+ * /agents/fetch-all?agentIds=...&withArgument=true. Only used when /agents/fetch
+ * returns an unavailable 5xx/invalid body or lacks the argument field.
+ * No cookies or raw configuration leave this server-side function.
+ */
+async function inspectFromAgentInventory(
+  apiKey: string, agentId: string, expected: string, fetcher: Fetcher,
+): Promise<CollectorInspectionStatus> {
+  const url = new URL('https://api.phantombuster.com/api/v2/agents/fetch-all');
+  url.searchParams.set('agentIds', agentId);
+  url.searchParams.set('withArgument', 'true');
+  try {
+    const response = await fetcher(url.toString(), {
+      method: 'GET',
+      headers: { Accept: 'application/json', 'X-Phantombuster-Key': apiKey },
+      cache: 'no-store', redirect: 'error', credentials: 'omit',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (response.status === 401 || response.status === 403) return 'invalid-key';
+    if (response.status === 429) return 'rate-limited';
+    if (!response.ok) return 'unavailable';
+    const payload = await boundedJson(response);
+    const outer = obj(payload);
+    const agents = Array.isArray(payload) ? payload :
+      Array.isArray(outer?.data) ? outer.data :
+      Array.isArray(outer?.agents) ? outer.agents : null;
+    if (!agents || agents.length !== 1) return 'unavailable';
+    const agent = obj(agents[0]);
+    if (!agent || String(agent.id ?? agent._id ?? '') !== agentId ||
+        agent.script !== 'Instagram Follower Collector.js') return 'mismatch';
+    // An omitted argument is NOT a mismatch; refuse to infer a reference.
+    if (agent.argument === undefined || agent.argument === null) return 'unavailable';
+    return configuredFollowerCollectorReference(agent.argument) === expected
+      ? 'matched' : 'mismatch';
+  } catch {
+    return 'unavailable';
+  }
+}
+
 export async function inspectConfiguredFollowerCollector(
   apiKey: string, agentId: string, targetUsername: string,
   fetcher: Fetcher = fetch,
@@ -215,7 +254,6 @@ export async function inspectConfiguredFollowerCollector(
   if (!expected) return 'mismatch';
   const url = new URL('https://api.phantombuster.com/api/v2/agents/fetch');
   url.searchParams.set('id', agentId);
-  url.searchParams.set('withArgument', 'true');
   url.searchParams.set('withCode', 'false');
   url.searchParams.set('withManifest', 'false');
   try {
@@ -228,12 +266,16 @@ export async function inspectConfiguredFollowerCollector(
     if (response.status === 401 || response.status === 403) return 'invalid-key';
     if (response.status === 404) return 'not-found';
     if (response.status === 429) return 'rate-limited';
-    if (!response.ok) return 'unavailable';
+    if (!response.ok) return response.status >= 500
+      ? inspectFromAgentInventory(apiKey, agentId, expected, fetcher) : 'unavailable';
     const payload = await boundedJson(response);
     const outer = obj(payload);
     const agent = obj(outer?.data) ?? outer;
-    if (!agent || String(agent.id ?? agent._id ?? '') !== agentId ||
+    if (!agent) return inspectFromAgentInventory(apiKey, agentId, expected, fetcher);
+    if (String(agent.id ?? agent._id ?? '') !== agentId ||
         agent.script !== 'Instagram Follower Collector.js') return 'mismatch';
+    if (agent.argument === undefined || agent.argument === null)
+      return inspectFromAgentInventory(apiKey, agentId, expected, fetcher);
     return configuredFollowerCollectorReference(agent.argument) === expected
       ? 'matched' : 'mismatch';
   } catch {

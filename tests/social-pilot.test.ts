@@ -73,7 +73,7 @@ test('test endpoint remains preview-only, fully opt-in and one-shot',()=>{
     'SOCIAL_PILOT_FOLLOW_CONFIRMATION',
     'tx.activityLog.count(',
     'Prisma.TransactionIsolationLevel.Serializable',
-    'instagramUserId:{not:null}',
+    'PHANTOMBUSTER_SOCIAL_PILOT_SESSION_OWNER_CONFIRMED',
     'userId:operatorId',
     'parseCandidateEvidence',
     'prisma.whitelist.findUnique',

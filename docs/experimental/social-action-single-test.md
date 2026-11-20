@@ -19,8 +19,10 @@ A implantação não define a flag de ativação. **Não aconteceu ação real**
 
 Variáveis de **Preview somente**, ainda ausentes:
 - `PHANTOMBUSTER_SOCIAL_PILOT_ENABLED=yes`
-- `PHANTOMBUSTER_SOCIAL_PILOT_ACCOUNT` — username de uma conta teste, ligada
-  à conta DECOLA INSTA via Meta e confirmada pelo operador
+- `PHANTOMBUSTER_SOCIAL_PILOT_ACCOUNT` — username da conta teste
+  cadastrada pelo operador. A Meta OAuth não autentica a sessão no provedor.
+- `PHANTOMBUSTER_SOCIAL_PILOT_SESSION_OWNER_CONFIRMED=yes` — somente após
+  verificar no PhantomBuster que o agente usa a sessão EXATA da conta teste
 - `PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE` — referência desta conta
 - `PHANTOMBUSTER_SOCIAL_PILOT_TARGET` — apenas um candidato já indexado;
   diferente da conta/referência e não presente na whitelist

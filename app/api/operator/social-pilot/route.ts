@@ -34,6 +34,7 @@ export async function GET() {
   const operatorId=await operator();
   if (!operatorId) return error('Operador não autorizado',403);
   const enabled=process.env.PHANTOMBUSTER_SOCIAL_PILOT_ENABLED==='yes';
+  const sessionOwnerConfirmed=process.env.PHANTOMBUSTER_SOCIAL_PILOT_SESSION_OWNER_CONFIRMED==='yes';
   const accountUsername=process.env.PHANTOMBUSTER_SOCIAL_PILOT_ACCOUNT??'';
   const referenceUsername=process.env.PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE??'';
   const targetUsername=process.env.PHANTOMBUSTER_SOCIAL_PILOT_TARGET??'';
@@ -74,11 +75,12 @@ export async function GET() {
   return NextResponse.json({
     enabled,configured,accountRegistered:!!account,
     ownerConnectedByMeta:Boolean(account?.instagramUserId),
+    providerSessionOwnerConfirmed:sessionOwnerConfirmed,
     referenceRegistered:!!ref,candidateIndexed:candidate,
     candidateExcluded:Boolean(protectedName)||accountUsername===targetUsername||
       referenceUsername===targetUsername,
     previousAttempts:previous,
-    liveActionReady:enabled&&configured&&!!account?.instagramUserId&&
+    liveActionReady:enabled&&sessionOwnerConfirmed&&configured&&!!account&&
       !!ref&&candidate&&!protectedName&&previous===0&&
       accountUsername!==targetUsername&&referenceUsername!==targetUsername,
     oneTestActionOnly:true,unfollowEnabled:false,
@@ -88,7 +90,8 @@ export async function GET() {
 
 export async function POST(request:Request) {
   if (process.env.VERCEL_ENV!=='preview' ||
-      process.env.PHANTOMBUSTER_SOCIAL_PILOT_ENABLED!=='yes')
+      process.env.PHANTOMBUSTER_SOCIAL_PILOT_ENABLED!=='yes' ||
+      process.env.PHANTOMBUSTER_SOCIAL_PILOT_SESSION_OWNER_CONFIRMED!=='yes')
     return error('Teste real ainda não habilitado',403);
   const operatorId=await operator();
   if (!operatorId) return error('Operador não autorizado',403);
@@ -122,11 +125,10 @@ export async function POST(request:Request) {
       accountUsername===targetUsername||referenceUsername===targetUsername)
     return error('Configuração de teste incompleta',409);
   const account=await prisma.instagramAccount.findFirst({
-    where:{username:accountUsername,userId:operatorId,
-      instagramUserId:{not:null}},
+    where:{username:accountUsername,userId:operatorId},
     select:{id:true,username:true},
   });
-  if (!account) return error('Conta de teste não conectada',409);
+  if (!account) return error('Conta de teste não cadastrada pelo operador',409);
   const reference=await prisma.targetAccount.findFirst({
     where:{instagramAccountId:account.id,username:referenceUsername},
     select:{id:true},

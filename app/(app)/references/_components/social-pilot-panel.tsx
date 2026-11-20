@@ -6,7 +6,8 @@ import {SOCIAL_PILOT_FOLLOW_CONFIRMATION} from '@/lib/reference-social-pilot';
 
 type Ready={
   enabled:boolean;configured:boolean;accountRegistered:boolean;
-  ownerConnectedByMeta:boolean;referenceRegistered:boolean;
+  ownerConnectedByMeta:boolean;providerSessionOwnerConfirmed:boolean;
+  referenceRegistered:boolean;
   candidateIndexed:boolean;candidateExcluded:boolean;previousAttempts:number;
   liveActionReady:boolean;oneTestActionOnly:true;unfollowEnabled:false;
 };
@@ -60,7 +61,7 @@ export function SocialPilotPanel(){
       <p>Ativação explícita: {ready.enabled?'sim':'pendente'}.
         Automação configurada: {ready.configured?'sim':'pendente'}.</p>
       <p>Conta cadastrada: {ready.accountRegistered?'sim':'pendente'}.
-        Conta conectada: {ready.ownerConnectedByMeta?'sim':'pendente'}.</p>
+        Sessão da conta de teste conferida no PhantomBuster: {ready.providerSessionOwnerConfirmed?'sim':'pendente'}.</p>
       <p>Referência: {ready.referenceRegistered?'sim':'pendente'}.
         Candidato: {ready.candidateIndexed?'disponível':'pendente'}.
         Perfil excluído: {ready.candidateExcluded?'sim':'não'}.</p>

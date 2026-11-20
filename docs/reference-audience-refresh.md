@@ -273,3 +273,33 @@ Collector com execução anterior concluída e contagem de 429 perfis,
 mas o coletor ainda não foi associado formalmente pelo backend a uma
 referência salva. A ligação continua condicionada à verificação de
 metadados e permissões, não ao número 429 por si só.
+
+### Diagnóstico de leitura por coletor (20/11/2026)
+
+O último `reference_audience_refresh_v1` da conta experimental,
+às 01:22:47 UTC de 20/11/2026, terminou em `source-unavailable`.
+A chave geral da workspace continuava acessível, mas a consulta de
+**detalhes do agente específico** não concluiu. Esse código isolado
+não identifica se a causa foi falta de acesso, limite de taxa ou falha
+temporária; a desconexão do Instagram observada pelo operador também
+não prova por si só qual chamada falhou.
+
+A rota autenticada `/api/provider/phantombuster/connection-status`
+agora verifica separadamente até **3 coletores explicitamente vinculados**
+à conta do titular e expõe apenas códigos fixos de diagnóstico:
+`matched`, `mismatch`, `not-found`, `invalid-key`,
+`rate-limited`, `unavailable` ou `not-checked`.
+A rota também apresenta o último status de tentativa guardado no banco,
+limitado às referências atualmente associadas à conta e convertido a
+uma lista de códigos permitidos. Não retorna nem armazena credenciais,
+argumentos, nomes capturados, logs externos ou IDs dos agentes.
+O botão **Atualizar dados** utiliza essas condições e mostra só uma
+mensagem legível, sem painéis técnicos adicionais.
+
+O campo `configuredToReadCompletedResults` exige agora a verificação
+positiva do coletor, e não somente que a chave esteja funcionando.
+O diagnóstico não cria, configura ou inicia agente algum.
+A coleta nova depende de reconectar a sessão Instagram se o provedor
+a indicar como desconectada e de uma execução posterior autorizada,
+finalizada, associada à referência correta. O sistema conserva os
+429 usernames históricos sem relançar o coletor.

@@ -26,6 +26,8 @@ CREATE TABLE "InstagramMessagingContact" (
   "firstInboundAt" TIMESTAMP(3) NOT NULL,
   "lastInboundAt" TIMESTAMP(3) NOT NULL,
   "firstFollowConfirmedAt" TIMESTAMP(3),
+  "lastOutgoingFollowing" BOOLEAN,
+  "lastIncomingFollowing" BOOLEAN,
   "lastRelationshipCheckedAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,

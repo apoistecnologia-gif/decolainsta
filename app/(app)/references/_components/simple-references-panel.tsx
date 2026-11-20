@@ -11,6 +11,11 @@ type Account = { id: string; username: string; connected?: boolean };
 type Reference = { id: string; username: string };
 type Workflow = { references: Reference[] };
 type SyncResult = { status: 'synced' | 'capacity-reached'; synced?: number; total?: number };
+type CollectionStatus = {
+  statuses: { referenceId: string; state: 'source-linked' | 'awaiting-collector' }[];
+  linked: number;
+  awaiting: number;
+};
 type Index = {
   persistedCandidates: number;
   byReference: { referenceId: string; referenceUsername: string; candidates: number }[];
@@ -33,6 +38,7 @@ export function SimpleReferencesPanel() {
   const [accountId, setAccountId] = useState('');
   const [references, setReferences] = useState<Reference[]>([]);
   const [index, setIndex] = useState<Index | null>(null);
+  const [collection, setCollection] = useState<CollectionStatus | null>(null);
   const [referenceUsername, setReferenceUsername] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -43,17 +49,21 @@ export function SimpleReferencesPanel() {
   const [loading, setLoading] = useState(true);
 
   const loadAccount = useCallback(async (id: string, signal?: AbortSignal) => {
-    const [referenceResponse, indexResponse] = await Promise.all([
+    const [referenceResponse, indexResponse, statusResponse] = await Promise.all([
       fetch('/api/reference-workflow?accountId=' + encodeURIComponent(id),
         { cache: 'no-store', credentials: 'same-origin', signal }),
       fetch('/api/reference-candidate-queue?accountId=' + encodeURIComponent(id),
+        { cache: 'no-store', credentials: 'same-origin', signal }),
+      fetch('/api/reference-collection-status?accountId=' + encodeURIComponent(id),
         { cache: 'no-store', credentials: 'same-origin', signal }),
     ]);
     const workflow = await readJson<Workflow>(referenceResponse);
     // The candidate index is separately scoped to each owned account.
     // It may be unavailable outside the experimental Preview.
     const summary = indexResponse.ok ? await readJson<Index>(indexResponse) : null;
-    return { references: workflow.references, index: summary };
+    const collectionStatus = statusResponse.ok
+      ? await readJson<CollectionStatus>(statusResponse) : null;
+    return { references: workflow.references, index: summary, collection: collectionStatus };
   }, []);
 
   useEffect(() => {
@@ -88,6 +98,7 @@ export function SimpleReferencesPanel() {
         if (!controller.signal.aborted) {
           setReferences(result.references);
           setIndex(result.index);
+          setCollection(result.collection);
           setLoading(false);
         }
       })
@@ -119,6 +130,7 @@ export function SimpleReferencesPanel() {
       const updated = await loadAccount(accountId);
       setReferences(updated.references);
       setIndex(updated.index);
+      setCollection(updated.collection);
       setMessage('Referência cadastrada. Nenhuma coleta ou ação foi iniciada.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível cadastrar a referência');
@@ -211,6 +223,7 @@ export function SimpleReferencesPanel() {
       const updated = await loadAccount(accountId);
       setReferences(updated.references);
       setIndex(updated.index);
+      setCollection(updated.collection);
       try {
         const connectionResponse = await fetch(
           '/api/provider/phantombuster/connection-status?accountId=' +
@@ -292,6 +305,7 @@ export function SimpleReferencesPanel() {
       const updated = await loadAccount(accountId);
       setReferences(updated.references);
       setIndex(updated.index);
+      setCollection(updated.collection);
       setMessage('Referência removida. Seus históricos antigos foram preservados, mas não entram nos totais ativos.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível remover a referência');
@@ -299,6 +313,8 @@ export function SimpleReferencesPanel() {
   }
 
   const byReference = new Map(index?.byReference.map(item => [item.referenceId, item.candidates]) ?? []);
+  const readinessByReference = new Map(
+    collection?.statuses.map(item => [item.referenceId, item.state]) ?? []);
   return (
     <div className="space-y-5">
       <Card>
@@ -312,7 +328,7 @@ export function SimpleReferencesPanel() {
             value={accountId} disabled={busy}
             onChange={event => {
               setAccountId(event.target.value);
-              setIndex(null); setReferences([]); setLoading(true);
+              setIndex(null); setCollection(null); setReferences([]); setLoading(true);
               setError(''); setMessage(''); setRefreshMessage(''); setRefreshError('');
               setConfirmRemovalId(null);
             }}>
@@ -321,6 +337,9 @@ export function SimpleReferencesPanel() {
               <option key={account.id} value={account.id}>@{account.username}</option>
             ))}
           </select>
+          <Link href="/accounts" className="inline-block text-xs underline underline-offset-4">
+            Gerenciar contas do Instagram
+          </Link>
           {!accountId && <p className="text-sm text-muted-foreground">
             Nenhuma conta disponível. <Link href="/accounts" className="underline">Abra Contas</Link> para cadastrar uma conta.
           </p>}
@@ -366,12 +385,26 @@ export function SimpleReferencesPanel() {
           )}
           {references.length > 0 && (
             <div className="space-y-2">
+              {collection && collection.awaiting > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {collection.awaiting} referência(s) aguardando preparação da coleta.
+                </p>
+              )}
               {references.map(reference => (
                 <div key={reference.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-                  <a className="text-sm font-medium hover:underline" target="_blank" rel="noopener noreferrer"
-                    href={'https://www.instagram.com/' + encodeURIComponent(reference.username) + '/'}>
-                    @{reference.username} <ArrowUpRight className="inline h-3 w-3" />
-                  </a>
+                  <div className="min-w-0">
+                    <a className="text-sm font-medium hover:underline" target="_blank" rel="noopener noreferrer"
+                      href={'https://www.instagram.com/' + encodeURIComponent(reference.username) + '/'}>
+                      @{reference.username} <ArrowUpRight className="inline h-3 w-3" />
+                    </a>
+                    {readinessByReference.has(reference.id) && (
+                      <p className="text-xs text-muted-foreground">
+                        {readinessByReference.get(reference.id) === 'source-linked'
+                          ? 'Fonte de dados vinculada'
+                          : 'Aguardando preparação'}
+                      </p>
+                    )}
+                  </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {index && <span className="text-xs text-muted-foreground tabular-nums">
                       {byReference.get(reference.id) ?? 0} nomes

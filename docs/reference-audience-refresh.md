@@ -373,3 +373,36 @@ administração da aplicação. Não elevar automaticamente a função do usuár
 A conta `@mameto_lueji` e os nomes históricos do piloto não são
 referências globais nem exigências do sistema. Sua exclusão/retensão
 deve ser deliberada e não faz parte destas mudanças.
+
+## Fila global de provisionamento de rascunhos (Preview)
+
+Para não exigir que o cliente selecione coletores ou perfis, o painel técnico
+de **administradores** oferece agora uma fila global:
+
+1. `POST /api/provider/phantombuster/provision-all-customers` com
+   `{"operation":"plan"}` consulta somente a base local. Conta referências
+   com fonte vinculada, rascunhos aguardando configuração, tentativas
+   anteriores pendentes de revisão, revogações e referências elegíveis.
+   Não contata o PhantomBuster nem ocupa vagas. O cliente vê somente
+   estados resumidos da própria conta.
+2. **Somente com** `PHANTOMBUSTER_DRAFT_CREATION_ENABLED=yes`, administrador
+   logado e confirmação explícita `confirmCreateUnconfiguredDraft:true`,
+   a operação `create-next-draft` reserva uma referência global e faz
+   uma única tentativa de criar rascunho **sem argumentos, cookies ou execução**.
+   A decisão é transacional (isolamento serializável), com exclusão de
+   referências vinculadas, revogadas e já tentadas.
+3. Uma nova solicitação não reexecuta automaticamente uma tentativa incerta,
+   rejeitada ou sem capacidade. O operador precisa rever a situação antes
+   de qualquer eventual nova autorização. A fila favorece contas que já
+   receberam menos fontes, sem privilegiar o perfil piloto.
+4. Um rascunho ainda precisa de configuração/autenticação autorizada junto
+   ao provedor; sem isso **não é uma fonte funcional**. O fluxo de leitura só
+   o considera vinculado após verificação do tipo e do alvo exatos.
+
+As operações técnicas permanecem fora do painel principal; os clientes
+não podem criar agentes na organização compartilhada. A variável
+`PHANTOMBUSTER_DRAFT_CREATION_ENABLED` permanece **desativada** até
+aprovação explícita do operador e verificação de disponibilidade/custos de
+vagas. O histórico do piloto não é excluído ou misturado com novos clientes.
+A API oficial da Meta não disponibiliza seguimento de seguidores arbitrários
+nem follow/unfollow para este produto; nenhum desses recursos foi ligado.

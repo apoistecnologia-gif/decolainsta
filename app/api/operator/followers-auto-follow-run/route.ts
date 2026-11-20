@@ -70,8 +70,8 @@ const safeAttempt=(a:{
     stage:'uncertain',requestedAt:a.createdAt.toISOString(),
     providerReportedUsername:null,providerReportedCount:0,
     providerReportedPrivate:null,providerPrivacyReadAt:null,
-    relationshipObservation:'unknown',relationshipObservedAt:null,
-    followBackObservation:'unknown',followBackObservedAt:null,
+    relationshipObservation:'unknown' as const,relationshipObservedAt:null,
+    followBackObservation:'unknown' as const,followBackObservedAt:null,
     followConfirmed:false,recipientKnown:false,unfollowEligibleAt:null,
     mayRetryAutomatically:false,
   }:null;

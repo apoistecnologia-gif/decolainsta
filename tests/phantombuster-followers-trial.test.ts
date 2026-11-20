@@ -271,7 +271,6 @@ test('route is admin Preview only, idempotent and separate from read-only cron',
   assert.match(route,/launchFollowersTrial/);
   assert.match(route,/inspectTrialContainer/);
 });
-\n
 
 test('provider privacy field is evidence, missing field is unknown, not public',async()=>{
   const row={profileUrl:'https://instagram.com/public_example/',

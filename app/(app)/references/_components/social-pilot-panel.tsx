@@ -25,6 +25,18 @@ type Trial={
   attempted:boolean;attempt:Attempt|null;
   sessionOwnerVerifiedByProvider:false;followConfirmed:false;unfollowEnabled:false;
 };
+const FILTER_REASON_LABELS:Record<string,string>={
+  'manifest-absent':'o provedor não retornou o manifesto do agente',
+  'manifest-invalid':'o manifesto não pôde ser interpretado',
+  'filter-not-described':'o campo de exclusão não foi identificado no manifesto',
+  'filter-ambiguous':'o manifesto apresenta mais de um campo compatível',
+  'saved-argument-missing':'a configuração salva não contém o campo identificado',
+  'saved-value-invalid':'o valor salvo não é um booleano verificável',
+  'agent-mismatch':'a identidade ou configuração do agente não corresponde',
+  'provider-unavailable':'a resposta do provedor não estava disponível',
+  'provider-auth-failed':'o provedor recusou a autenticação',
+  'provider-rate-limited':'o provedor limitou a consulta',
+};
 export function SocialPilotPanel(){
   const [inspection,setInspection]=useState<Inspection|null>(null);
   const [trial,setTrial]=useState<Trial|null>(null);
@@ -127,18 +139,8 @@ export function SocialPilotPanel(){
         Preferência da conta: {inspection.privateExclusionRequested
           ?'excluir privados':'não exige exclusão'}.</p>
       {inspection.privateExclusionStatus!=='enabled'&&
-        <p>Motivo do filtro não confirmado: {{
-          'manifest-absent':'o provedor não retornou o manifesto do agente',
-          'manifest-invalid':'o manifesto não pôde ser interpretado',
-          'filter-not-described':'o campo de exclusão não foi identificado no manifesto',
-          'filter-ambiguous':'o manifesto apresenta mais de um campo compatível',
-          'saved-argument-missing':'a configuração salva não contém o campo identificado',
-          'saved-value-invalid':'o valor salvo não é um booleano verificável',
-          'agent-mismatch':'a identidade ou configuração do agente não corresponde',
-          'provider-unavailable':'a resposta do provedor não estava disponível',
-          'provider-auth-failed':'o provedor recusou a autenticação',
-          'provider-rate-limited':'o provedor limitou a consulta',
-        } as Record<string,string>)[inspection.privateExclusionReason??'']??
+        <p>Motivo do filtro não confirmado: {
+          FILTER_REASON_LABELS[inspection.privateExclusionReason??'']??
           'a configuração do agente não foi comprovada'}.</p>}
       <p>Conta registrada: {inspection.accountRegistered?'sim':'não'}.
         Referência: {inspection.referenceRegistered?'sim':'não'}.</p>

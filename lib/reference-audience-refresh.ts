@@ -12,6 +12,13 @@ export type AudienceRefreshSource = {
 export const MAX_REFRESH_SOURCES = 20;
 export const MAX_REFRESHES_PER_TICK = 3;
 export const MIN_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// Only authenticated user-triggered reads may retry a stale configuration
+// failure sooner. Successful reads and provider rate limits retain 6h safety.
+export const MIN_MANUAL_CONFIG_RETRY_MS = 5 * 60 * 1000;
+const RETRYABLE_CONFIG_FAILURES = new Set([
+  'source-not-found', 'source-unavailable',
+  'source-mismatch', 'source-unauthorized',
+]);
 export const AUDIENCE_REFRESH_ACTION = 'reference_audience_refresh_v1';
 
 const validId = (value: unknown): value is string =>
@@ -45,11 +52,17 @@ export function parseAudienceRefreshSources(raw: string | undefined): AudienceRe
   return sources;
 }
 
-export function refreshIsDue(lastClaim: Date | null, now: Date): boolean {
+export function refreshIsDue(
+  lastClaim: Date | null, now: Date,
+  options: { manualRetry?: boolean; lastStatus?: string | null } = {},
+): boolean {
   if (!Number.isFinite(now.getTime())) return false;
   if (!lastClaim) return true;
   if (!Number.isFinite(lastClaim.getTime()) || lastClaim > now) return false;
-  return now.getTime() - lastClaim.getTime() >= MIN_REFRESH_INTERVAL_MS;
+  const retryAfter = options.manualRetry &&
+    RETRYABLE_CONFIG_FAILURES.has(options.lastStatus ?? '')
+    ? MIN_MANUAL_CONFIG_RETRY_MS : MIN_REFRESH_INTERVAL_MS;
+  return now.getTime() - lastClaim.getTime() >= retryAfter;
 }
 
 /** Keep only genuinely new names, excluding owner and reference. */
@@ -71,6 +84,7 @@ export type AudienceRefreshAttempt = {
   accountId: string;
   referenceId: string;
   lastAttemptAt: Date | null;
+  lastStatus?: string | null;
 };
 
 /**
@@ -81,21 +95,25 @@ export function dueRefreshSources(
   sources: AudienceRefreshSource[],
   attempts: AudienceRefreshAttempt[],
   now: Date,
+  manualRetry = false,
 ): AudienceRefreshSource[] {
   const key = (accountId: string, referenceId: string) => accountId + ':' + referenceId;
-  const latest = new Map<string, Date>();
+  const latest = new Map<string, AudienceRefreshAttempt>();
   for (const entry of attempts) {
     if (!(entry.lastAttemptAt instanceof Date) ||
         !Number.isFinite(entry.lastAttemptAt.getTime())) continue;
     const k = key(entry.accountId, entry.referenceId);
     const previous = latest.get(k);
-    if (!previous || entry.lastAttemptAt > previous) latest.set(k, entry.lastAttemptAt);
+    if (!previous || !previous.lastAttemptAt ||
+        entry.lastAttemptAt > previous.lastAttemptAt) latest.set(k, entry);
   }
-  return sources.filter(source => refreshIsDue(
-    latest.get(key(source.accountId, source.referenceId)) ?? null, now,
-  )).sort((a, b) => {
-    const at = latest.get(key(a.accountId, a.referenceId))?.getTime() ?? -Infinity;
-    const bt = latest.get(key(b.accountId, b.referenceId))?.getTime() ?? -Infinity;
+  return sources.filter(source => {
+    const last = latest.get(key(source.accountId, source.referenceId));
+    return refreshIsDue(last?.lastAttemptAt ?? null, now,
+      { manualRetry, lastStatus: last?.lastStatus });
+  }).sort((a, b) => {
+    const at = latest.get(key(a.accountId, a.referenceId))?.lastAttemptAt?.getTime() ?? -Infinity;
+    const bt = latest.get(key(b.accountId, b.referenceId))?.lastAttemptAt?.getTime() ?? -Infinity;
     return at - bt || a.accountId.localeCompare(b.accountId) ||
       a.referenceId.localeCompare(b.referenceId);
   }).slice(0, MAX_REFRESHES_PER_TICK);

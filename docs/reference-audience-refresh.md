@@ -243,3 +243,33 @@ ações sociais continuam inativas.
 O painel legado avançado de diagnóstico ainda existe em
 `/references/diagnostics`; seu POST de teste antigo é separado do
 fluxo multiusuário de produção planejado.
+
+### Coletor já existente com execução anterior (corrigido em 19/11/2026)
+
+O PhantomBuster pode armazenar **uma URL direta de Instagram** no campo
+`spreadsheetUrl` mesmo quando o operador seleciona a opção "A URL",
+e não uma planilha. A associação automática anteriormente recusava
+esse campo por inteiro. Agora reconhece apenas uma URL HTTPS direta
+`https://www.instagram.com/<perfil>/`, sem parâmetros, planilhas ou
+CSV; conflito entre vários campos é rejeitado. A URL deve corresponder
+exatamente à referência salva na conta do cliente.
+
+Quando o coletor já terminou uma execução **antes** de ser vinculado
+à referência, o backend classifica o resultado como `historical-only`,
+preserva o histórico já armazenado e não o importa novamente. O
+dashboard informa o estado em texto curto. Não há exigência de nova
+coleta para reconhecer um coletor; contudo, resultados antigos não
+viram prova de seguimento verificado nem substituem a validação de
+proveniência original.
+
+A associação permanece administrativa no Preview para não permitir que
+um cliente obtenha dados dos coletores pertencentes à workspace
+compartilhada de outro cliente. Um usuário sem essa permissão recebe
+um aviso curto de que a vinculação depende de autorização do
+administrador, sem ver dados privados nem IDs de agentes.
+
+Evidência: uma captura da workspace mostrou um Instagram Follower
+Collector com execução anterior concluída e contagem de 429 perfis,
+mas o coletor ainda não foi associado formalmente pelo backend a uma
+referência salva. A ligação continua condicionada à verificação de
+metadados e permissões, não ao número 429 por si só.

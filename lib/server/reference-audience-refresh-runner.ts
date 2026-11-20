@@ -14,11 +14,13 @@ import {
 } from '@/lib/reference-candidate-queue';
 import { MANUAL_SOURCE_PREFIX, REFERENCE_ACTIONS } from '@/lib/reference-workflow';
 import {
-  AUDIENCE_REFRESH_ACTION, boundAudienceDelta, dueRefreshSources,
+  AUDIENCE_REFRESH_ACTION, MAX_REFRESH_SOURCES,
+  boundAudienceDelta, dueRefreshSources,
   newAudienceNames, refreshIsDue,
   type AudienceRefreshSource,
 } from '@/lib/reference-audience-refresh';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
+import { lastReadStatusFromDetails } from '@/lib/reference-audience-last-read';
 import { loadActiveAudienceSources } from '@/lib/server/reference-audience-source-store';
 import { AUDIENCE_SOURCE_BINDING_ACTION, parseAudienceSourceBinding }
   from '@/lib/reference-audience-source-registry';
@@ -30,16 +32,19 @@ type RefreshState = { status: RefreshResult; newNames: number; indexed: number; 
 
 // A serialized claim prevents two cron workers from importing the same reference
 // simultaneously. A failed claim remains a short backoff, not a permanent lock.
-async function claim(source: AudienceRefreshSource): Promise<string | null> {
+async function claim(source: AudienceRefreshSource, manualRetry = false): Promise<string | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await prisma.$transaction(async tx => {
         const last = await tx.activityLog.findFirst({
           where: { instagramAccountId: source.accountId,
             targetUsername: source.referenceId, action: AUDIENCE_REFRESH_ACTION },
-          select: { createdAt: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: { createdAt: true, details: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         });
-        if (!refreshIsDue(last?.createdAt ?? null, new Date())) return null;
+        if (!refreshIsDue(last?.createdAt ?? null, new Date(), {
+          manualRetry, lastStatus: lastReadStatusFromDetails(last?.details ?? null),
+        })) return null;
         const log = await tx.activityLog.create({
           data: { instagramAccountId: source.accountId, targetUsername: source.referenceId,
             action: AUDIENCE_REFRESH_ACTION, success: false,
@@ -63,7 +68,9 @@ async function finish(id: string, status: string, newNames = 0, indexed = 0) {
   });
 }
 
-async function refreshSource(source: AudienceRefreshSource, apiKey: string): Promise<RefreshState> {
+async function refreshSource(
+  source: AudienceRefreshSource, apiKey: string, manualRetry = false,
+): Promise<RefreshState> {
   const account = await prisma.instagramAccount.findFirst({
     where: { id: source.accountId },
     select: { id: true, username: true },
@@ -74,7 +81,7 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
     select: { id: true, username: true },
   });
   if (!reference) return { status: 'skipped', newNames: 0, indexed: 0 };
-  const claimId = await claim(source);
+  const claimId = await claim(source, manualRetry);
   if (!claimId) return { status: 'skipped', newNames: 0, indexed: 0 };
   try {
     // A collector may have been reconfigured after initial binding: fail closed
@@ -269,15 +276,45 @@ export async function runReadOnlyAudienceRefresh(onlyAccountId?: string) {
       },
       _max: { createdAt: true },
     });
-    const due = dueRefreshSources(eligible, lastAttempts.flatMap(entry =>
+    const attempts = lastAttempts.flatMap(entry =>
       entry.targetUsername ? [{
         accountId: entry.instagramAccountId,
         referenceId: entry.targetUsername,
         lastAttemptAt: entry._max.createdAt,
-      }] : []), new Date());
+      }] : []);
+    const manualRetry = Boolean(onlyAccountId);
+    const now = new Date();
+    // Only a signed-in account owner's explicit refresh may retry a previously
+    // failed collector CONFIGURATION read after five minutes. Cron stays 6h,
+    // as do successful runs and all rate-limit failures.
+    const failedStatusByPair = new Map<string, string | null>();
+    if (manualRetry) {
+      const latestByPair = new Map(attempts.map(item =>
+        [item.accountId + ':' + item.referenceId, item.lastAttemptAt]));
+      const recent = eligible.filter(item => {
+        const at = latestByPair.get(item.accountId + ':' + item.referenceId);
+        return at && !refreshIsDue(at, now);
+      }).slice(0, MAX_REFRESH_SOURCES);
+      const statusRows = await Promise.all(recent.map(async source => {
+        const latest = await prisma.activityLog.findFirst({
+          where: { instagramAccountId: source.accountId,
+            targetUsername: source.referenceId, action: AUDIENCE_REFRESH_ACTION },
+          select: { details: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        });
+        return { key: source.accountId + ':' + source.referenceId,
+          status: lastReadStatusFromDetails(latest?.details ?? null) };
+      }));
+      for (const row of statusRows) failedStatusByPair.set(row.key, row.status);
+    }
+    const due = dueRefreshSources(eligible, attempts.map(item => ({
+      ...item,
+      lastStatus: failedStatusByPair.get(item.accountId + ':' + item.referenceId) ?? null,
+    })), now, manualRetry);
 
-    // At most three external reads, sequentially; no collector launch.
-    for (const source of due) results.push(await refreshSource(source, apiKey));
+    // At most three read-only external refreshes, sequentially; no launch.
+    for (const source of due)
+      results.push(await refreshSource(source, apiKey, manualRetry));
     return NextResponse.json({
       enabled: true, examined: results.length,
       skippedConfiguration: sources.length - eligible.length,

@@ -12,12 +12,14 @@ import {
 } from '@/lib/providers/phantombuster-followers-trial';
 import {
   FOLLOWERS_TRIAL_ACTION,FOLLOWERS_TRIAL_APPROVAL,
-  makeTrialEvidence,parseTrialEvidence,observedRelationship,
+  makeTrialEvidence,parseTrialEvidence,observedRelationship,observedFollowBack,
+  FOLLOWERS_FOLLOWBACK_OBSERVATION_ACTION,
   FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION,
   FOLLOWERS_PRIVACY_OBSERVATION_ACTION,
 } from '@/lib/reference-followers-trial';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import { fetchFollowersRunReport,fetchSavedRunPrivacy } from '@/lib/providers/phantombuster-followers-result';
+import { assessUnfollowEligibility } from '@/lib/reference-unfollow-eligibility';
 
 const HEADERS={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
 function fail(error:string,status:number) {
@@ -59,6 +61,8 @@ const safeAttempt=(a:{
     providerPrivacyReadAt:evidence.providerPrivacyReadAt??null,
     relationshipObservation:evidence.relationshipObservation??'unknown',
     relationshipObservedAt:evidence.relationshipObservedAt??null,
+    followBackObservation:evidence.followBackObservation??'unknown',
+    followBackObservedAt:evidence.followBackObservedAt??null,
     followConfirmed:false,recipientKnown:false,
     unfollowEligibleAt:null,
     mayRetryAutomatically:false,
@@ -67,6 +71,7 @@ const safeAttempt=(a:{
     providerReportedUsername:null,providerReportedCount:0,
     providerReportedPrivate:null,providerPrivacyReadAt:null,
     relationshipObservation:'unknown',relationshipObservedAt:null,
+    followBackObservation:'unknown',followBackObservedAt:null,
     followConfirmed:false,recipientKnown:false,unfollowEligibleAt:null,
     mayRetryAutomatically:false,
   }:null;
@@ -82,11 +87,24 @@ export async function GET(){
     select:{id:true,details:true,createdAt:true,success:true},
     orderBy:[{createdAt:'desc'},{id:'desc'}],
   });
+  const attempt=safeAttempt(last);
+  const review=assessUnfollowEligibility({
+    relationship:attempt?.relationshipObservation??'unknown',
+    confirmedFollowAt:null,
+    confirmationSource:attempt?.relationshipObservation==='following'
+      ?'owner-visual-check':'unknown',
+    now:new Date(),
+    pendingRequest:attempt?.relationshipObservation==='requested',
+    followsBack:attempt?.followBackObservation==='yes'?true:
+      attempt?.followBackObservation==='no'?false:'unknown',
+    protectedAccount:false,inWhitelist:false,authorized:true,
+  });
   return NextResponse.json({
+    unfollowReview:{eligible:false,reason:review.reason},
     enabled:process.env.PHANTOMBUSTER_FOLLOWERS_ONE_SHOT_ENABLED==='yes',
     accountName:ctx.account.username,
     referenceRegistered:true,
-    attempted:!!last,attempt:safeAttempt(last),
+    attempted:!!last,attempt,
     sessionOwnerVerifiedByProvider:false,followConfirmed:false,
     unfollowEnabled:false,
   },{headers:HEADERS});
@@ -109,6 +127,7 @@ export async function POST(req:Request){
   const allowed=operation==='launch-one'?
     ['operation','approval','accountConfirmation']:
     operation==='record-relationship'?['operation','observedStatus']:
+    operation==='record-followback'?['operation','followBackStatus']:
     operation==='check-result'||operation==='check-provider-report'||
     operation==='check-profile-privacy'
       ? ['operation'] : [];
@@ -215,8 +234,11 @@ export async function POST(req:Request){
         followConfirmed:false,unfollowEligibleAt:null,
       },{headers:HEADERS});
     const observedAt=new Date().toISOString();
+    // Any relationship change invalidates the old follow-back assertion.
     const next=makeTrialEvidence({
       ...evidence,
+      followBackObservation:undefined,followBackObservedAt:undefined,
+      followBackSource:undefined,
       relationshipObservation:input.observedStatus,
       relationshipObservedAt:observedAt,
       relationshipSource:'owner-visual-check',
@@ -252,6 +274,55 @@ export async function POST(req:Request){
       relationshipObservedAt:next.relationshipObservedAt,
       followConfirmed:false,unfollowEligibleAt:null,
       unfollowScheduled:false,
+    },{headers:HEADERS});
+  }
+
+
+  if(operation==='record-followback'){
+    if(evidence.stage!=='provider-reported'||
+      !evidence.providerReportedUsername||
+      evidence.relationshipObservation!=='following'||
+      !observedFollowBack(input.followBackStatus))
+      return fail('Follow-back exige situação Seguindo observada',409);
+    if(evidence.followBackObservation===input.followBackStatus)
+      return NextResponse.json({
+        followBackObservation:evidence.followBackObservation,
+        followConfirmed:false,unfollowEligibleAt:null,unfollowScheduled:false,
+      },{headers:HEADERS});
+    const observedAt=new Date().toISOString();
+    const next=makeTrialEvidence({...evidence,
+      followBackObservation:input.followBackStatus,
+      followBackObservedAt:observedAt,
+      followBackSource:'owner-visual-check',
+    });
+    if(!next)return fail('Observação inválida',409);
+    try{
+      const saved=await prisma.$transaction(async tx=>{
+        const updated=await tx.activityLog.updateMany({
+          where:{id:record.id,instagramAccountId:ctx.account.id,
+            action:FOLLOWERS_TRIAL_ACTION,details:record.details},
+          data:{details:JSON.stringify(next),success:false},
+        });
+        if(updated.count!==1)return false;
+        await tx.activityLog.create({data:{
+          instagramAccountId:ctx.account.id,
+          action:FOLLOWERS_FOLLOWBACK_OBSERVATION_ACTION,
+          targetUsername:evidence.providerReportedUsername,
+          success:false,
+          details:JSON.stringify({
+            version:1,trialId:record.id,referenceId:ctx.reference.id,
+            followBack:input.followBackStatus,observedAt,
+            source:'owner-visual-check',
+          }),
+        }});
+        return true;
+      },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+      if(!saved)return fail('Observação alterada; atualize o diagnóstico',409);
+    }catch{return fail('Não foi possível registrar a observação',503);}
+    return NextResponse.json({
+      followBackObservation:next.followBackObservation,
+      followBackObservedAt:next.followBackObservedAt,
+      followConfirmed:false,unfollowEligibleAt:null,unfollowScheduled:false,
     },{headers:HEADERS});
   }
 

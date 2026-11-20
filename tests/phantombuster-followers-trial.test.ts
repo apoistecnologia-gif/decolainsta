@@ -366,3 +366,34 @@ test('privacy backfill is an admin-only CAS update with a separate audit entry',
   assert.match(src,/followConfirmed:false,unfollowScheduled:false/);
   assert.doesNotMatch(src,/agents\/save|unfollowScheduledAt:|unfollowedAt:/);
 });
+
+test('follow-back observation requires a currently observed following relation',()=>{
+  const current=makeTrialEvidence({version:1,referenceId:'refA',
+    agentId:agent,containerId:container,stage:'provider-reported',
+    providerReportedUsername:'dellmyra_souza',providerReportedCount:1,
+    followConfirmed:false,recipientKnown:false,
+    sessionOwnerVerifiedByProvider:false,
+    relationshipObservation:'following',relationshipSource:'owner-visual-check',
+    relationshipObservedAt:'2026-11-20T20:52:59.170Z',
+    followBackObservation:'yes',followBackSource:'owner-visual-check',
+    followBackObservedAt:'2026-11-20T21:52:59.170Z'});
+  assert.ok(current);
+  assert.deepEqual(parseTrialEvidence(JSON.stringify(current)),current);
+  assert.equal(makeTrialEvidence({...current!,relationshipObservation:'requested'}),null);
+  assert.equal(makeTrialEvidence({...current!,relationshipObservation:'none'}),null);
+  assert.equal(makeTrialEvidence({...current!,followBackSource:undefined}),null);
+  assert.equal(makeTrialEvidence({...current!,followBackObservedAt:'invalid'}),null);
+});
+test('follow-back input is account scoped, audited and never triggers Instagram',()=>{
+  const src=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
+  for(const token of [
+    "operation==='record-followback'",'observedFollowBack(input.followBackStatus)',
+    'FOLLOWERS_FOLLOWBACK_OBSERVATION_ACTION',
+    "evidence.relationshipObservation!=='following'",
+    'followBackObservation:undefined',
+    'followConfirmed:false,unfollowEligibleAt:null',
+    'tx.activityLog.updateMany',
+  ])assert.ok(src.includes(token),token);
+  assert.match(src,/assessUnfollowEligibility/);
+  assert.doesNotMatch(src,/user_unfollow|unfollowScheduledAt:|unfollowedAt:/);
+});

@@ -8,6 +8,11 @@ export const FOLLOWERS_RELATIONSHIP_OBSERVATION_ACTION =
   'reference_followers_relationship_observation_v1';
 export const FOLLOWERS_PRIVACY_OBSERVATION_ACTION =
   'reference_followers_privacy_observation_v1';
+export const FOLLOWERS_FOLLOWBACK_OBSERVATION_ACTION =
+  'reference_followers_followback_observation_v1';
+export type ObservedFollowBack='yes'|'no'|'unknown';
+export const observedFollowBack=(v:unknown):v is ObservedFollowBack=>
+  v==='yes'||v==='no'||v==='unknown';
 export type ObservedRelationship = 'requested' | 'following' | 'none';
 export function observedRelationship(v:unknown):v is ObservedRelationship {
   return v==='requested'||v==='following'||v==='none';
@@ -41,6 +46,9 @@ export type TrialEvidence = {
   relationshipObservation?: ObservedRelationship;
   relationshipObservedAt?: string;
   relationshipSource?: 'owner-visual-check';
+  followBackObservation?: ObservedFollowBack;
+  followBackObservedAt?: string;
+  followBackSource?: 'owner-visual-check';
 };
 const id=(value:unknown):value is string=>typeof value==='string'&&
   /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -77,12 +85,23 @@ export function makeTrialEvidence(value:TrialEvidence):TrialEvidence|null {
           !Number.isFinite(Date.parse(value.relationshipObservedAt))))||
       (value.relationshipObservation===undefined &&
         (value.relationshipObservedAt!==undefined||
-          value.relationshipSource!==undefined)))
+          value.relationshipSource!==undefined))||
+      (value.followBackObservation!==undefined &&
+        (value.stage!=='provider-reported'||
+          value.relationshipObservation!=='following'||
+          !observedFollowBack(value.followBackObservation)||
+          value.followBackSource!=='owner-visual-check'||
+          typeof value.followBackObservedAt!=='string'||
+          !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value.followBackObservedAt)||
+          !Number.isFinite(Date.parse(value.followBackObservedAt))))||
+      (value.followBackObservation===undefined &&
+        (value.followBackObservedAt!==undefined||
+          value.followBackSource!==undefined)))
     return null;
   return {...value};
 }
 export function parseTrialEvidence(input:unknown):TrialEvidence|null {
-  if(typeof input!=='string'||input.length>800)return null;
+  if(typeof input!=='string'||input.length>1100)return null;
   let decoded:unknown;
   try{decoded=JSON.parse(input) as unknown;}catch{return null;}
   if(!decoded||typeof decoded!=='object'||Array.isArray(decoded))return null;
@@ -93,6 +112,7 @@ export function parseTrialEvidence(input:unknown):TrialEvidence|null {
     'providerReportedUsername','providerReportedCount',
     'providerReportedPrivate','providerPrivacyReadAt',
     'relationshipObservation','relationshipObservedAt','relationshipSource',
+    'followBackObservation','followBackObservedAt','followBackSource',
   ].includes(key)))return null;
   return makeTrialEvidence(r as TrialEvidence);
 }

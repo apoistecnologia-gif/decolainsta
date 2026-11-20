@@ -24,12 +24,15 @@ type Attempt={
   relationshipObservedAt?:string|null;
   providerReportedPrivate?:boolean|null;
   providerPrivacyReadAt?:string|null;
+  followBackObservation?:'yes'|'no'|'unknown';
+  followBackObservedAt?:string|null;
   unfollowEligibleAt?:null;
 };
 type Trial={
   enabled:boolean;accountName:string;referenceRegistered:boolean;
   attempted:boolean;attempt:Attempt|null;
   sessionOwnerVerifiedByProvider:false;followConfirmed:false;unfollowEnabled:false;
+  unfollowReview?:{eligible:false;reason:string};
 };
 const FILTER_REASON_LABELS:Record<string,string>={
   'manifest-absent':'o provedor não retornou o manifesto do agente',
@@ -62,6 +65,7 @@ export function SocialPilotPanel(){
   const [typedName,setTypedName]=useState('');
   const [observedStatus,setObservedStatus]=useState<'requested'|'following'|'none'>(
     'requested');
+  const [followBackStatus,setFollowBackStatus]=useState<'yes'|'no'|'unknown'>('unknown');
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   async function check(){
@@ -80,7 +84,7 @@ export function SocialPilotPanel(){
     finally{setBusy(false);}
   }
   async function send(operation:'launch-one'|'check-result'|
-    'check-provider-report'|'record-relationship'|'check-profile-privacy'){
+    'check-provider-report'|'record-relationship'|'record-followback'|'check-profile-privacy'){
     if(busy)return;
     if(operation==='launch-one' &&
         (!approved||!trial?.enabled||typedName!==trial.accountName||
@@ -91,7 +95,9 @@ export function SocialPilotPanel(){
       const payload=operation==='launch-one'?
         {operation,approval:FOLLOWERS_TRIAL_APPROVAL,accountConfirmation:typedName}:
         operation==='record-relationship'?
-          {operation,observedStatus}:{operation};
+          {operation,observedStatus}:
+        operation==='record-followback'?
+          {operation,followBackStatus}:{operation};
       const response=await fetch('/api/operator/followers-auto-follow-run',{
         method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
         headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),
@@ -108,6 +114,8 @@ export function SocialPilotPanel(){
             ?'Situação observada no aplicativo registrada: '+
               (result.relationshipObservation??'sem confirmação')+
               '. O prazo de 48 horas não foi iniciado.'
+          :operation==='record-followback'
+            ?'Observação de follow-back registrada. Não é confirmação independente; unfollow continua desativado.'
           :operation==='check-profile-privacy'
             ?result.providerPrivacyStatus==='private'
               ?'O PhantomBuster informou que o perfil é privado. A solicitação pendente continua sem follow confirmado.'
@@ -247,6 +255,27 @@ export function SocialPilotPanel(){
             onClick={()=>void send('record-relationship')}>
             Salvar situação conferida
           </Button>
+          {trial.attempt.relationshipObservation==='following'&&
+            <div className="border-t pt-2 space-y-2">
+              <p>Follow-back relatado: <strong>{
+                trial.attempt.followBackObservation==='yes'?'sim':
+                trial.attempt.followBackObservation==='no'?'não':'desconhecido'}</strong>.</p>
+              <label htmlFor="followback-observed" className="block">
+                Observação do titular sobre quem seguiu de volta
+              </label>
+              <select id="followback-observed" value={followBackStatus}
+                disabled={busy} onChange={e=>setFollowBackStatus(
+                  e.target.value as 'yes'|'no'|'unknown')}
+                className="rounded border px-2 py-1">
+                <option value="unknown">Ainda não sei</option>
+                <option value="yes">Seguiu de volta</option>
+                <option value="no">Não seguiu de volta</option>
+              </select>
+              <Button type="button" variant="outline" disabled={busy}
+                onClick={()=>void send('record-followback')}>
+                Salvar observação de follow-back
+              </Button>
+            </div>}
           <p>Esta informação é uma observação do titular. Não ativa ações,
             não confirma follow por API e não inicia o prazo de 48 horas.</p>
         </div>}

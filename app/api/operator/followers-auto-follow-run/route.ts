@@ -14,6 +14,7 @@ import {
   makeTrialEvidence,parseTrialEvidence,
 } from '@/lib/reference-followers-trial';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
+import { fetchFollowersRunReport } from '@/lib/providers/phantombuster-followers-result';
 
 const HEADERS={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
 function fail(error:string,status:number) {
@@ -49,10 +50,13 @@ const safeAttempt=(a:{
   const evidence=parseTrialEvidence(a?.details);
   return evidence?{
     stage:evidence.stage, requestedAt:a?.createdAt.toISOString()??null,
+    providerReportedUsername:evidence.providerReportedUsername??null,
+    providerReportedCount:evidence.providerReportedCount??0,
     followConfirmed:false,recipientKnown:false,
     mayRetryAutomatically:false,
   }:a?{
     stage:'uncertain',requestedAt:a.createdAt.toISOString(),
+    providerReportedUsername:null,providerReportedCount:0,
     followConfirmed:false,recipientKnown:false,mayRetryAutomatically:false,
   }:null;
 };
@@ -93,7 +97,8 @@ export async function POST(req:Request){
   const operation=input.operation;
   const allowed=operation==='launch-one'?
     ['operation','approval','accountConfirmation']:
-    operation==='check-result'?['operation']:[];
+    operation==='check-result'||operation==='check-provider-report'
+      ? ['operation'] : [];
   if(!allowed.length||Object.keys(input).length!==allowed.length||
     Object.keys(input).some(k=>!allowed.includes(k)))
     return fail('Operação inválida',400);
@@ -179,7 +184,41 @@ export async function POST(req:Request){
   if(!record||!evidence||evidence.agentId!==ctx.agentId||
      evidence.referenceId!==ctx.reference.id||!evidence.containerId)
     return fail('Nenhuma execução rastreável para consultar',409);
-  if(evidence.stage==='container-finished'||evidence.stage==='container-failed')
+  if(operation==='check-provider-report'){
+    if(evidence.stage==='provider-reported')
+      return NextResponse.json({
+        providerStatus:'provider-reported',
+        providerReportedUsername:evidence.providerReportedUsername,
+        providerReportedCount:1,
+        followConfirmed:false,unfollowScheduled:false,
+      },{headers:HEADERS});
+    if(evidence.stage!=='container-finished')
+      return fail('A execução ainda não foi encerrada com sucesso',409);
+    const report=await fetchFollowersRunReport(
+      ctx.apiKey,evidence.containerId,ctx.referenceName);
+    if(report.status==='provider-reported'){
+      const updated=makeTrialEvidence({...evidence,
+        stage:'provider-reported',
+        providerReportedUsername:report.username,
+        providerReportedCount:1,
+      });
+      if(updated){
+        await prisma.activityLog.updateMany({
+          where:{id:record.id,instagramAccountId:ctx.account.id,
+            details:record.details},
+          data:{details:JSON.stringify(updated),success:false},
+        });
+      }
+    }
+    return NextResponse.json({
+      providerStatus:report.status,
+      providerReportedUsername:'username' in report?report.username:null,
+      providerReportedCount:'reportedCount' in report?report.reportedCount:0,
+      followConfirmed:false,unfollowScheduled:false,
+    },{headers:HEADERS});
+  }
+  if(evidence.stage==='container-finished'||
+    evidence.stage==='container-failed'||evidence.stage==='provider-reported')
     return NextResponse.json({attempt:safeAttempt(record)},
       {headers:HEADERS});
   const outcome=await inspectTrialContainer(

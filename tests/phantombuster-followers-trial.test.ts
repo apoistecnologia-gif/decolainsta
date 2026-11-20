@@ -8,6 +8,9 @@ import {
   launchFollowersTrial,inspectTrialContainer,parseTrialContainer,
   parseAgentScopedContainer,
 } from '../lib/providers/phantombuster-followers-trial';
+import {
+  parseSingleRunProfile,parseReportedFollowSummary,fetchFollowersRunReport,
+} from '../lib/providers/phantombuster-followers-result';
 const agent='1838046655144130',container='1234567890123';
 test('one-shot launch sends only one controlled launch and never returns follower identities',async()=>{
   let n=0;
@@ -121,6 +124,58 @@ test('fails closed on wrong membership or unavailable history',async()=>{
   assert.equal(unavailable,'membership-unverified');
   assert.equal(n,2);
 });
+test('only exact single run result matching reference is eligible',()=>{
+  const row={profileUrl:'https://instagram.com/dellmyra_souza/',
+    profileName:'dellmyra_souza',query:'https://www.instagram.com/mameto_lueji/',
+    sessionCookie:'SENSITIVE_NO_RETURN'};
+  assert.equal(parseSingleRunProfile({resultObject:[row]},'mameto_lueji'),
+    'dellmyra_souza');
+  assert.equal(parseSingleRunProfile({data:{resultObject:[row]}},'mameto_lueji'),
+    'dellmyra_souza');
+  assert.equal(parseSingleRunProfile({resultObject:[row,row]},'mameto_lueji'),null);
+  assert.equal(parseSingleRunProfile({resultObject:[{...row,
+    query:'https://www.instagram.com/other_reference/'}]},'mameto_lueji'),null);
+  assert.equal(parseSingleRunProfile({resultObject:[{...row,
+    profileName:'other'}]},'mameto_lueji'),null);
+  assert.equal(parseSingleRunProfile({resultObject:[{...row,
+    profileUrl:'https://instagram.com.evil.invalid/dellmyra_souza/'}]},
+    'mameto_lueji'),null);
+});
+test('provider report requires matching single run result and explicit follow summary',async()=>{
+  const urls:string[]=[];
+  const row={profileUrl:'https://instagram.com/dellmyra_souza/',
+    profileName:'dellmyra_souza',query:'https://www.instagram.com/mameto_lueji/'};
+  const result=await fetchFollowersRunReport('secret',container,'mameto_lueji',
+    async(url,opts)=>{
+      urls.push(url);
+      assert.equal(opts?.method,'GET');
+      assert.equal(opts?.credentials,'omit');
+      assert.equal(opts?.redirect,'error');
+      if(url.includes('fetch-result-object'))
+        return new Response(JSON.stringify({resultObject:[row]}),{status:200});
+      return new Response(JSON.stringify({output:'Successful authentication\\n1 profile followed'}),{status:200});
+    });
+  assert.equal(urls.length,2);
+  assert.ok(urls.every(url=>new URL(url).searchParams.get('id')===container));
+  assert.deepEqual(result,{status:'provider-reported',
+    username:'dellmyra_souza',reportedCount:1});
+  assert.doesNotMatch(JSON.stringify(result),/secret|Successful authentication/);
+  assert.equal(parseReportedFollowSummary({output:'1 profile followed'}),true);
+  assert.equal(parseReportedFollowSummary({output:'0 profiles followed'}),false);
+  assert.equal(parseReportedFollowSummary({output:'5 profiles followed'}),false);
+});
+test('empty or unsubstantiated output never counts as a follow',async()=>{
+  const row={profileUrl:'https://instagram.com/dellmyra_souza/',
+    profileName:'dellmyra_souza',query:'https://www.instagram.com/mameto_lueji/'};
+  const report=await fetchFollowersRunReport('secret',container,'mameto_lueji',
+    async(url)=>new Response(JSON.stringify(url.includes('fetch-result-object')
+      ? {resultObject:[row]} : {output:'No profiles followed'}),{status:200}));
+  assert.deepEqual(report,{status:'result-only',
+    username:'dellmyra_souza',reportedCount:1});
+  const absent=await fetchFollowersRunReport('secret',container,'mameto_lueji',
+    async()=>new Response(JSON.stringify({resultObject:[]}),{status:200}));
+  assert.deepEqual(absent,{status:'none'});
+});
 test('audit record never fabricates target username or follow success',()=>{
   assert.equal(FOLLOWERS_TRIAL_ACTION,'reference_followers_trial_v1');
   const evidence=makeTrialEvidence({
@@ -131,6 +186,16 @@ test('audit record never fabricates target username or follow success',()=>{
   assert.deepEqual(parseTrialEvidence(JSON.stringify(evidence)),evidence);
   assert.equal(parseTrialEvidence(JSON.stringify({...evidence,followConfirmed:true})),null);
   assert.equal(parseTrialEvidence('sessioncookie'),null);
+  const providerRecord=makeTrialEvidence({...evidence,
+    stage:'provider-reported',containerId:container,
+    providerReportedUsername:'dellmyra_souza',providerReportedCount:1});
+  assert.equal(providerRecord?.followConfirmed,false);
+  assert.equal(parseTrialEvidence(JSON.stringify(providerRecord))?.providerReportedUsername,
+    'dellmyra_souza');
+  assert.equal(makeTrialEvidence({...providerRecord!,
+    followConfirmed:true}),null);
+  assert.equal(makeTrialEvidence({...evidence,
+    stage:'provider-reported',containerId:container}),null);
 });
 test('route is admin Preview only, idempotent and separate from read-only cron',()=>{
   const route=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');

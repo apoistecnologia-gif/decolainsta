@@ -11,6 +11,7 @@ type Inspection={
 type Attempt={
   stage:string;requestedAt:string|null;followConfirmed:false;
   recipientKnown:false;mayRetryAutomatically:false;
+  providerReportedUsername?:string|null;providerReportedCount?:number;
 };
 type Trial={
   enabled:boolean;accountName:string;referenceRegistered:boolean;
@@ -39,7 +40,7 @@ export function SocialPilotPanel(){
     }catch{setNotice('Não foi possível conferir a preparação do teste.');}
     finally{setBusy(false);}
   }
-  async function send(operation:'launch-one'|'check-result'){
+  async function send(operation:'launch-one'|'check-result'|'check-provider-report'){
     if(busy)return;
     if(operation==='launch-one' &&
         (!approved||!trial?.enabled||typedName!==trial.accountName||
@@ -53,12 +54,22 @@ export function SocialPilotPanel(){
         method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
         headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),
       });
-      const result=await response.json() as {status?:string;containerStatus?:string};
+      const result=await response.json() as {
+        status?:string;containerStatus?:string;providerStatus?:string;
+        providerReportedUsername?:string|null;
+      };
       setNotice(response.ok?
         operation==='launch-one'
           ?'Lançamento solicitado. Isso não comprova que o Instagram seguiu alguém.'
-          :'Consulta concluída: '+(result.containerStatus??'resultado registrado')+
-            '. Ainda não há confirmação de follow.':
+          :operation==='check-provider-report'
+            ?result.providerStatus==='provider-reported'
+              ?'O PhantomBuster reportou 1 perfil seguido: @'+
+                result.providerReportedUsername+
+                '. Verificação independente no Instagram ainda pendente.'
+              :'Resultado do provedor: '+(result.providerStatus??'indisponível')+
+                '. A conclusão do contêiner continua preservada.'
+            :'Consulta concluída: '+(result.containerStatus??'resultado registrado')+
+              '. Ainda não há confirmação independente do follow.':
         'Resultado não confirmado. Não repita a execução automaticamente.');
       setApproved(false);setTypedName('');
       const state=await fetch('/api/operator/followers-auto-follow-run',{
@@ -113,10 +124,22 @@ export function SocialPilotPanel(){
           trial.attempt.stage)&&
         <Button type="button" variant="outline" disabled={busy}
           onClick={()=>void send('check-result')}>Consultar execução registrada</Button>}
+      {trial.attempt&&['container-finished','provider-reported'].includes(
+        trial.attempt.stage)&&
+        <Button type="button" variant="outline" disabled={busy}
+          onClick={()=>void send('check-provider-report')}>
+          Importar resultado desta execução
+        </Button>}
+      {trial.attempt?.providerReportedUsername&&
+        <p>PhantomBuster reportou 1 perfil seguido:
+          <strong> @{trial.attempt.providerReportedUsername}</strong>.
+          Conferência independente no Instagram: pendente.</p>}
       {trial.attempt&&['reserved','uncertain'].includes(trial.attempt.stage)&&
         <p>A tentativa não tem contêiner confirmado. Não repita o lançamento;
           confira diretamente o histórico do agente no PhantomBuster.</p>}
-      <p>Follows confirmados: 0. Unfollow automático: desativado.</p>
+      <p>Follows reportados pelo PhantomBuster: {trial.attempt?.providerReportedCount??0}.
+        Follows confirmados independentemente: 0.
+        Unfollow automático: desativado.</p>
     </div>}
     {notice&&<p role="alert" className="text-sm">{notice}</p>}
   </section>;

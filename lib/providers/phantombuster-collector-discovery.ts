@@ -6,6 +6,8 @@
  * A match establishes ONLY provider configuration, not that the Instagram
  * follower relationship or completed run has been independently verified.
  */
+import { phantomBusterRequestHeaders } from './phantombuster-request-headers';
+
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
 export type DiscoveredFollowerCollector = {
@@ -122,7 +124,7 @@ export async function discoverFollowerCollectors(
     inventoryUrl.searchParams.set('withArgument', 'true');
     const options: RequestInit = {
       method: 'GET',
-      headers: { Accept: 'application/json', 'X-Phantombuster-Key': apiKey },
+      headers: phantomBusterRequestHeaders(apiKey),
       redirect: 'error', cache: 'no-store', credentials: 'omit',
       signal: AbortSignal.timeout(8000),
     };
@@ -220,7 +222,7 @@ async function inspectFromAgentInventory(
   try {
     const response = await fetcher(url.toString(), {
       method: 'GET',
-      headers: { Accept: 'application/json', 'X-Phantombuster-Key': apiKey },
+      headers: phantomBusterRequestHeaders(apiKey),
       cache: 'no-store', redirect: 'error', credentials: 'omit',
       signal: AbortSignal.timeout(8000),
     });
@@ -259,7 +261,7 @@ export async function inspectConfiguredFollowerCollector(
   try {
     const response = await fetcher(url.toString(), {
       method: 'GET',
-      headers: { Accept: 'application/json', 'X-Phantombuster-Key': apiKey },
+      headers: phantomBusterRequestHeaders(apiKey),
       cache: 'no-store', redirect: 'error', credentials: 'omit',
       signal: AbortSignal.timeout(8000),
     });

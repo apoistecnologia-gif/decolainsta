@@ -33,7 +33,9 @@ sem erro; não prova que o perfil de teste efetivamente seguiu alguém.
 É preciso verificar os resultados específicos da automação e o
 estado real da conta antes de atualizar estatísticas.
 
-A flag adicional permanece AUSENTE. Nenhuma execução real foi feita.
+A flag é DESATIVADA por padrão. Habilitá-la no Preview não executa nada:
+a pessoa autenticada ainda precisa confirmar a conta exata, aceitar uma ação
+real e clicar no lançamento. Nenhuma execução real foi feita.
 A produção não recebe variáveis ou rotas ativas. Unfollow permanece
 desabilitado. O agendador de importação da audiência é independente.
 

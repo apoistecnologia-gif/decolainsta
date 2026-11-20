@@ -109,8 +109,13 @@ export function SocialPilotPanel(){
             onClick={()=>void send('launch-one')}>Autorizar uma execução real</Button>
         </div>}
       {trial.attempt&&
+        ['launch-accepted','container-finished','container-failed'].includes(
+          trial.attempt.stage)&&
         <Button type="button" variant="outline" disabled={busy}
           onClick={()=>void send('check-result')}>Consultar execução registrada</Button>}
+      {trial.attempt&&['reserved','uncertain'].includes(trial.attempt.stage)&&
+        <p>A tentativa não tem contêiner confirmado. Não repita o lançamento;
+          confira diretamente o histórico do agente no PhantomBuster.</p>}
       <p>Follows confirmados: 0. Unfollow automático: desativado.</p>
     </div>}
     {notice&&<p role="alert" className="text-sm">{notice}</p>}

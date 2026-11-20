@@ -175,12 +175,21 @@ export function SimpleReferencesPanel() {
         if (response.ok) {
           const info = await response.json() as {
             enabled?: boolean; examined?: number; newCandidatesObserved?: number;
-            historicalOnly?: number;
+            historicalOnly?: number; failed?: number; indexed?: number;
+            deferredByHistoryLimit?: number;
           };
           if (info.enabled && (info.newCandidatesObserved ?? 0) > 0)
-            phases.push((info.newCandidatesObserved ?? 0) + ' candidato(s) novos de coleta posterior ao vínculo.');
+            phases.push((info.newCandidatesObserved ?? 0) + ' nome(s) novos da coleta posterior ao vínculo.');
+          if (info.enabled && (info.indexed ?? 0) > 0)
+            phases.push((info.indexed ?? 0) + ' nome(s) adicionados ao índice.');
+          if (info.enabled && (info.deferredByHistoryLimit ?? 0) > 0)
+            phases.push((info.deferredByHistoryLimit ?? 0) + ' nome(s) aguardam ampliação do histórico.');
           if (info.enabled && (info.historicalOnly ?? 0) > 0)
             phases.push('Resultado antigo encontrado: registros históricos preservados, sem nova importação.');
+          if (info.enabled && info.examined === 0)
+            phases.push('Nova leitura ainda não realizada: intervalo de segurança entre consultas.');
+          if (info.enabled && (info.failed ?? 0) > 0)
+            phases.push('Leitura do coletor não concluída; confira o diagnóstico da conexão.');
         }
       } catch {
         // Previously stored data remains readable when the provider is unavailable.

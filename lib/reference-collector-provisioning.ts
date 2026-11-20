@@ -27,8 +27,8 @@ export type ProvisioningPlan = {
 
 /** A durable claim (even a malformed one) is not retried automatically.
  * No selector depends on pilot usernames or manually chosen profile IDs.
- * Fairness: take the earliest eligible reference of each customer before
- * taking that customer's second reference.
+ * Fairness: favor accounts with the fewest prepared references; then select
+ * the earliest eligible reference, without assuming any pilot account.
  */
 export function planCollectorProvisioning(
   references: ProvisioningReference[],
@@ -49,6 +49,9 @@ export function planCollectorProvisioning(
   }
   let linked=0, pendingSetup=0, previousAttemptNeedsReview=0;
   let explicitlyRevoked=0;
+  const preparedByCustomer = new Map<string, number>();
+  const countPrepared = (accountId: string) => preparedByCustomer.set(
+    accountId, (preparedByCustomer.get(accountId) ?? 0) + 1);
   const eligibleByCustomer = new Map<string, ProvisioningReference[]>();
   const ordered = [...references].sort((a,b) =>
     a.createdAt.getTime() - b.createdAt.getTime() ||
@@ -56,8 +59,9 @@ export function planCollectorProvisioning(
   for (const ref of ordered) {
     const id = key(ref.accountId, ref.id);
     if (revoked.has(id)) { explicitlyRevoked++; continue; }
-    if (bound.has(id)) { linked++; continue; }
+    if (bound.has(id)) { linked++; countPrepared(ref.accountId); continue; }
     if (seen.has(id)) {
+      countPrepared(ref.accountId);
       const existing = seen.get(id);
       if (existing?.state === 'created' ||
           existing?.state === 'existing-draft') pendingSetup++;
@@ -71,8 +75,10 @@ export function planCollectorProvisioning(
   }
   const eligible = [...eligibleByCustomer.values()].reduce((n,group) => n + group.length,0);
   const groups = [...eligibleByCustomer.entries()].map(([accountId,rows])=>({
-    accountId, first: rows[0].createdAt.getTime(), rows,
-  })).sort((a,b)=>a.first-b.first||a.accountId.localeCompare(b.accountId));
+    accountId, processed: preparedByCustomer.get(accountId) ?? 0,
+    first: rows[0].createdAt.getTime(), rows,
+  })).sort((a,b)=>a.processed-b.processed ||
+    a.first-b.first||a.accountId.localeCompare(b.accountId));
   const top = groups[0]?.rows[0];
   return {
     total: references.length,

@@ -25,7 +25,7 @@ import { AUDIENCE_SOURCE_BINDING_ACTION, parseAudienceSourceBinding }
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
-type RefreshResult = 'skipped' | 'unchanged' | 'imported' | 'failed' | 'history-limit';
+type RefreshResult = 'skipped' | 'unchanged' | 'imported' | 'failed' | 'history-limit' | 'historical-only';
 type RefreshState = { status: RefreshResult; newNames: number; indexed: number; deferredNames?: number };
 
 // A serialized claim prevents two cron workers from importing the same reference
@@ -106,10 +106,16 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
     const approved = parseAudienceSourceBinding(latestBinding?.details ?? null);
     const completed = result.completedAt ? Date.parse(result.completedAt) : NaN;
     if (!approved?.enabled || approved.collectorAgentId !== source.collectorAgentId ||
-        !Number.isFinite(completed) || !latestBinding ||
-        completed < latestBinding.createdAt.getTime()) {
+        !Number.isFinite(completed) || !latestBinding) {
       await finish(claimId, 'unverified-container-timestamp-or-binding');
       return { status: 'failed', newNames: 0, indexed: 0 };
+    }
+    if (completed < latestBinding.createdAt.getTime()) {
+      // Results produced BEFORE the approved association are historical, not
+      // failed. Keep pre-existing 429 usernames visible as unverified history
+      // without silently re-importing them or pretending this was a new run.
+      await finish(claimId, 'historical-only');
+      return { status: 'historical-only', newNames: 0, indexed: 0 };
     }
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -274,6 +280,7 @@ export async function runReadOnlyAudienceRefresh(onlyAccountId?: string) {
       unchanged: results.filter(r => r.status === 'unchanged').length,
       skipped: results.filter(r => r.status === 'skipped').length,
       failed: results.filter(r => r.status === 'failed').length,
+      historicalOnly: results.filter(r => r.status === 'historical-only').length,
       historyLimit: results.filter(r => r.status === 'history-limit').length,
       newCandidatesObserved: results.reduce((sum,r) => sum + r.newNames, 0),
       deferredByHistoryLimit: results.reduce((sum,r) => sum + (r.deferredNames ?? 0), 0),

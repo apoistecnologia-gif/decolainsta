@@ -22,13 +22,16 @@ export type CollectorDiscoveryResult = {
 
 const MAX_AGENTS = 200;
 const MAX_BYTES = 2_000_000;
+// PhantomBuster also uses "spreadsheetUrl" for the ONE direct Instagram
+// profile URL entered in "A URL". Accept it ONLY when the value is an exact
+// Instagram profile URL; any Google Sheet, CSV, or external URL fails closed.
 const KNOWN_TARGET_KEYS = [
   'instagramProfileUrl', 'profileUrl', 'instagramUrl',
   'targetProfileUrl', 'profileLink', 'targetUsername',
+  'spreadsheetUrl', 'spreadsheetURL', 'inputUrl',
 ] as const;
 const FORBIDDEN_MULTI_TARGET_KEYS = [
-  'spreadsheetUrl', 'spreadsheetURL', 'inputFileUrl', 'inputUrl',
-  'listUrl', 'urls', 'profiles', 'profileUrls',
+  'inputFileUrl', 'listUrl', 'urls', 'profiles', 'profileUrls',
 ] as const;
 
 const obj = (value: unknown): Record<string, unknown> | null =>

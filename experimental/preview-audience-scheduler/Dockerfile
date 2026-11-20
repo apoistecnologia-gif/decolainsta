@@ -1,0 +1,6 @@
+FROM python:3.12.7-alpine3.20
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app
+COPY run.py /app/run.py
+USER 65532:65532
+CMD ["python", "/app/run.py"]

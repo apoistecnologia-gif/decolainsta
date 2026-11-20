@@ -37,6 +37,10 @@ jobs:
           python-version: '3.12'
       - name: Testar adaptador privado (sem Instagram e sem credenciais)
         run: python -m unittest discover -s experimental/private-instagram-worker/tests -v
+      - name: Testar agendador passivo do Preview (sem rede)
+        run: python -m unittest discover -s experimental/preview-audience-scheduler/tests -v
+      - name: Construir agendador isolado sem credenciais
+        run: docker build -t decolainsta-preview-audience-scheduler-ci experimental/preview-audience-scheduler
       - name: Validar imagem Docker do serviço passivo Railway
         run: |
           docker build -t decolainsta-private-pilot-ci experimental/private-instagram-worker

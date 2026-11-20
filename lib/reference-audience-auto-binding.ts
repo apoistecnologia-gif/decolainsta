@@ -19,8 +19,12 @@ export function planExactReadOnlyCollectorBindings(
   discovered: DiscoveredFollowerCollector[],
   existing: AudienceRefreshSource[],
   maxNew = 3,
+  reservedAgents: ReadonlySet<string> = new Set(),
 ): AutoBindingPlan {
-  const used = new Set(existing.map(e => e.collectorAgentId));
+  const used = new Set([
+    ...existing.map(e => e.collectorAgentId),
+    ...reservedAgents,
+  ]);
   const assigned = new Set(existing.map(e => e.accountId + ':' + e.referenceId));
   const candidates: AudienceRefreshSource[] = [];
   let alreadyBound = 0, unmatched = 0, ambiguousOrInUse = 0, deferred = 0;

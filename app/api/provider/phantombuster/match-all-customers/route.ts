@@ -7,6 +7,10 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { discoverFollowerCollectors } from '@/lib/providers/phantombuster-collector-discovery';
 import { planGlobalReadOnlyBindings } from '@/lib/reference-audience-global-matching';
+import {
+  COLLECTOR_DRAFT_ACTION, COLLECTOR_DRAFT_MAX_LOGS,
+  reservedCollectorDraftAgents,
+} from '@/lib/reference-collector-draft-events';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
@@ -64,7 +68,7 @@ export async function POST(request: Request) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const summary = await prisma.$transaction(async tx => {
-        const [refs, rows] = await Promise.all([
+        const [refs, rows, drafts] = await Promise.all([
           tx.targetAccount.findMany({
             // Global scan with a hard ceiling; refuse partial decisions.
             select: { id: true, username: true, instagramAccountId: true },
@@ -80,8 +84,15 @@ export async function POST(request: Request) {
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: MAX_SOURCE_BINDING_LOGS + 1,
           }),
+          tx.activityLog.findMany({
+            where: { action: COLLECTOR_DRAFT_ACTION },
+            select: { targetUsername: true, details: true },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: COLLECTOR_DRAFT_MAX_LOGS + 1,
+          }),
         ]);
-        if (refs.length > 1000 || rows.length > MAX_SOURCE_BINDING_LOGS)
+        if (refs.length > 1000 || rows.length > MAX_SOURCE_BINDING_LOGS ||
+            drafts.length > COLLECTOR_DRAFT_MAX_LOGS)
           return null;
 
         const existing = resolveLatestAudienceBindings(rows);
@@ -92,6 +103,7 @@ export async function POST(request: Request) {
             accountId: ref.instagramAccountId,
           })),
           discovered.collectors, existing, revoked, 3,
+          reservedCollectorDraftAgents(drafts),
         );
         if (plan.candidates.length) {
           await tx.activityLog.createMany({

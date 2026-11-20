@@ -8,6 +8,10 @@ import { prisma } from '@/lib/db';
 import { verifyConfiguredFollowerCollector } from '@/lib/providers/phantombuster-collector-discovery';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
+  COLLECTOR_DRAFT_ACTION, COLLECTOR_DRAFT_MAX_LOGS,
+  reservedCollectorDraftAgents,
+} from '@/lib/reference-collector-draft-events';
+import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
   makeAudienceSourceBinding, resolveLatestAudienceBindings, disabledAudienceReferenceKeys,
 } from '@/lib/reference-audience-source-registry';
@@ -102,16 +106,27 @@ export async function POST(request: Request) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const outcome = await prisma.$transaction(async tx => {
-        const rows = await tx.activityLog.findMany({
-          where: { action: AUDIENCE_SOURCE_BINDING_ACTION },
-          select: {
-            id: true, instagramAccountId: true, targetUsername: true,
-            details: true, createdAt: true,
-          },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          take: MAX_SOURCE_BINDING_LOGS + 1,
-        });
-        if (rows.length > MAX_SOURCE_BINDING_LOGS)
+        const [rows, drafts] = await Promise.all([
+          tx.activityLog.findMany({
+            where: { action: AUDIENCE_SOURCE_BINDING_ACTION },
+            select: {
+              id: true, instagramAccountId: true, targetUsername: true,
+              details: true, createdAt: true,
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: MAX_SOURCE_BINDING_LOGS + 1,
+          }),
+          operation === 'bind'
+            ? tx.activityLog.findMany({
+                where: { action: COLLECTOR_DRAFT_ACTION },
+                select: { targetUsername: true, details: true },
+                orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+                take: COLLECTOR_DRAFT_MAX_LOGS + 1,
+              })
+            : Promise.resolve([]),
+        ]);
+        if (rows.length > MAX_SOURCE_BINDING_LOGS ||
+            drafts.length > COLLECTOR_DRAFT_MAX_LOGS)
           return 'registry-capacity' as const;
         const current = resolveLatestAudienceBindings(rows);
         if (operation === 'bind' && current.some(s =>
@@ -122,6 +137,11 @@ export async function POST(request: Request) {
           s.referenceId === referenceId);
         if (operation === 'bind' && existing?.collectorAgentId === agentId)
           return 'unchanged' as const;
+        // A manually selected ID must not bypass prepared-source identity
+        // reconciliation, even if its original reference was deleted.
+        if (operation === 'bind' &&
+            reservedCollectorDraftAgents(drafts).has(agentId!))
+          return 'agent-reserved' as const;
         // Even without an active binding, keep the explicit unbind as a
         // tombstone: future auto-discovery must never re-enable this reference.
         if (operation === 'unbind' &&
@@ -144,7 +164,8 @@ export async function POST(request: Request) {
         collectorTypeVerified: operation === 'bind',
         referenceVerifiedByInstagram: false,
         instagramActionsExecuted: 0,
-      }, { status: outcome === 'agent-in-use' || outcome === 'registry-capacity' ? 409 : 200,
+      }, { status: outcome === 'agent-in-use' || outcome === 'agent-reserved' ||
+          outcome === 'registry-capacity' ? 409 : 200,
         headers: HEADERS });
     } catch (error) {
       if ((error as {code?: string})?.code === 'P2034' && attempt < 2) continue;

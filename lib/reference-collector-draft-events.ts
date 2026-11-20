@@ -45,6 +45,23 @@ export function parseCollectorDraftEvent(raw: unknown): CollectorDraftEvent | nu
     record.state as CollectorDraftState, record.agentId as string | null);
 }
 
+/**
+ * Reserved agent identities survive reference deletion, revocation and newer
+ * uncertain draft events. Generic matching must never appropriate a prepared
+ * agent from another customer. Only verified reconciliation may bind it.
+ */
+export function reservedCollectorDraftAgents(
+  rows: ReadonlyArray<Pick<ActivityLog, 'details' | 'targetUsername'>>,
+): ReadonlySet<string> {
+  const reserved = new Set<string>();
+  for (const row of rows) {
+    const event = parseCollectorDraftEvent(row.details);
+    if (event?.agentId && event.referenceId === row.targetUsername)
+      reserved.add(event.agentId);
+  }
+  return reserved;
+}
+
 /** Any previous claim blocks another remote create, even if it failed/unknown. */
 export function collectorDraftAlreadyAttempted(
   rows: Pick<ActivityLog, 'details' | 'targetUsername'>[],

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { planGlobalReadOnlyBindings } from '../lib/reference-audience-global-matching';
+import {
+  makeCollectorDraftEvent, reservedCollectorDraftAgents,
+} from '../lib/reference-collector-draft-events';
 
 const collectors = [
   {collectorAgentId:'1111111111111111',referenceUsername:'ref_a'},
@@ -53,6 +56,42 @@ test('revoked targets are excluded; one collector already owned cannot cross ten
   assert.equal(shared.ambiguousOrInUse,1);
 });
 
+test('a draft agent stays reserved for its original owner after revoked or deleted reference', () => {
+  const agentId = '1111111111111111';
+  const reserved = reservedCollectorDraftAgents([
+    {
+      targetUsername: 'old_reference',
+      details: JSON.stringify(makeCollectorDraftEvent(
+        'old_reference', 'created', agentId)),
+    },
+    {
+      targetUsername: 'old_reference',
+      details: JSON.stringify(makeCollectorDraftEvent('old_reference', 'unconfirmed')),
+    },
+  ]);
+  assert.deepEqual([...reserved], [agentId]);
+  const foreign = [{accountId:'customer_2',id:'new_ref',username:'ref_a'}];
+  const plan = planGlobalReadOnlyBindings(foreign, collectors, [],
+    new Set(['customer_1:old_reference']), 3, reserved);
+  assert.equal(plan.candidates.length, 0);
+  assert.equal(plan.ambiguousOrInUse, 1);
+  assert.equal(plan.unmatched, 0);
+  // No reservation means an independent existing source remains matchable.
+  assert.equal(planGlobalReadOnlyBindings(foreign, collectors, [],
+    new Set()).candidates.length, 1);
+});
+
+test('malformed or wrongly associated draft records do not invent ownership', () => {
+  const reserved = reservedCollectorDraftAgents([
+    {targetUsername:'ref_a', details:'malformed'},
+    {targetUsername:'ref_a',details:JSON.stringify(makeCollectorDraftEvent(
+      'other_ref','created','9999999999999999'))},
+    {targetUsername:'ref_b',details:JSON.stringify(makeCollectorDraftEvent(
+      'ref_b','existing-draft','2222222222222222'))},
+  ]);
+  assert.deepEqual([...reserved], ['2222222222222222']);
+});
+
 test('global operator batch is bounded and uses full candidate set, not just first customer', () => {
   const refs = [
     {accountId:'customer_a',id:'r1',username:'ref_a'},
@@ -76,6 +115,8 @@ test('operator endpoint is privileged, origin checked, transactionally scoped an
   assert.match(route,/discoverFollowerCollectors\(apiKey\)/);
   assert.match(route,/tx\.targetAccount\.findMany/);
   assert.match(route,/tx\.activityLog\.findMany/);
+  assert.match(route,/action: COLLECTOR_DRAFT_ACTION/);
+  assert.match(route,/reservedCollectorDraftAgents\(drafts\)/);
   assert.match(route,/planGlobalReadOnlyBindings/);
   assert.match(route,/Prisma\.TransactionIsolationLevel\.Serializable/);
   assert.match(route,/makeAudienceSourceBinding/);
@@ -84,6 +125,11 @@ test('operator endpoint is privileged, origin checked, transactionally scoped an
   assert.match(route,/launchesCollectors: false/);
   assert.match(route,/instagramActionsExecuted: 0/);
   assert.doesNotMatch(route,/agents\/launch|agents\/save|user_follow|user_unfollow|followAction\.(create|update|delete)/);
+  const oneCustomer = readFileSync(
+    'app/api/provider/phantombuster/match-collectors/route.ts','utf8');
+  assert.match(oneCustomer,/action: COLLECTOR_DRAFT_ACTION/);
+  assert.match(oneCustomer,/reservedCollectorDraftAgents\(drafts\)/);
+  assert.match(oneCustomer,/Prisma\.TransactionIsolationLevel\.Serializable/);
 });
 
 test('customer status endpoint only returns owned reference readiness and no provider secrets', () => {

@@ -7,6 +7,10 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { discoverFollowerCollectors } from '@/lib/providers/phantombuster-collector-discovery';
 import { planExactReadOnlyCollectorBindings } from '@/lib/reference-audience-auto-binding';
+import {
+  COLLECTOR_DRAFT_ACTION, COLLECTOR_DRAFT_MAX_LOGS,
+  reservedCollectorDraftAgents,
+} from '@/lib/reference-collector-draft-events';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
@@ -89,7 +93,7 @@ export async function POST(request: Request) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const summary = await prisma.$transaction(async tx => {
-        const [rows, currentRefs] = await Promise.all([
+        const [rows, currentRefs, drafts] = await Promise.all([
           tx.activityLog.findMany({
             where: { action: AUDIENCE_SOURCE_BINDING_ACTION },
             select: {
@@ -103,8 +107,15 @@ export async function POST(request: Request) {
             where: { id: { in: refs.map(ref => ref.id) }, instagramAccountId: accountId },
             select: { id: true, username: true },
           }),
+          tx.activityLog.findMany({
+            where: { action: COLLECTOR_DRAFT_ACTION },
+            select: { targetUsername: true, details: true },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: COLLECTOR_DRAFT_MAX_LOGS + 1,
+          }),
         ]);
-        if (rows.length > MAX_SOURCE_BINDING_LOGS) return null;
+        if (rows.length > MAX_SOURCE_BINDING_LOGS ||
+            drafts.length > COLLECTOR_DRAFT_MAX_LOGS) return null;
         // Protect against deleted/renamed refs and concurrent binds.
         const active = resolveLatestAudienceBindings(rows);
         const suppressed = disabledAudienceReferenceKeys(rows);
@@ -112,7 +123,8 @@ export async function POST(request: Request) {
           .filter(ref => !suppressed.has(accountId + ':' + ref.id))
           .map(ref => ({ id: ref.id, username: ref.username, accountId }));
         const plan = planExactReadOnlyCollectorBindings(
-          mapped, discovered.collectors, active, 3);
+          mapped, discovered.collectors, active, 3,
+          reservedCollectorDraftAgents(drafts));
         if (plan.candidates.length) await tx.activityLog.createMany({
           data: plan.candidates.map(source => ({
             instagramAccountId: source.accountId,

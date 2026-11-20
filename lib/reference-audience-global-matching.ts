@@ -26,6 +26,7 @@ export function planGlobalReadOnlyBindings(
   existing: AudienceRefreshSource[],
   revokedReferenceKeys: ReadonlySet<string>,
   maxNew = 3,
+  reservedAgents: ReadonlySet<string> = new Set(),
 ): GlobalMatchPlan {
   const key = (r: SavedReferenceForMatch) => r.accountId + ':' + r.id;
   const assigned = new Set(existing.map(r => r.accountId + ':' + r.referenceId));
@@ -48,7 +49,8 @@ export function planGlobalReadOnlyBindings(
   const collisions = eligible.filter(ref =>
     !assigned.has(key(ref)) && (owners.get(ref.username.toLowerCase())?.size ?? 0) > 1);
   const safe = eligible.filter(ref => !collisions.includes(ref));
-  const planned = planExactReadOnlyCollectorBindings(safe, discovered, existing, maxNew);
+  const planned = planExactReadOnlyCollectorBindings(
+    safe, discovered, existing, maxNew, reservedAgents);
   return {
     ...planned,
     revoked: references.length - eligible.length,

@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { readCollectorAudience } from '@/lib/providers/phantombuster-audience';
-import { verifyConfiguredFollowerCollector } from '@/lib/providers/phantombuster-collector-discovery';
+import { inspectConfiguredFollowerCollector } from '@/lib/providers/phantombuster-collector-discovery';
 import {
   AUDIENCE_HISTORY_ACTION, MAX_HISTORY_BATCHES,
   makeAudienceSnapshot, parseAudienceSnapshot,
@@ -79,11 +79,16 @@ async function refreshSource(source: AudienceRefreshSource, apiKey: string): Pro
   try {
     // A collector may have been reconfigured after initial binding: fail closed
     // unless its CURRENT target still exactly matches this saved reference.
-    const inspected = await verifyConfiguredFollowerCollector(
+    const inspected = await inspectConfiguredFollowerCollector(
       apiKey, source.collectorAgentId, reference.username);
     if (inspected !== 'matched') {
-      await finish(claimId, inspected === 'mismatch'
-        ? 'source-mismatch' : 'source-unavailable');
+      const denied: Record<string, string> = {
+        'mismatch': 'source-mismatch',
+        'not-found': 'source-not-found',
+        'invalid-key': 'source-unauthorized',
+        'rate-limited': 'source-rate-limited',
+      };
+      await finish(claimId, denied[inspected] ?? 'source-unavailable');
       return { status: 'failed', newNames: 0, indexed: 0 };
     }
     // Read a COMPLETED result only. Never launch a collector or touch Instagram.

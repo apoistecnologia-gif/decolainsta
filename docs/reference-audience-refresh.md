@@ -331,3 +331,45 @@ Isso remove o bloqueio deste piloto, mas o dimensionamento para milhares
 de perfis e muitos clientes ainda precisará de persistência paginada,
 limites por plano e testes de carga. Não usar a ampliação como autorização
 para iniciar coletas externas ou habilitar automação do Instagram.
+
+## Preparação multi-cliente (20/11/2026)
+
+O cadastro de referências continua separado de qualquer coleta ou atividade no
+Instagram. Um cliente autenticado escolhe **sua** conta registrada em
+`/references`, adiciona uma ou várias referências, vê a situação de
+preparação de cada uma e os nomes indexados somente na própria conta.
+`GET /api/reference-collection-status?accountId=...` verifica titularidade
+e devolve apenas `source-linked` ou `awaiting-collector`, sem agentes,
+cookies, nomes privados de outras contas ou leitura externa. O painel
+principal apresenta isso como "Fonte de dados vinculada" ou
+"Aguardando preparação"; não exibe um painel técnico novo.
+
+Para a gestão do operador, o Preview tem
+`POST /api/provider/phantombuster/match-all-customers`
+com `{"operation":"match-all-existing"}`. A rota requer usuário
+autenticado com `role=admin`, origem correspondente e flags de leitura
+habilitadas. A opção aparece **somente no diagnóstico de administradores**.
+Em uma única solicitação, consulta o catálogo de **coletores existentes**
+do workspace e verifica todas as referências de todos os clientes,
+limitando a 1.000 referências, 5.000 eventos de vínculo e 3 novos vínculos
+por lote. Registra exclusivamente correspondências exatas de Follower
+Collectors aprovados em uma transação serializável.
+
+Proteção multi-inquilino: se dois clientes escolherem o mesmo nome de
+referência, o processo **não escolhe um deles** para tomar posse do mesmo
+agente. Também não usa coletores já vinculados, não reativa vínculos
+revogados e não usa um único nome de perfil para inferir autorização.
+Vínculos e resultados devem permanecer isolados por conta.
+
+**Limitação operacional importante:** uma referência nova pode continuar
+em "Aguardando preparação" caso não haja coletor já configurado no
+workspace. Esta função **não cria nem configura automaticamente novas
+conexões do Instagram**, não faz lançamentos, não habilita execução
+recorrente de coletores e não executa seguir/deixar de seguir. O piloto
+atual tem somente uma conta e um usuário com função comum; a rota de
+operador não se torna acessível até haver um operador autorizado pela
+administração da aplicação. Não elevar automaticamente a função do usuário.
+
+A conta `@mameto_lueji` e os nomes históricos do piloto não são
+referências globais nem exigências do sistema. Sua exclusão/retensão
+deve ser deliberada e não faz parte destas mudanças.

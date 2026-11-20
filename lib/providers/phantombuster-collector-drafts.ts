@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { phantomBusterRequestHeaders } from './phantombuster-request-headers';
 
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -80,8 +81,8 @@ export async function createUnconfiguredCollectorDraft(
       'https://api.phantombuster.com/api/v2/agents/save', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json', Accept: 'application/json',
-          'X-Phantombuster-Key': apiKey,
+          ...phantomBusterRequestHeaders(apiKey),
+          'Content-Type': 'application/json',
         },
         cache: 'no-store', redirect: 'error', credentials: 'omit',
         signal: AbortSignal.timeout(9000),
@@ -132,7 +133,7 @@ export async function findExistingCollectorDraft(
     url.searchParams.set('withArgument', 'false');
     const response = await fetcher(url.toString(), {
       method: 'GET',
-      headers: { Accept: 'application/json', 'X-Phantombuster-Key': apiKey },
+      headers: phantomBusterRequestHeaders(apiKey),
       cache: 'no-store', redirect: 'error', credentials: 'omit',
       signal: AbortSignal.timeout(8000),
     });

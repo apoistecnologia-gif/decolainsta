@@ -68,8 +68,10 @@ export function diagnoseSavedPrivateFilter(
         definition.type==='boolean')keys.add(key);
     }
   }
-  // Only the manifest's known UI metadata is traversed. Never scan raw
-  // arguments, cookies, descriptions, provider logs, or arbitrary fields.
+  // PhantomBuster's documented argumentForm.steps[].fields is an OBJECT
+  // keyed by argument names, not necessarily an array. Only an exact label
+  // paired with a typed boolean field is permitted to map to that key.
+  // Ambiguous inline-name/map-key conflicts are never treated as proof.
   const queue:unknown[]=[manifest.argumentForm];
   let steps=0;
   while(queue.length&&steps<300){
@@ -85,7 +87,25 @@ export function diagnoseSavedPrivateFilter(
       const key=node.name??node.key??node.field;
       if(fieldName(key))keys.add(key);
     }
+    // The form's "fields" member is a map. Never traverse its values as
+    // arbitrary objects: inspect only explicit, typed field definitions.
+    // The key in this map IS the argument name (provider schema).
+    const fields=obj(node.fields);
+    if(fields){
+      const entries=Object.entries(fields);
+      if(entries.length>100)return unverified('manifest-invalid');
+      for(const [key,value] of entries){
+        const def=obj(value);
+        if(!fieldName(key)||!def||!named(def.label??def.title)||
+          !booleanField(def))continue;
+        const inline=def.name??def.key??def.field;
+        if(inline!==undefined&&inline!==key)
+          return unverified('filter-ambiguous');
+        keys.add(key);
+      }
+    }
     for(const child of ['steps','fields','inputs','sections','groups','children']){
+      if(child==='fields'&&fields)continue;
       if(Object.prototype.hasOwnProperty.call(node,child))
         queue.push(node[child]);
     }

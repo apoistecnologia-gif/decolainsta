@@ -311,3 +311,71 @@ test('privacy fallback remains read-only and no invalid manifest grants executio
   const route=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
   assert.match(route,/privateExclusion!=='enabled'/);
 });
+
+test('documented PhantomBuster argumentForm steps.fields object maps labeled boolean key',async()=>{
+  const {diagnoseSavedPrivateFilter}=await import(
+    '../lib/providers/phantombuster-private-filter');
+  const withForm={...agent({excludePrivatesSwitch:true}),manifest:{
+    argumentForm:{enabled:true,steps:[{
+      slug:'advanced-settings',title:'Advanced settings',fields:{
+        ignoredText:{type:'text',label:'Other setting'},
+        excludePrivatesSwitch:{
+          type:'checkbox',label:'Exclude private profiles (optional)',
+        },
+      },
+    }]},
+    argumentSchema:{type:'object',properties:{
+      excludePrivatesSwitch:{type:'boolean'},
+    }},
+  }};
+  assert.deepEqual(diagnoseSavedPrivateFilter(withForm,id,ref),
+    {status:'enabled',reason:'verified'});
+  assert.deepEqual(diagnoseSavedPrivateFilter({...withForm,
+    argument:agent({excludePrivatesSwitch:false}).argument},id,ref),
+    {status:'disabled',reason:'verified'});
+  assert.equal(diagnoseSavedPrivateFilter({...withForm,
+    argument:agent().argument},id,ref).reason,'saved-argument-missing');
+  assert.equal(diagnoseSavedPrivateFilter({...withForm,
+    argument:agent({excludePrivatesSwitch:'true'}).argument},id,ref).reason,
+    'saved-value-invalid');
+  assert.equal(diagnoseSavedPrivateFilter({...withForm,
+    manifest:{argumentForm:{steps:[{fields:{
+      excludePrivatesSwitch:{
+        type:'text',label:'Exclude private profiles (optional)',
+      },
+    }}]}}},id,ref).reason,'filter-not-described');
+  assert.equal(diagnoseSavedPrivateFilter({...withForm,
+    manifest:{argumentForm:{steps:[{fields:{
+      excludePrivatesSwitch:{
+        type:'checkbox',label:'Exclude private profiles',name:'differentKey',
+      },
+    }}]}}},id,ref).reason,'filter-ambiguous');
+});
+test('manifest fields map works on 404 inventory fallback without guessing option value',async()=>{
+  const {inspectSavedPrivateFilterDetails}=await import(
+    '../lib/providers/phantombuster-private-filter');
+  const example={...agent({privateFilterKey:true}),manifest:{
+    argumentForm:{steps:[{fields:{
+      privateFilterKey:{
+        label:'Exclude private profiles',component:'switch',
+      },
+    }}]},
+  }};
+  const calls:string[]=[];
+  const diagnosis=await inspectSavedPrivateFilterDetails('API_SECRET',id,ref,
+    async(url,options)=>{
+      calls.push(new URL(url).pathname);
+      assert.equal(options?.method,'GET');
+      assert.equal(options?.redirect,'error');
+      if(url.includes('/agents/fetch?'))
+        return new Response('',{status:404});
+      return new Response(JSON.stringify({data:[{
+        ...example,sessionCookie:'CREDENTIAL_NEVER_RETURN',
+      }]}),{status:200});
+    });
+  assert.deepEqual(diagnosis,{status:'enabled',reason:'verified'});
+  assert.deepEqual(calls,[
+    '/api/v2/agents/fetch','/api/v2/agents/fetch-all',
+  ]);
+  assert.doesNotMatch(JSON.stringify(diagnosis),/API_SECRET|CREDENTIAL/);
+});

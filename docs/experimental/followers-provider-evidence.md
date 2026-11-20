@@ -170,3 +170,25 @@ validação rigorosa do caminho principal.
 
 É apenas leitura: nenhum follow, unfollow, alteração de agente,
 permissão ou credencial. A tentativa original permanece intacta.
+
+
+## Correção do interpretador do manifesto: `argumentForm.steps[].fields` como objeto
+
+A documentação do endpoint `/agents/fetch-all` descreve
+`manifest.argumentForm.steps[].fields` como um **mapa de campos**,
+não obrigatoriamente uma lista. O interpretador anterior só percorria
+arrays e objetos com o próprio `label`, ignorando as entradas desse mapa.
+Consequentemente retornava `filter-not-described` mesmo quando a
+descrição de um checkbox estava presente.
+
+Agora lê até 100 entradas de cada `fields` estruturado como objeto.
+O nome do campo é derivado exclusivamente da chave desse mapa,
+com `label` ou `title` igual a **Exclude private profiles**
+e tipo explicitamente booleano/checkbox/toggle/switch. Exige que
+qualquer nome em linha concorde com a chave, e que o argumento salvo
+seja um booleano literal. Ambiguidades, tipos inválidos, campo
+ausente ou manifesto indisponível continuam bloqueados.
+
+A consulta permanece restrita ao operador no Preview e não altera o
+agente ou executa ações no Instagram. A confirmação ainda dependerá
+da leitura de um manifesto verdadeiro; testes usam somente fixtures.

@@ -41,6 +41,15 @@ test('extract only unique explicit Instagram target, never login or spreadsheet 
     spreadsheetUrl:'https://www.instagram.com/one/?source=test',
   }),null);
   assert.equal(configuredFollowerCollectorReference({
+    spreadsheetUrl:'@mameto_lueji',
+  }),null);
+  assert.equal(configuredFollowerCollectorReference({
+    spreadsheetUrl:'http://www.instagram.com/mameto_lueji/',
+  }),null);
+  assert.equal(configuredFollowerCollectorReference({
+    inputUrl:'https://www.instagram.com/mameto_lueji/',
+  }),'mameto_lueji');
+  assert.equal(configuredFollowerCollectorReference({
     spreadsheetUrl:'https://www.instagram.com/one/followers/',
   }),null);
 
@@ -87,6 +96,16 @@ test('discover via documented agent inventory then inspect exact agent details',
     {collectorAgentId:'2222222222222222',referenceUsername:'reference_b'},
   ]);
   assert.doesNotMatch(JSON.stringify(result),/SECRET|sessionCookie|profileUrl|valid-server-key/);
+});
+
+test('existing 429-result collector is not presumed to match a different saved reference',async () => {
+  const collector = [{collectorAgentId:'6396548176148717',
+    referenceUsername:'mameto_lueji'}];
+  const plan = planExactReadOnlyCollectorBindings([
+    {accountId:'client_one',id:'ref_one',username:'another_reference'},
+  ],collector,[],3);
+  assert.equal(plan.candidates.length,0);
+  assert.equal(plan.unmatched,1);
 });
 
 test('previously configured single-URL follower collector can be discovered without new launch',async () => {

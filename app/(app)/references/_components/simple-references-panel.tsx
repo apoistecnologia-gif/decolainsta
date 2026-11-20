@@ -135,6 +135,7 @@ export function SimpleReferencesPanel() {
     setRefreshMessage('');
     try {
       const phases: string[] = [];
+      let needsAdminAuthorization = false;
       // Admin discovery associates only EXISTING matching collectors; regular
       // users get a safe 403, without selecting a collector or another profile.
       try {
@@ -159,7 +160,7 @@ export function SimpleReferencesPanel() {
         } else if (matched.status === 403) {
           const detail = await matched.json().catch(() => null) as { error?: string } | null;
           if (detail?.error === 'Acesso restrito ao administrador')
-            phases.push('Vínculo do coletor depende de autorização administrativa.');
+            needsAdminAuthorization = true;
         }
       } catch {
         // Provider discovery must never block saved reference records.
@@ -211,6 +212,8 @@ export function SimpleReferencesPanel() {
             status: string; providerReached: boolean;
             waitingForCollectors: number; linkedCollectors: number;
           };
+          if (needsAdminAuthorization && connection.waitingForCollectors > 0)
+            phases.push('Vínculo pendente de autorização administrativa.');
           if (connection.providerReached) {
             phases.push(connection.waitingForCollectors > 0
               ? 'API conectada; ' + connection.waitingForCollectors +

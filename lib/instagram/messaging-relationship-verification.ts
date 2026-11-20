@@ -78,7 +78,7 @@ export async function fetchMessagingRelationship(
   input:MessagingRelationshipInput,fetcher:Fetcher=fetch,
 ):Promise<MessagingRelationshipResult>{
   if(input.tokenKind!=='instagram-login')return {status:'not-supported'};
-  if(!id(input.igsid)||!id(input.instagramAccountId)||
+  if(!id(input.igsid)||!accountId(input.instagramAccountId)||
     !input.receipt||!input.receipt.consented||
     input.receipt.source!=='instagram-messaging-webhook'||
     input.receipt.instagramAccountId!==input.instagramAccountId||

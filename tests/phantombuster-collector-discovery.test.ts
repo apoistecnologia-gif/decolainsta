@@ -21,6 +21,29 @@ test('extract only unique explicit Instagram target, never login or spreadsheet 
   assert.equal(parseSingleInstagramReference('https://evil.example/foo.bar'),null);
   assert.equal(parseSingleInstagramReference('https://instagram.com/foo.bar/followers/'),null);
   assert.equal(configuredFollowerCollectorReference({profileUrl:'@fo.o'}),'fo.o');
+  assert.equal(configuredFollowerCollectorReference({
+    spreadsheetUrl:'https://www.instagram.com/mameto_lueji/',
+    sessionCookie:'SENSITIVE_DO_NOT_OUTPUT',
+  }),'mameto_lueji');
+  assert.equal(configuredFollowerCollectorReference({
+    spreadsheetUrl:'https://docs.google.com/spreadsheets/d/test-id/edit',
+  }),null);
+  assert.equal(configuredFollowerCollectorReference({
+    spreadsheetUrl:'https://example.com/results.csv',
+  }),null);
+  assert.equal(configuredFollowerCollectorReference({
+    profileUrl:'@one',spreadsheetUrl:'https://www.instagram.com/two/',
+  }),null);
+  assert.equal(configuredFollowerCollectorReference({
+    profileUrl:'@one',spreadsheetUrl:'https://www.instagram.com/one/',
+  }),'one');
+  assert.equal(configuredFollowerCollectorReference({
+    spreadsheetUrl:'https://www.instagram.com/one/?source=test',
+  }),null);
+  assert.equal(configuredFollowerCollectorReference({
+    spreadsheetUrl:'https://www.instagram.com/one/followers/',
+  }),null);
+
   assert.equal(configuredFollowerCollectorReference({profileUrl:'@foo',targetUsername:'@bar'}),null);
   assert.equal(configuredFollowerCollectorReference({
     profileUrl:'@foo',spreadsheetUrl:'https://example.com/list.csv'}),null);
@@ -64,6 +87,32 @@ test('discover via documented agent inventory then inspect exact agent details',
     {collectorAgentId:'2222222222222222',referenceUsername:'reference_b'},
   ]);
   assert.doesNotMatch(JSON.stringify(result),/SECRET|sessionCookie|profileUrl|valid-server-key/);
+});
+
+test('previously configured single-URL follower collector can be discovered without new launch',async () => {
+  let calls = 0;
+  const scan = await discoverFollowerCollectors('server-key',async url => {
+    calls++;
+    assert.match(url,/agents\/fetch-all/);
+    return new Response(JSON.stringify({
+      data: [{
+        id:'6396548176148717', script:'Instagram Follower Collector.js',
+        argument:JSON.stringify({
+          spreadsheetUrl:'https://www.instagram.com/mameto_lueji/',
+          sessionCookie:'PRIVATE_IG_SESSION',
+        }),
+      }],
+    }),{status:200});
+  });
+  assert.equal(calls,1);
+  assert.equal(scan.status,'ok');
+  assert.deepEqual(scan.collectors,[{
+    collectorAgentId:'6396548176148717',
+    referenceUsername:'mameto_lueji',
+  }]);
+  assert.equal(matchUniqueCollectorForReference(scan.collectors,'mameto_lueji'),
+    '6396548176148717');
+  assert.doesNotMatch(JSON.stringify(scan),/PRIVATE_IG_SESSION|sessionCookie|spreadsheetUrl/);
 });
 
 test('documented inventory with argument returns matching collectors in one provider call',async () => {

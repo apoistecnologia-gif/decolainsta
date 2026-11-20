@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import {
   AUDIENCE_REFRESH_ACTION, MAX_REFRESH_SOURCES, MAX_REFRESHES_PER_TICK,
-  MIN_REFRESH_INTERVAL_MS, boundAudienceDelta, dueRefreshSources,
+  MIN_REFRESH_INTERVAL_MS, MIN_MANUAL_CONFIG_RETRY_MS, boundAudienceDelta, dueRefreshSources,
   newAudienceNames, parseAudienceRefreshSources, refreshIsDue,
 } from '../lib/reference-audience-refresh';
 
@@ -37,6 +37,33 @@ test('janela de atualização evita reprocessamento e não aceita relógio futur
   assert.equal(refreshIsDue(new Date(now.getTime() - MIN_REFRESH_INTERVAL_MS + 1), now), false);
   assert.equal(refreshIsDue(new Date(now.getTime() + 1), now), false);
   assert.equal(refreshIsDue(new Date('invalid'), now), false);
+});
+
+test('manual read retries repaired collector failures, but respects rate limit and success cooldowns', () => {
+  const now = new Date('2026-11-20T14:00:00Z');
+  const older = new Date(now.getTime() - MIN_MANUAL_CONFIG_RETRY_MS);
+  const tooRecent = new Date(older.getTime() + 1);
+  for (const status of [
+    'source-not-found', 'source-unavailable', 'source-mismatch', 'source-unauthorized',
+  ]) {
+    assert.equal(refreshIsDue(older, now, {manualRetry:true,lastStatus:status}), true);
+    assert.equal(refreshIsDue(tooRecent, now, {manualRetry:true,lastStatus:status}), false);
+    assert.equal(refreshIsDue(older, now, {manualRetry:false,lastStatus:status}), false);
+  }
+  for (const status of [
+    'source-rate-limited', 'rate-limited', 'imported', 'unchanged',
+    'claimed', 'no-results', 'failed', null,
+  ]) assert.equal(refreshIsDue(older, now, {manualRetry:true,lastStatus:status}), false);
+
+  const ref = valid[0];
+  const last = [{
+    accountId: ref.accountId, referenceId: ref.referenceId,
+    lastAttemptAt: older, lastStatus:'source-not-found',
+  }];
+  assert.deepEqual(dueRefreshSources([ref],last,now).map(s=>s.referenceId),[]);
+  assert.deepEqual(dueRefreshSources([ref],last,now,true).map(s=>s.referenceId),[ref.referenceId]);
+  assert.deepEqual(dueRefreshSources([ref],
+    [{...last[0],lastStatus:'source-rate-limited'}],now,true),[]);
 });
 
 test('ingestão incremental armazena apenas novos usernames em ordem estável', () => {
@@ -111,7 +138,7 @@ test('importação parcial ocupa o último lote e contabiliza nomes adiados', ()
 test('cron faz seleção pelo último claim em vez da ordem fixa do JSON', () => {
   const route = readFileSync('lib/server/reference-audience-refresh-runner.ts','utf8');
   assert.match(route,/prisma\.activityLog\.groupBy/);
-  assert.match(route,/dueRefreshSources\(eligible, lastAttempts/);
+  assert.match(route,/dueRefreshSources\(eligible, attempts\.map/);
   assert.match(route,/boundAudienceDelta\(/);
   assert.match(route,/deferredByHistoryLimit/);
   assert.match(route,/skippedConfiguration: sources.length - eligible.length/);

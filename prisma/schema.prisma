@@ -231,7 +231,7 @@ model ScheduledInstagramPost {
 model InstagramMessagingConnection {
   id                   String   @id @default(cuid())
   instagramAccountId   String   @unique
-  instagramUserId      String
+  instagramUserId      String   @unique
   encryptedAccessToken String   @db.Text
   tokenExpiresAt       DateTime
   createdAt            DateTime @default(now())

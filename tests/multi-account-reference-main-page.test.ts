@@ -39,3 +39,12 @@ test('candidate index and saved plan work for any owned account only on preview'
   assert.match(candidate,/Prisma\.TransactionIsolationLevel\.Serializable/);
   assert.match(candidate,/instagramActionsExecuted: 0/);
 });
+
+test('an already linked collector does not show a misleading missing-admin warning', () => {
+  const ui = readFileSync('app/(app)/references/_components/simple-references-panel.tsx','utf8');
+  assert.match(ui,/let needsAdminAuthorization = false/);
+  assert.match(ui,/needsAdminAuthorization = true/);
+  assert.match(ui,/needsAdminAuthorization && connection\.waitingForCollectors > 0/);
+  assert.match(ui,/coletor\(es\) vinculado\(s\)/);
+  assert.doesNotMatch(ui,/if \(detail\?\.error === 'Acesso restrito ao administrador'\)\s*phases\.push/);
+});

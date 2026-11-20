@@ -303,3 +303,31 @@ A coleta nova depende de reconectar a sessão Instagram se o provedor
 a indicar como desconectada e de uma execução posterior autorizada,
 finalizada, associada à referência correta. O sistema conserva os
 429 usernames históricos sem relançar o coletor.
+
+### Ampliação segura dos limites de histórico e candidatos (20/11/2026)
+
+Após a primeira importação incremental do PhantomBuster, o Preview atingiu
+exatamente **60 lotes de histórico** e **500 candidatos**. A leitura
+registrou 160 usernames novos em lotes de 10, 71 entradas novas no índice
+e 340 nomes adicionais que não cabiam no histórico. Os dados anteriores
+foram preservados e não há registro de ação social real.
+
+A capacidade experimental aumentou de 60 para **200 lotes por referência**
+(até 2.000 usernames por referência no formato legado de 10 por lote) e de
+500 para **2.000 candidatos por conta**, com os limites de consulta e
+sincronização alinhados. Essas são capacidades fixas e não uma garantia de
+importação ilimitada. O modelo e o formato existentes são mantidos, sem
+migração ou alteração destrutiva.
+
+Os 340 nomes não foram armazenados na tentativa anterior. Eles só podem
+ser recuperados numa **nova leitura de resultados concluídos**, com o
+mesmo coletor e referência autorizados, após o intervalo de 6 horas da
+última leitura bem-sucedida. O sistema deduplica contra os snapshots
+já salvos e sincroniza o índice separadamente, sem relançar o Phantom.
+Um novo clique em Atualizar dados pode preencher o índice a partir dos
+dados já armazenados antes de estar liberada outra consulta externa.
+
+Isso remove o bloqueio deste piloto, mas o dimensionamento para milhares
+de perfis e muitos clientes ainda precisará de persistência paginada,
+limites por plano e testes de carga. Não usar a ampliação como autorização
+para iniciar coletas externas ou habilitar automação do Instagram.

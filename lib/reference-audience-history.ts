@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 export const AUDIENCE_HISTORY_ACTION = 'reference_audience_snapshot_v1';
-export const MAX_HISTORY_BATCHES = 60;
+export const MAX_HISTORY_BATCHES = 200;
 export type AudienceHistoryLocation = 'completed_run' | 'latest_agent_file';
 export type AudienceSnapshot = {
   version: 1;

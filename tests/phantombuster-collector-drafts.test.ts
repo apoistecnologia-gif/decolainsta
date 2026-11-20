@@ -66,7 +66,7 @@ test('draft cannot impersonate a workspace or other template organization', asyn
   const unsafe = {...draft, org:'some-client-workspace' as const};
   let requests = 0;
   const outcome = await createUnconfiguredCollectorDraft(
-    'server-api-key', unsafe as typeof draft,
+    'server-api-key', unsafe as unknown as typeof draft,
     async () => {requests++; return new Response('{}',{status:200});});
   assert.deepEqual(outcome,{status:'rejected'});
   assert.equal(requests,0);

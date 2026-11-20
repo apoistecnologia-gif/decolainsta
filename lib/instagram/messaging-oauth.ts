@@ -15,12 +15,12 @@ const validToken=(v:unknown):v is string=>
   typeof v==='string'&&v.length>=10&&v.length<=4096;
 const validId=(v:unknown):v is string=>
   typeof v==='string'&&/^\d{5,30}$/.test(v);
-export function messagingEnabled(env:NodeJS.ProcessEnv=process.env){
+export function messagingEnabled(env:Record<string,string|undefined>=process.env){
   return env.VERCEL_ENV==='preview'&&
     env.INSTAGRAM_MESSAGING_INTEGRATION_ENABLED==='yes';
 }
 export function messagingOAuthConfig(
-  env:NodeJS.ProcessEnv=process.env,
+  env:Record<string,string|undefined>=process.env,
 ):MessagingOAuthConfig|null{
   const clientId=env.INSTAGRAM_MESSAGING_APP_ID??'';
   const clientSecret=env.INSTAGRAM_MESSAGING_APP_SECRET??'';

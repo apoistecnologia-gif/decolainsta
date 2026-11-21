@@ -277,6 +277,36 @@ class TestPreviewScheduler(unittest.TestCase):
             env, lambda *_args, **_kwargs: self.fail("too early"), now=now),
             (0, "interval-not-due"))
 
+    def test_readiness_one_shot_runs_only_within_exact_utc_window(self):
+        env = {
+            **self.env,
+            "PREVIEW_INSTAGRAM_READINESS_PROBE_ENABLED": "yes",
+            "PREVIEW_INSTAGRAM_READINESS_ONE_SHOT_UTC": "2026-11-21T21:45Z",
+        }
+        def good_response(*_args, **_kwargs):
+            return FakeResponse(
+                b'{"status":"read-only-diagnostic","metaRead":"ok",'
+                b'"previousContainerCategory":null,"previousContainerOnly":true,'
+                b'"currentPhantomSessionVerified":false,'
+                b'"instagramRestrictionCleared":null,'
+                b'"providerLaunchesExecuted":0,'
+                b'"instagramActionsExecuted":0,"dataMutations":0}')
+        due = datetime(2026, 11, 21, 21, 45, tzinfo=timezone.utc)
+        self.assertEqual(module.run_instagram_readiness_once(
+            env, good_response, now=due), (0, "ok: meta=ok old-container=none"))
+        late = datetime(2026, 11, 21, 21, 50, tzinfo=timezone.utc)
+        self.assertEqual(module.run_instagram_readiness_once(
+            env, lambda *_args, **_kwargs: self.fail("repeated later"), now=late),
+            (0, "one-shot-not-due"))
+        earlier = datetime(2026, 11, 21, 21, 40, tzinfo=timezone.utc)
+        self.assertEqual(module.run_instagram_readiness_once(
+            env, lambda *_args, **_kwargs: self.fail("started early"), now=earlier),
+            (0, "one-shot-not-due"))
+        invalid = {**env, "PREVIEW_INSTAGRAM_READINESS_ONE_SHOT_UTC": "not-a-date"}
+        self.assertEqual(module.run_instagram_readiness_once(
+            invalid, lambda *_args, **_kwargs: self.fail("bad date"), now=due),
+            (2, "invalid-one-shot-time"))
+
     def test_refuses_short_auth_and_missing_bypass(self):
         for name, value in [("PREVIEW_CRON_SECRET", "tiny"),("PREVIEW_PROTECTION_BYPASS", "")]:
             env = {**self.env, name: value}

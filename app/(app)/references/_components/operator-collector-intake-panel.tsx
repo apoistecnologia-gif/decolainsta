@@ -26,6 +26,8 @@ type ProvisioningPlan = {
     collectorAssigned: false;
     providerRunInputVerified: false;
     exclusiveAgentLeaseImplemented: false;
+    exclusiveAgentClaimPrepared: true;
+    exclusiveAgentLeaseEnabled: false;
     importsEnabled: false;
     actionsEnabled: false;
   };
@@ -239,7 +241,7 @@ export function OperatorCollectorIntakePanel() {
             Reutilização sequencial: {queue.sharedCollector.pendingReferences} referência(s)
             aguardam preparação. O mesmo agente poderá ser reaproveitado apenas
             em execuções separadas, depois de validar a sessão, a reserva exclusiva
-            e a origem do resultado de cada referência. Nenhuma coleta ou ação está habilitada.
+            e a origem do resultado de cada referência. {queue.sharedCollector.exclusiveAgentClaimPrepared ? 'A reserva transacional já está preparada no backend, mas segue desativada enquanto não houver liberação segura do agente.' : 'A reserva exclusiva ainda não está preparada.'} Nenhuma coleta ou ação está habilitada.
           </p>}
           {queue.next && queue.draftCreationEnabled && (
             <Button type="button" variant="outline" disabled={busy}

@@ -182,6 +182,62 @@ def run_reconciliation_once(env: dict[str, str], opener=None, now=None) -> tuple
     return 0, "ok: status=" + value["status"]
 
 
+
+def run_collection_once(env: dict[str, str], opener=None, now=None) -> tuple[int, str]:
+    """Opt-in only: at most one new reference collection every six hours.
+
+    Server-side POST performs the final global lock, historical restriction
+    review and collector-idle checks. This worker never has provider cookies.
+    """
+    if env.get("PREVIEW_DYNAMIC_COLLECTION_CRON_ENABLED") != "yes":
+        return 0, "disabled"
+    now = now or datetime.now(timezone.utc)
+    if now.hour % 6 != 0 or not 5 <= now.minute < 10:
+        return 0, "interval-not-due"
+    if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
+            or len(env.get("PREVIEW_CRON_SECRET", "")) < 32
+            or len(env.get("PREVIEW_PROTECTION_BYPASS", "")) != 32
+            or not env["PREVIEW_PROTECTION_BYPASS"].isalnum()):
+        return 2, "invalid-configuration"
+    request = Request("https://" + PREVIEW_HOST + DYNAMIC_RECONCILE_PATH,
+        method="POST",
+        data=b'{"operation":"collect-next","confirmDynamicCollection":true}',
+        headers={
+            "Authorization": "Bearer " + env["PREVIEW_CRON_SECRET"],
+            "X-Vercel-Protection-Bypass": env["PREVIEW_PROTECTION_BYPASS"],
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        })
+    if opener is None:
+        opener = build_opener(NoRedirects()).open
+    try:
+        with opener(request, timeout=25) as response:
+            if response.status != 200:
+                return 1, "preview-not-ready"
+            raw = response.read(MAX_RESULT_BYTES + 1)
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError):
+        return 1, "preview-request-failed"
+    if len(raw) > MAX_RESULT_BYTES:
+        return 1, "response-too-large"
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return 1, "invalid-response"
+    safe = {
+        "queued", "in-progress", "provider-busy", "review-required",
+        "queue-complete", "finished", "finished-without-input-proof",
+        "import-unavailable",
+    }
+    if not isinstance(value, dict) or value.get("status") not in safe:
+        return 1, "unrecognized-collection-state"
+    if value.get("status") == "queued" and (
+            value.get("savedPhantomSettingsChanged") is not False
+            or value.get("followsExecuted") != 0
+            or value.get("unfollowsExecuted") != 0):
+        return 1, "unsafe-collection-response"
+    return 0, "ok: status=" + value["status"]
+
+
 def main() -> int:
     refresh_status, refresh_message = run_once(os.environ)
     print("preview-readonly-refresh:", refresh_message, flush=True)
@@ -189,7 +245,9 @@ def main() -> int:
     print("preview-follow-simulation:", sim_message, flush=True)
     reconciliation_status, reconciliation_message = run_reconciliation_once(os.environ)
     print("preview-dynamic-reconciliation:", reconciliation_message, flush=True)
-    return max(refresh_status, sim_status, reconciliation_status)
+    collection_status, collection_message = run_collection_once(os.environ)
+    print("preview-dynamic-collection:", collection_message, flush=True)
+    return max(refresh_status, sim_status, reconciliation_status, collection_status)
 
 if __name__ == "__main__":
     sys.exit(main())

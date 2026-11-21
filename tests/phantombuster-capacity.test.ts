@@ -79,3 +79,10 @@ test('capacity endpoint requires Preview and verified administrator, never launc
   assert.match(helper,/agents\/fetch-all\?withArgument=false/);
   assert.doesNotMatch(helper+code,/agents\/launch|agents\/save|user_follow|user_unfollow/);
 });
+
+test('capacity panel labels the provider inventory as all agent types, never remaining collector slots', () => {
+  const ui = readFileSync('app/(app)/references/_components/operator-collector-intake-panel.tsx', 'utf8');
+  assert.match(ui, /Agentes na workspace \(todos os tipos, não apenas coletores\)/);
+  assert.match(ui, /Não é possível afirmar quantas vagas restam/);
+  assert.doesNotMatch(ui, /Coletores na workspace:/);
+});

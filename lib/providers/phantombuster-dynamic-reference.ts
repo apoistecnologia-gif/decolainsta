@@ -32,7 +32,8 @@ export function dynamicReferenceLaunchPayload(agentId:unknown, reference:unknown
  */
 export type PinnedDynamicCollectorStatus =
   | 'ready' | 'not-configured' | 'invalid-agent-id' |
-    'missing-cookie' | 'mismatch' | 'unavailable';
+    'missing-cookie' | 'mismatch' | 'unavailable' |
+    'invalid-key' | 'not-found' | 'rate-limited' | 'invalid-response';
 export async function resolvePinnedDynamicCollector(
   apiKey:string, configuredId:string|undefined, fetcher:Fetcher=fetch,
 ):Promise<{status:PinnedDynamicCollectorStatus;agentId:string|null}>{

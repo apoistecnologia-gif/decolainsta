@@ -216,7 +216,7 @@ export async function GET(){
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
   const canAdvance=Boolean(enabled&&(
-    (ownLaunched&&activeProof?.reason!=='failed-run')||
+    (ownLaunched&&!collectionLimited&&activeProof?.reason!=='failed-run')||
     (!data.plan.unresolved&&data.plan.attributionUnverified===0&&
       !ownLaunched&&data.plan.next&&
       (progress==='finished'||progress==='no-run'))));
@@ -403,15 +403,17 @@ export async function POST(request:Request){
         },{headers:HEADERS});
       const failureDiagnostic=await inspectDynamicFailureOutput(
         key!,event.containerId);
-      // Stop repeated background reads if Instagram or session needs review.
-      if(['platform-limited','login-challenge','session-invalid'].includes(failureDiagnostic)){
-        const blocked=makeDynamicJobEvent({...event,state:'finished-unverified'});
-        if(blocked)await prisma.activityLog.updateMany({
-          where:{id:last.id,instagramAccountId:accountId,
-            action:DYNAMIC_COLLECTION_ACTION,details:last.details},
-          data:{details:JSON.stringify(blocked),success:false},
-        });
-      }
+      // The bounded result-grace window has elapsed. Quarantine ANY
+      // non-importable completed receipt: repeated cron polls cannot turn
+      // missing provider evidence into a confirmed collection.
+      const blocked=makeDynamicJobEvent({...event,state:'finished-unverified'});
+      if(!blocked)return bad('Registro inválido',503);
+      const quarantined=await prisma.activityLog.updateMany({
+        where:{id:last.id,instagramAccountId:accountId,
+          action:DYNAMIC_COLLECTION_ACTION,details:last.details},
+        data:{details:JSON.stringify(blocked),success:false},
+      });
+      if(quarantined.count!==1)return bad('Revisão concorrente da coleta',409);
       return NextResponse.json({
         status:'import-unavailable',reference:event.referenceUsername,
         resultStatus:result.status,failureDiagnostic,

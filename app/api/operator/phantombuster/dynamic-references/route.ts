@@ -10,7 +10,7 @@ import {isSameOriginDynamicCollectionRequest} from '@/lib/server/dynamic-collect
 import {inspectPinnedCollectorProgress} from '@/lib/providers/phantombuster-collector-progress';
 import {
   launchExistingCollectorForReference,
-  inspectDynamicRunProof,readDynamicContainerResults,
+  inspectDynamicRunProofDetailed,readDynamicContainerResults,
 } from '@/lib/providers/phantombuster-dynamic-reference';
 import {resolvePilotCollectorInWorkspace} from
   '@/lib/providers/phantombuster-pilot-workspace';
@@ -143,7 +143,7 @@ export async function GET(){
   // provider state with no proof of idle does not enable a new launch.
   const activeProof=enabled&&current?.accountId===accountId&&
     (current.state==='launched'||current.state==='finished-unverified')&&current.containerId
-    ?await inspectDynamicRunProof(key!,agentId,current.containerId,
+    ?await inspectDynamicRunProofDetailed(key!,agentId,current.containerId,
       current.referenceUsername,current.claimId):null;
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
@@ -151,9 +151,9 @@ export async function GET(){
     (!data.plan.unresolved&&data.plan.next&&
       (progress==='finished'||progress==='no-run'))));
   const blocker=!enabled?'O piloto está desativado neste Preview.'
-    :ownLaunched&&activeProof==='running'?'O contêiner existente continua em execução no PhantomBuster.'
-    :ownLaunched&&activeProof==='unavailable'?'Não foi possível confirmar o contêiner no PhantomBuster. Nenhuma coleta será repetida.'
-    :ownLaunched&&activeProof==='finished-unverified'?'O contêiner encerrou sem prova da referência. Importação bloqueada.'
+    :ownLaunched&&activeProof?.status==='running'?'O contêiner existente continua em execução no PhantomBuster.'
+    :ownLaunched&&activeProof?.status==='unavailable'?'Não foi possível confirmar o contêiner no PhantomBuster. Nenhuma coleta será repetida.'
+    :ownLaunched&&activeProof?.status==='finished-unverified'?'O contêiner encerrou sem prova da referência. Importação bloqueada.'
     :ownLaunched?'Contêiner concluído; verificando a importação.'
     :data.plan.unresolved
       ?'Há uma execução anterior ainda sem confirmação. Nenhuma nova coleta será iniciada.'
@@ -163,10 +163,13 @@ export async function GET(){
     enabled,accountId,
     total:data.plan.total,attempted:data.plan.attempted,
     completed:data.plan.completed,unverified:data.plan.attributionUnverified,
-    nextReference:data.plan.next?.username??null,
+    // The next reference is NOT actionable while the previous container
+    // still requires review, even when its state is finished-unverified.
+    nextReference:ownLaunched?null:data.plan.next?.username??null,
     unresolved:data.plan.unresolved,
     currentState:current?.state??'none',
-    activeContainerStatus:activeProof,
+    activeContainerStatus:activeProof?.status??null,
+    activeContainerReason:activeProof?.reason??null,
     canAdvance,blocker,providerStatus:progress,
     noManualUrlChanges:true,followersExecuted:0,unfollowsExecuted:0,
   },{headers:HEADERS});
@@ -202,14 +205,14 @@ export async function POST(request:Request){
       status:'provider-busy',reason:'another-account-owns-active-run',
     },{headers:HEADERS});
   if(last&&(event?.state==='launched'||event?.state==='finished-unverified')&&event.containerId){
-    const proof=await inspectDynamicRunProof(
+    const proof=await inspectDynamicRunProofDetailed(
       key!,agentId,event.containerId,event.referenceUsername,event.claimId);
-    if(proof==='running'||proof==='unavailable')
+    if(proof.status==='running'||proof.status==='unavailable')
       return NextResponse.json({
         status:'in-progress',reference:event.referenceUsername,
-        providerStatus:proof,noDuplicateLaunch:true,
+        providerStatus:proof.status,providerReason:proof.reason,noDuplicateLaunch:true,
       },{headers:HEADERS});
-    if(proof!=='verified-finished'){
+    if(proof.status!=='verified-finished'){
       if(event.state==='launched'){
         const changed=makeDynamicJobEvent({...event,state:'finished-unverified'});
         if(!changed)return bad('Registro inválido',503);
@@ -221,7 +224,7 @@ export async function POST(request:Request){
       }
       return NextResponse.json({
         status:'finished-without-input-proof',reference:event.referenceUsername,
-        candidatesImported:0,reviewRequired:true,
+        providerReason:proof.reason,candidatesImported:0,reviewRequired:true,
       },{headers:HEADERS});
     }
     // Exact container ID + launch claim metadata have been verified.

@@ -9,6 +9,7 @@ test('registered references feed one-click preview collector without URLs typed 
   assert.match(main,/DynamicCollectorControl/);
   assert.match(main,/accountId=\{accountId\}/);
   assert.match(panel,/Iniciar coletas/);
+  assert.match(panel,/Rever contêiner existente/);
   assert.match(panel,/setInterval\(.*20000\)/);
   assert.match(panel,/confirmDynamicCollection:true/);
   assert.doesNotMatch(panel,/sync-saved-history/);

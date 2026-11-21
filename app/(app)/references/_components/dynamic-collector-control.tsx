@@ -14,9 +14,9 @@ type Queue={
   completed:number;unverified:number;nextReference:string|null;
   unresolved:boolean;currentState:string;
   canAdvance:boolean;blocker:string|null;providerStatus:string|null;
-  activeContainerStatus?:string|null;
+  activeContainerStatus?:string|null;activeContainerReason?:string|null;
 };
-type Advance={status:string;reference?:string;observedNames?:number;providerStatus?:string};
+type Advance={status:string;reference?:string;observedNames?:number;providerStatus?:string;providerReason?:string};
 export function DynamicCollectorControl({accountId,onIndexed}:{
   accountId:string;onIndexed?:()=>void;
 }){
@@ -24,6 +24,21 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
   const [running,setRunning]=useState(false);
   const [message,setMessage]=useState('');
   const [diagnostic,setDiagnostic]=useState('Verificando disponibilidade da coleta...');
+  const proofExplanations:Record<string,string>={
+    'still-running':'O contêiner está em execução no PhantomBuster.',
+    'invalid-input':'Identificadores inconsistentes; revisão técnica necessária.',
+    'container-unavailable':'O PhantomBuster não respondeu à consulta deste contêiner.',
+    'wrong-container':'O PhantomBuster retornou outro identificador de contêiner.',
+    'wrong-agent':'O contêiner pertence a outro agente do PhantomBuster.',
+    'agent-history-unavailable':'Não foi possível confirmar o histórico de execuções do agente.',
+    'agent-history-missing':'O contêiner não apareceu no histórico do agente.',
+    'unknown-status':'O PhantomBuster retornou um estado ainda não reconhecido.',
+    'failed-run':'A execução terminou com falha ou código de saída diferente de zero.',
+    'missing-completion-time':'O PhantomBuster não forneceu um horário válido de conclusão.',
+    'missing-claim':'A resposta apresentou metadados sem o identificador do lançamento.',
+    'wrong-claim':'O identificador de lançamento retornado não corresponde ao registro salvo.',
+    'wrong-reference':'A referência associada à execução não corresponde à referência cadastrada.',
+  };
   const lock=useRef(false);
   const resumedExisting=useRef(false);
   // No state mutations in the fetch helper: React effects update state
@@ -94,9 +109,11 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       if(info.status==='queued')
         setMessage('Coleta iniciada para @'+(info.reference??'referência')+'.');
       else if(info.status==='in-progress'||info.status==='provider-busy')
-        setMessage(info.providerStatus==='unavailable'
-          ?'Consulta do contêiner indisponível no PhantomBuster; nenhuma nova coleta será iniciada.'
-          :'O contêiner existente continua em execução.');
+        setMessage(info.providerReason&&proofExplanations[info.providerReason]
+          ?proofExplanations[info.providerReason]
+          :info.providerStatus==='unavailable'
+            ?'Consulta do contêiner indisponível; nenhuma coleta será repetida.'
+            :'O contêiner existente continua em execução.');
       else if(info.status==='finished'){
         setMessage('Coleta de @'+(info.reference??'referência')+
           ' finalizada. Nomes observados: '+(info.observedNames??0)+'.');
@@ -106,7 +123,10 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       }else{
         setRunning(false);
         if(info.status==='finished-without-input-proof'){
-          setMessage('O contêiner terminou, mas sua origem não pôde ser comprovada. Nenhum nome foi importado.');
+          setMessage((info.providerReason&&proofExplanations[info.providerReason]
+            ?proofExplanations[info.providerReason]
+            :'O contêiner terminou, mas sua origem não pôde ser comprovada.')+
+            ' Nenhum nome foi importado.');
         }else setMessage(info.status==='queue-complete'
           ?'Todas as referências elegíveis foram processadas.'
           :'Execução interrompida para revisão: '+info.status);
@@ -147,16 +167,23 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
         Finalizadas: {queue.completed}.
         {queue.unverified>0&&' Sem origem confirmada: '+queue.unverified+'.'}
       </p>
-      {queue.nextReference&&<p className="text-xs text-muted-foreground">
+      {queue.currentState!=='finished-unverified'&&queue.currentState!=='launched'&&
+        queue.nextReference&&<p className="text-xs text-muted-foreground">
         Próxima: @{queue.nextReference}
       </p>}
       {queue.blocker&&<p role="status" className="text-sm text-muted-foreground">
         {queue.blocker}
       </p>}
+      {queue.activeContainerReason&&proofExplanations[queue.activeContainerReason]&&
+        <p role="status" className="text-sm text-muted-foreground">
+          Diagnóstico: {proofExplanations[queue.activeContainerReason]}
+        </p>}
       <div className="flex flex-wrap gap-2">
         <Button type="button" disabled={running||!queue.canAdvance}
           onClick={()=>{setRunning(true);void advance();}}>
-          {running?'Coletando...':'Iniciar coletas'}
+          {running?'Verificando...':
+            queue.currentState==='finished-unverified'||queue.currentState==='launched'
+              ?'Rever contêiner existente':'Iniciar coletas'}
         </Button>
         {running&&<Button type="button" variant="outline"
           onClick={()=>setRunning(false)}>Parar acompanhamento</Button>}

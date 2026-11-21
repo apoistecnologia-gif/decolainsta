@@ -228,3 +228,32 @@ test('finished-unverified receipt is checked again without re-launching other re
   assert.match(ui,/queue\.currentState==='finished-unverified'/);
   assert.match(src,/event\.containerId,event\.referenceUsername/);
 });
+
+test('safe diagnostic distinguishes claim, reference and execution failures',async()=>{
+  const {inspectDynamicRunProofDetailed}=await import('../lib/providers/phantombuster-dynamic-reference');
+  const base={id:'2222222222222222',agentId:id,status:'finalized',
+    endedAt:'2026-11-21T13:00:00Z',exitCode:0};
+  const cases=[
+    [{...base,userCustomMetadata:{}},'missing-claim'],
+    [{...base,userCustomMetadata:{decolainstaClaimId:'not-this-claim'}},'wrong-claim'],
+    [{...base,argument:{spreadsheetUrl:'https://instagram.com/other/'}},'wrong-reference'],
+    [{...base,exitCode:1},'failed-run'],
+    [{...base,endedAt:null},'missing-completion-time'],
+  ] as const;
+  for(const [input,reason] of cases){
+    const result=await inspectDynamicRunProofDetailed('key',id,'2222222222222222',
+      'uber',claimId,async()=>Response.json({data:input}));
+    assert.equal(result.status,'finished-unverified');
+    assert.equal(result.reason,reason);
+    assert.doesNotMatch(JSON.stringify(result),/instagram\.com|claimId|sessionCookie|apiKey/);
+  }
+});
+test('read-only review keeps next ref hidden and labels button for existing container',()=>{
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const ui=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
+  assert.match(route,/nextReference:ownLaunched\?null:/);
+  assert.match(route,/activeContainerReason:activeProof\?\.reason/);
+  assert.match(route,/providerReason:proof\.reason/);
+  assert.match(ui,/Rever contêiner existente/);
+  assert.match(ui,/Diagnóstico:/);
+});

@@ -146,12 +146,29 @@ export async function inspectDynamicCollectorTemplate(
 /** A particular container's immutable identity and caller-issued claim.
  * Does not use the current agent configuration or its latest result file.
  */
-export async function inspectDynamicRunProof(
+export type DynamicRunProofStatus='verified-finished'|'finished-unverified'|'running'|'unavailable';
+export type DynamicRunProofReason=
+  | 'verified'|'still-running'|'invalid-input'|'container-unavailable'
+  | 'wrong-container'|'wrong-agent'|'agent-history-unavailable'
+  | 'agent-history-missing'|'unknown-status'|'failed-run'
+  | 'missing-completion-time'|'missing-claim'|'wrong-claim'
+  | 'wrong-reference';
+export type DynamicRunProofDetail=Readonly<{
+  status:DynamicRunProofStatus;
+  reason:DynamicRunProofReason;
+}>;
+/** All reasons are fixed, privacy-safe codes: no cookies, arguments, names,
+ * credentials, provider bodies or identifiers are returned to the browser.
+ */
+export async function inspectDynamicRunProofDetailed(
   apiKey:string,agentId:string,containerId:string,reference:string,
   claimId:string,fetcher:Fetcher=fetch,
-):Promise<'verified-finished'|'finished-unverified'|'running'|'unavailable'>{
+):Promise<DynamicRunProofDetail>{
+  const answer=(status:DynamicRunProofStatus,reason:DynamicRunProofReason)=>
+    ({status,reason});
   if(!apiKey||!safeId(agentId)||!safeId(containerId)||
-     !safeUser(reference)||!safeClaim(claimId))return 'unavailable';
+    !safeUser(reference)||!safeClaim(claimId))
+    return answer('unavailable','invalid-input');
   try{
     const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch');
     url.searchParams.set('id',containerId);
@@ -161,17 +178,16 @@ export async function inspectDynamicRunProof(
       signal:AbortSignal.timeout(8000),
     };
     const res=await fetcher(url.toString(),init);
-    if(!res.ok)return 'unavailable';
+    if(!res.ok)return answer('unavailable','container-unavailable');
     const outer=rec(await boundedJson(res));
-    if(!outer||outer.status==='error')return 'unavailable';
+    if(!outer||outer.status==='error')
+      return answer('unavailable','container-unavailable');
     const data=rec(outer.data)??outer;
-    if(String(data.id??'')!==containerId)return 'unavailable';
-
-    // /containers/fetch does not guarantee an agentId field. When omitted,
-    // verify the persisted agent's container inventory, NOT the editable
-    // agent template or global latest-result.json.
+    if(String(data.id??'')!==containerId)
+      return answer('unavailable','wrong-container');
     if(data.agentId!==undefined&&data.agentId!==null){
-      if(String(data.agentId)!==agentId)return 'unavailable';
+      if(String(data.agentId)!==agentId)
+        return answer('unavailable','wrong-agent');
     }else{
       const historyUrl=new URL('https://api.phantombuster.com/api/v2/containers/fetch-all');
       historyUrl.searchParams.set('agentId',agentId);
@@ -180,42 +196,48 @@ export async function inspectDynamicRunProof(
       const history=await fetcher(historyUrl.toString(),{
         ...init,signal:AbortSignal.timeout(8000),
       });
-      if(!history.ok)return 'unavailable';
+      if(!history.ok)return answer('unavailable','agent-history-unavailable');
       const listing=rec(await boundedJson(history,100000));
-      if(!listing||listing.status==='error')return 'unavailable';
+      if(!listing||listing.status==='error')
+        return answer('unavailable','agent-history-unavailable');
       const body=rec(listing.data)??listing;
       const items=body.containers;
-      if(!Array.isArray(items)||
-        !items.some(v=>String(rec(v)?.id??'')===containerId))
-        return 'unavailable';
+      if(!Array.isArray(items))return answer('unavailable','agent-history-unavailable');
+      if(!items.some(v=>String(rec(v)?.id??'')===containerId))
+        return answer('unavailable','agent-history-missing');
     }
     const status=String(data.status??'').toLowerCase();
     if(['running','starting','pending','queued','launching','scheduled'].includes(status))
-      return 'running';
-    const final=['finalized','completed','finished','success'].includes(status);
+      return answer('running','still-running');
+    const finalized=['finalized','completed','finished','success'].includes(status);
     const ended=['failed','error','aborted','timeout','stopped','cancelled','canceled'].includes(status);
-    if(!final&&!ended)return 'unavailable';
-    if(!final||!collectorRunCompletedAt(data.endedAt)||
-       (data.exitCode!==undefined&&data.exitCode!==null&&
-         Number(data.exitCode)!==0))
-      return 'finished-unverified';
-    // The server already persisted the provider-issued containerId returned
-    // for this one-time bonusArgument and claim. Some workspaces omit
-    // userCustomMetadata on /containers/fetch. An omitted field is NOT a
-    // conflicting launch; explicit metadata with another claim is.
-    // This method must only be called with the trusted, account-owned
-    // database launch receipt, never with client-provided input.
-    // If the provider explicitly returns a metadata object, it must include
-    // the matching claim. Only an OMITTED/NULL field enables receipt fallback.
+    if(!finalized&&!ended)return answer('unavailable','unknown-status');
+    if(!finalized||(data.exitCode!==undefined&&data.exitCode!==null&&
+      Number(data.exitCode)!==0))
+      return answer('finished-unverified','failed-run');
+    if(!collectorRunCompletedAt(data.endedAt))
+      return answer('finished-unverified','missing-completion-time');
     const metadata=rec(data.userCustomMetadata);
-    if((data.userCustomMetadata!==undefined&&data.userCustomMetadata!==null)&&
-       (!metadata||metadata.decolainstaClaimId!==claimId))
-      return 'finished-unverified';
+    if(data.userCustomMetadata!==undefined&&data.userCustomMetadata!==null){
+      if(!metadata||!Object.prototype.hasOwnProperty.call(metadata,'decolainstaClaimId'))
+        return answer('finished-unverified','missing-claim');
+      if(metadata.decolainstaClaimId!==claimId)
+        return answer('finished-unverified','wrong-claim');
+    }
     if(data.argument!==undefined&&data.argument!==null&&
        configuredFollowerCollectorReference(data.argument)!==reference)
-      return 'finished-unverified';
-    return 'verified-finished';
-  }catch{return 'unavailable';}
+      return answer('finished-unverified','wrong-reference');
+    return answer('verified-finished','verified');
+  }catch{return answer('unavailable','container-unavailable');}
+}
+/** Compatibility wrapper for existing safe proof-based integrations. */
+export async function inspectDynamicRunProof(
+  apiKey:string,agentId:string,containerId:string,reference:string,
+  claimId:string,fetcher:Fetcher=fetch,
+):Promise<DynamicRunProofStatus>{
+  const detail=await inspectDynamicRunProofDetailed(
+    apiKey,agentId,containerId,reference,claimId,fetcher);
+  return detail.status;
 }
 export type DynamicContainerResults=Readonly<{
   status:'found'|'empty'|'unsupported'|'unavailable';

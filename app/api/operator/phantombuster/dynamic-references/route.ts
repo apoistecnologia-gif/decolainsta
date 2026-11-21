@@ -8,9 +8,14 @@ import {prisma} from '@/lib/db';
 import {isConfiguredPhantomBusterKey} from '@/lib/reference-audience-readiness';
 import {discoverFollowerCollectors} from '@/lib/providers/phantombuster-collector-discovery';
 import {inspectExistingReferenceCollector} from '@/lib/providers/phantombuster-collector-progress';
-import {inspectDynamicCollectorTemplate,launchExistingCollectorForReference} from
-  '@/lib/providers/phantombuster-dynamic-reference';
-import {inspectPhantomBusterContainer} from '@/lib/providers/phantombuster-container-inspection';
+import {
+  inspectDynamicCollectorTemplate,launchExistingCollectorForReference,
+  inspectDynamicRunProof,readDynamicContainerResults,
+} from '@/lib/providers/phantombuster-dynamic-reference';
+import {
+  AUDIENCE_HISTORY_ACTION,MAX_HISTORY_BATCHES,
+  makeAudienceSnapshot,parseAudienceSnapshot,
+} from '@/lib/reference-audience-history';
 import {
   DYNAMIC_COLLECTION_ACTION,MAX_DYNAMIC_COLLECTION_LOGS,
   makeDynamicJobEvent,parseDynamicJobEvent,planDynamicReferenceQueue,
@@ -116,24 +121,79 @@ export async function POST(request:Request){
       status:'provider-busy',reason:'another-account-owns-active-run',
     },{headers:HEADERS});
   if(last&&event?.state==='launched'&&event.containerId){
-    const inspected=await inspectPhantomBusterContainer(
-      key!,agentId,event.containerId,event.referenceUsername);
-    if(!inspected.completedAt)return NextResponse.json({
-      status:'in-progress',reference:event.referenceUsername,
-      noDuplicateLaunch:true,
-    },{headers:HEADERS});
-    const verified=inspected.status==='candidate-input-match';
-    const changed=makeDynamicJobEvent({...event,
-      state:verified?'finished':'finished-unverified'});
-    if(!changed)return bad('Registro inválido',503);
-    await prisma.activityLog.update({
-      where:{id:last.id},data:{details:JSON.stringify(changed),success:verified},
-    });
-    return NextResponse.json({
-      status:verified?'finished':'finished-without-input-proof',
-      reference:event.referenceUsername,
-      candidatesImported:0,reviewRequired:!verified,
-    },{headers:HEADERS});
+    const proof=await inspectDynamicRunProof(
+      key!,agentId,event.containerId,event.referenceUsername,event.claimId);
+    if(proof==='running'||proof==='unavailable')
+      return NextResponse.json({
+        status:'in-progress',reference:event.referenceUsername,
+        noDuplicateLaunch:true,
+      },{headers:HEADERS});
+    if(proof!=='verified-finished'){
+      const changed=makeDynamicJobEvent({...event,state:'finished-unverified'});
+      if(!changed)return bad('Registro inválido',503);
+      await prisma.activityLog.update({
+        where:{id:last.id},data:{details:JSON.stringify(changed),success:false},
+      });
+      return NextResponse.json({
+        status:'finished-without-input-proof',reference:event.referenceUsername,
+        candidatesImported:0,reviewRequired:true,
+      },{headers:HEADERS});
+    }
+    // Exact container ID + launch claim metadata have been verified.
+    // Never import from the agent-wide latest file, which might belong
+    // to the previously saved template reference.
+    const result=await readDynamicContainerResults(
+      key!,event.containerId,event.referenceUsername);
+    if(result.status!=='found'&&result.status!=='empty')
+      return NextResponse.json({
+        status:'import-unavailable',reference:event.referenceUsername,
+        noAutomaticRetry:true,
+      },{headers:HEADERS});
+    const batches=[];
+    for(let i=0;i<result.usernames.length;i+=10){
+      const snapshot=makeAudienceSnapshot(
+        event.referenceId,event.referenceUsername,agentId,
+        result.usernames.slice(i,i+10),'completed_run');
+      if(!snapshot)return bad('Dados do provedor incompatíveis',422);
+      batches.push(snapshot);
+    }
+    const finish=makeDynamicJobEvent({...event,state:'finished'});
+    if(!finish)return bad('Registro inválido',503);
+    try{
+      const stored=await prisma.$transaction(async tx=>{
+        const existing=await tx.activityLog.findMany({
+          where:{instagramAccountId:event.accountId,action:AUDIENCE_HISTORY_ACTION,
+            targetUsername:event.referenceUsername},
+          select:{details:true},take:MAX_HISTORY_BATCHES+1,
+        });
+        if(existing.length>MAX_HISTORY_BATCHES)return null;
+        const hashes=new Set(existing.flatMap(row=>{
+          const sample=parseAudienceSnapshot(row.details);
+          return sample?.referenceId===event.referenceId?[sample.fingerprint]:[];
+        }));
+        const fresh=batches.filter(b=>!hashes.has(b.fingerprint));
+        if(existing.length+fresh.length>MAX_HISTORY_BATCHES)return null;
+        const applied=await tx.activityLog.updateMany({
+          where:{id:last.id,instagramAccountId:event.accountId,
+            action:DYNAMIC_COLLECTION_ACTION,details:last.details},
+          data:{details:JSON.stringify(finish),success:true},
+        });
+        if(applied.count!==1)return null;
+        if(fresh.length)await tx.activityLog.createMany({
+          data:fresh.map(b=>({
+            instagramAccountId:event.accountId,targetUsername:event.referenceUsername,
+            action:AUDIENCE_HISTORY_ACTION,success:true,details:JSON.stringify(b),
+          })),
+        });
+        return fresh.length;
+      },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+      if(stored===null)return bad('Limite ou conflito de histórico',409);
+      return NextResponse.json({
+        status:'finished',reference:event.referenceUsername,
+        observedNames:result.usernames.length,snapshotBatchesStored:stored,
+        newFollowersConfirmed:0,followExecuted:false,
+      },{headers:HEADERS});
+    }catch{return bad('Erro ao salvar coleta concluída',503);}
   }
   if(current.plan.unresolved)return NextResponse.json({
     status:'review-required',reason:'existing-run-unconfirmed',

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-type Account = { id: string; username: string; connected?: boolean };
+type Account = { id: string; username: string; connected?: boolean; profileFollowersCount?: number | null; lastSyncedAt?: string | null };
 type Reference = { id: string; username: string };
 type Workflow = { references: Reference[] };
 type SyncResult = { status: 'synced' | 'capacity-reached'; synced?: number; total?: number };
@@ -334,6 +334,7 @@ export function SimpleReferencesPanel() {
     } finally { setBusy(false); }
   }
 
+  const selectedAccount = accounts.find(item => item.id === accountId);
   const byReference = new Map(index?.byReference.map(item => [item.referenceId, item.candidates]) ?? []);
   const readinessByReference = new Map(
     collection?.statuses.map(item => [item.referenceId, item.state]) ?? []);
@@ -371,6 +372,19 @@ export function SimpleReferencesPanel() {
       </Card>
 
       <div className="grid grid-cols-2 gap-3">
+        {selectedAccount?.connected && <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Seguidores reais (última leitura Meta)</p>
+            <p className="mt-2 text-3xl font-semibold tabular-nums">
+              {selectedAccount.profileFollowersCount ?? '—'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {selectedAccount.lastSyncedAt
+                ? 'Sincronizado em ' + new Date(selectedAccount.lastSyncedAt).toLocaleDateString('pt-BR')
+                : 'Ainda sem leitura oficial'}
+            </p>
+          </CardContent>
+        </Card>}
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Contas de referência</p>
@@ -387,6 +401,10 @@ export function SimpleReferencesPanel() {
         </Card>
       </div>
 
+      {selectedAccount?.connected && <p className="text-xs text-muted-foreground">
+        A contagem oficial de seguidores não comprova que novos seguidores vieram
+        das referências. Nomes coletados são candidatos, não seguidores conquistados.
+      </p>}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Referências cadastradas</CardTitle>

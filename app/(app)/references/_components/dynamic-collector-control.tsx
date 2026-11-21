@@ -24,6 +24,7 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
   const [message,setMessage]=useState('');
   const [diagnostic,setDiagnostic]=useState('Verificando disponibilidade da coleta...');
   const lock=useRef(false);
+  const resumedExisting=useRef(false);
   // No state mutations in the fetch helper: React effects update state
   // only after its asynchronous result is delivered.
   const read=useCallback(async():Promise<{value:Queue|null;diagnostic:string}>=>{
@@ -96,15 +97,9 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       else if(info.status==='finished'){
         setMessage('Coleta de @'+(info.reference??'referência')+
           ' finalizada. Nomes observados: '+(info.observedNames??0)+'.');
-        const plan=await read();
-        if(plan.value){
-          const indexed=await fetch('/api/reference-candidate-queue',{
-            method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({accountId,operation:'sync-saved-history'}),
-          });
-          if(indexed.ok)onIndexed?.();
-        }
+        // The server committed the saved snapshots and candidate index in
+        // the same transaction; no second browser-side POST is required.
+        onIndexed?.();
       }else{
         setRunning(false);
         setMessage(info.status==='queue-complete'
@@ -119,6 +114,16 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       setMessage('A execução não pôde ser confirmada; não será repetida automaticamente.');
     }finally{lock.current=false;}
   },[accountId,onIndexed,read]);
+  useEffect(()=>{
+    // Only resume a previously launched container; never auto-launch the
+    // next reference on a fresh visit without a prior operator initiation.
+    if(!resumedExisting.current&&!running&&queue?.enabled&&
+      queue.currentState==='launched'&&queue.canAdvance){
+      resumedExisting.current=true;
+      setRunning(true);
+      void advance();
+    }
+  },[queue,running,advance]);
   useEffect(()=>{
     if(!running)return;
     const timer=setInterval(()=>{void advance();},20000);

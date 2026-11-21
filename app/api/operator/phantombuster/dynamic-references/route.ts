@@ -18,6 +18,7 @@ import {
   AUDIENCE_HISTORY_ACTION,MAX_HISTORY_BATCHES,
   makeAudienceSnapshot,parseAudienceSnapshot,type AudienceSnapshot,
 } from '@/lib/reference-audience-history';
+import {indexSavedAudienceCandidates} from '@/lib/server/dynamic-reference-candidate-index';
 import {
   DYNAMIC_COLLECTION_ACTION,MAX_DYNAMIC_COLLECTION_LOGS,
   makeDynamicJobEvent,parseDynamicJobEvent,planDynamicReferenceQueue,
@@ -234,12 +235,17 @@ export async function POST(request:Request){
             action:AUDIENCE_HISTORY_ACTION,success:true,details:JSON.stringify(b),
           })),
         });
-        return fresh.length;
+        // Keep the verified snapshot and inert candidate index atomic. A
+        // closed browser must not leave a completed collection unindexed.
+        const indexed=await indexSavedAudienceCandidates(tx,event.accountId);
+        if(indexed===null)return null;
+        return {snapshots:fresh.length,indexed:indexed.indexed};
       },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
-      if(stored===null)return bad('Limite ou conflito de histórico',409);
+      if(stored===null)return bad('Limite ou conflito de histórico ou índice',409);
       return NextResponse.json({
         status:'finished',reference:event.referenceUsername,
-        observedNames:result.usernames.length,snapshotBatchesStored:stored,
+        observedNames:result.usernames.length,snapshotBatchesStored:stored.snapshots,
+        candidatesIndexed:stored.indexed,
         newFollowersConfirmed:0,followExecuted:false,
       },{headers:HEADERS});
     }catch{return bad('Erro ao salvar coleta concluída',503);}

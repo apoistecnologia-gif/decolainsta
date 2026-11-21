@@ -99,3 +99,14 @@ test('dynamic controller is preview gated, operator only, idempotent and account
   assert.match(src,/noAutomaticRetry/);
   assert.doesNotMatch(src,/followSingle|unfollowSingle|InstagramFollowersAutoFollow|agents\/save/);
 });
+
+test('verified dynamic container finalizes snapshots AND candidate index atomically',()=>{
+  const src=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const ui=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
+  assert.match(src,/indexSavedAudienceCandidates\(tx,event\.accountId\)/);
+  assert.match(src,/candidatesIndexed:stored\.indexed/);
+  assert.match(src,/Prisma\.TransactionIsolationLevel\.Serializable/);
+  assert.doesNotMatch(ui,/operation:'sync-saved-history'/);
+  assert.match(ui,/queue\.currentState==='launched'&&queue\.canAdvance/);
+  assert.match(ui,/resumedExisting\.current=true/);
+});

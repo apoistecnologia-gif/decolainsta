@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {inspectFailedRetryPreflight} from '../lib/providers/phantombuster-failed-run-retry';
+import {
+  inspectFailedRetryPreflight,inspectUnverifiedRecoveryPreflight,
+} from '../lib/providers/phantombuster-failed-run-retry';
 
 const id='1111111111111111',container='2222222222222222';
 test('only exact latest finalized failed container is safe to retry',async()=>{
@@ -44,4 +46,19 @@ test('top-level container arrays are accepted without loosening the last-run che
   const result=await inspectFailedRetryPreflight('key',id,container,
     async()=>Response.json([{id:container,agentId:id,status:'failed'}]));
   assert.equal(result,'ready');
+});
+
+test('unverified recovery requires exact latest completed container, not a failed or active run',async()=>{
+  const run=async(rows:unknown)=>inspectUnverifiedRecoveryPreflight('key',id,container,
+    async()=>Response.json({containers:rows}));
+  assert.equal(await run([{id:container,status:'finished',exitCode:0}]),'ready');
+  assert.equal(await run([{id:container,status:'completed'}]),'ready');
+  assert.equal(await run([{id:container,status:'failed'}]),'unavailable');
+  assert.equal(await run([{id:container,status:'finished',exitCode:1}]),'unavailable');
+  assert.equal(await run([{id:'3333333333333333',status:'finished'},
+    {id:container,status:'finished'}]),'other-run');
+  assert.equal(await run([{id:container,status:'running'}]),'active');
+  assert.equal(await run([{id:container,status:'finished',agentId:'9999999999999999'}]),
+    'unavailable');
+  assert.equal(await run([]),'unavailable');
 });

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DynamicCollectorControl } from './dynamic-collector-control';
+import { FollowPreviewControls } from './follow-preview-controls';
 
 type Account = { id: string; username: string; connected?: boolean; profileFollowersCount?: number | null; lastSyncedAt?: string | null };
 type Reference = { id: string; username: string };
@@ -417,6 +418,7 @@ export function SimpleReferencesPanel() {
           }).catch(()=>undefined);
         }}
       />}
+      {selectedAccount?.connected&&<FollowPreviewControls accountId={accountId} />}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Referências cadastradas</CardTitle>

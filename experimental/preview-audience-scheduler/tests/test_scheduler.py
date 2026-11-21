@@ -74,7 +74,6 @@ class TestPreviewScheduler(unittest.TestCase):
         self.assertEqual(module.run_once(self.env, fake_open)[1], "unexpected-or-disabled-runner")
         self.assertEqual(len(requests), 1)
         for body in [
-            b'{"enabled":false,"examined":0,"instagramActionsExecuted":0}',
             b'{"enabled":true,"examined":500,"instagramActionsExecuted":0}',
             b'{"enabled":true,"examined":true,"instagramActionsExecuted":0}',
             b'{"enabled":true,"examined":2,"instagramActionsExecuted":0,"actionsEnabled":true}',
@@ -85,6 +84,46 @@ class TestPreviewScheduler(unittest.TestCase):
                 result = module.run_once(self.env, lambda request, timeout: FakeResponse(body))
                 self.assertNotEqual(result[0], 0)
                 self.assertNotIn("secret", result[1])
+
+    def test_disabled_importer_is_successful_noop(self):
+        payload = b'{"enabled":false,"examined":0,"instagramActionsExecuted":0}'
+        self.assertEqual(module.run_once(
+            self.env, lambda *_args: FakeResponse(payload)),
+            (0, "importer-disabled"))
+
+    def test_simulation_cron_is_opt_in_and_never_targets_production(self):
+        self.assertEqual(module.run_simulation_once(
+            self.env, lambda *_args: self.fail("unexpected request")),
+            (0, "disabled"))
+        env = {**self.env, "PREVIEW_FOLLOW_SIMULATION_CRON_ENABLED": "yes"}
+        requests = []
+        def open_sim(request, timeout):
+            requests.append(request)
+            return FakeResponse(
+                b'{"enabled":true,"mode":"simulation","advanced":5,'
+                b'"instagramActionsExecuted":0,'
+                b'"realFollowsEnabled":false,"realUnfollowsEnabled":false}')
+        self.assertEqual(module.run_simulation_once(env, open_sim),
+                         (0, "ok: advanced=5"))
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].get_method(), "GET")
+        self.assertEqual(requests[0].full_url, "https://" + module.PREVIEW_HOST
+                         + module.FOLLOW_PREVIEW_PATH)
+
+    def test_simulation_cron_rejects_unknown_or_unsafe_outputs(self):
+        env = {**self.env, "PREVIEW_FOLLOW_SIMULATION_CRON_ENABLED": "yes"}
+        cases = [
+            b'{"enabled":true,"mode":"simulation","advanced":1,"instagramActionsExecuted":1,"realFollowsEnabled":false,"realUnfollowsEnabled":false}',
+            b'{"enabled":true,"mode":"live","advanced":1,"instagramActionsExecuted":0,"realFollowsEnabled":false,"realUnfollowsEnabled":false}',
+            b'{"enabled":true,"mode":"simulation","advanced":6,"instagramActionsExecuted":0,"realFollowsEnabled":false,"realUnfollowsEnabled":false}',
+            b'sensitive-provider-error'
+        ]
+        for payload in cases:
+            with self.subTest(payload=payload[:20]):
+                code, msg = module.run_simulation_once(
+                    env, lambda *_args: FakeResponse(payload))
+                self.assertNotEqual(code, 0)
+                self.assertNotIn("sensitive", msg)
 
     def test_refuses_short_auth_and_missing_bypass(self):
         for name, value in [("PREVIEW_CRON_SECRET", "tiny"),("PREVIEW_PROTECTION_BYPASS", "")]:

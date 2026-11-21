@@ -16,6 +16,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 PREVIEW_HOST = "decolainsta-git-experime-c65b12-mariajuvelina403-7231s-projects.vercel.app"
 PREVIEW_PATH = "/api/cron/refresh-reference-audiences"
+FOLLOW_PREVIEW_PATH = "/api/cron/preview-follow-simulation"
 MAX_RESULT_BYTES = 8192
 
 class NoRedirects(HTTPRedirectHandler):
@@ -67,6 +68,13 @@ def run_once(env: dict[str, str], opener=None) -> tuple[int, str]:
         result = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
         return 1, "unrecognized-response"
+    # A disabled preview importer is a safe no-op, not a Railway crash.
+    if (isinstance(result, dict)
+            and result.get("enabled") is False
+            and result.get("examined") == 0
+            and result.get("instagramActionsExecuted") == 0
+            and result.get("actionsEnabled") is not True):
+        return 0, "importer-disabled"
     if (not isinstance(result, dict)
             or result.get("instagramActionsExecuted") != 0
             or result.get("actionsEnabled") is True
@@ -78,10 +86,55 @@ def run_once(env: dict[str, str], opener=None) -> tuple[int, str]:
     # Log only allowlisted counters; never raw response, cookies or credentials.
     return 0, "ok: examined=" + str(result["examined"])
 
+def run_simulation_once(env: dict[str, str], opener=None) -> tuple[int, str]:
+    """Optional PREVIEW-only database simulation, never Instagram actions."""
+    if env.get("PREVIEW_FOLLOW_SIMULATION_CRON_ENABLED") != "yes":
+        return 0, "disabled"
+    if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
+            or len(env.get("PREVIEW_CRON_SECRET", "")) < 32
+            or len(env.get("PREVIEW_PROTECTION_BYPASS", "")) != 32
+            or not env["PREVIEW_PROTECTION_BYPASS"].isalnum()):
+        return 2, "invalid-configuration"
+    url = "https://" + PREVIEW_HOST + FOLLOW_PREVIEW_PATH
+    request = Request(url, method="GET", headers={
+        "Authorization": "Bearer " + env["PREVIEW_CRON_SECRET"],
+        "X-Vercel-Protection-Bypass": env["PREVIEW_PROTECTION_BYPASS"],
+        "Accept": "application/json",
+    })
+    if opener is None:
+        opener = build_opener(NoRedirects()).open
+    try:
+        with opener(request, timeout=25) as response:
+            if response.status != 200:
+                return 1, "preview-not-ready"
+            raw = response.read(MAX_RESULT_BYTES + 1)
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError):
+        return 1, "preview-request-failed"
+    if len(raw) > MAX_RESULT_BYTES:
+        return 1, "response-too-large"
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return 1, "invalid-response"
+    if (not isinstance(value, dict)
+            or value.get("mode") != "simulation"
+            or value.get("instagramActionsExecuted") != 0
+            or value.get("realFollowsEnabled") is not False
+            or value.get("realUnfollowsEnabled") is not False
+            or value.get("enabled") not in (True, False)
+            or not isinstance(value.get("advanced"), int)
+            or isinstance(value.get("advanced"), bool)
+            or not 0 <= value["advanced"] <= 5):
+        return 1, "unsafe-or-unknown-response"
+    return 0, "ok: advanced=" + str(value["advanced"])
+
+
 def main() -> int:
-    status, message = run_once(os.environ)
-    print("preview-readonly-refresh:", message, flush=True)
-    return status
+    refresh_status, refresh_message = run_once(os.environ)
+    print("preview-readonly-refresh:", refresh_message, flush=True)
+    sim_status, sim_message = run_simulation_once(os.environ)
+    print("preview-follow-simulation:", sim_message, flush=True)
+    return max(refresh_status, sim_status)
 
 if __name__ == "__main__":
     sys.exit(main())

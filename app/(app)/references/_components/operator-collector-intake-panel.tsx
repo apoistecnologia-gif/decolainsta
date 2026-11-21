@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 
 type DynamicCollectionStatus = {
   enabled:boolean;
+  accountId:string;
   total:number;
   attempted:number;
   completed:number;
@@ -138,7 +139,19 @@ export function OperatorCollectorIntakePanel() {
       const plan=await fetch('/api/operator/phantombuster/dynamic-references',{
         method:'GET',credentials:'same-origin',cache:'no-store',
       });
-      if(plan.ok)setDynamicStatus(await plan.json() as DynamicCollectionStatus);
+      if(plan.ok){
+        const latest=await plan.json() as DynamicCollectionStatus;
+        setDynamicStatus(latest);
+        // Reuse the existing idempotent indexer, scoped to THIS owned account.
+        // A finished collector yields candidates, not new followers or follows.
+        if(result.status==='finished'&&latest.accountId){
+          await fetch('/api/reference-candidate-queue',{
+            method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({accountId:latest.accountId,operation:'sync-saved-history'}),
+          }).catch(()=>undefined);
+        }
+      }
     }catch{
       setDynamicRunning(false);
       setError('A consulta ou execução não pôde ser confirmada. Não tente repetir às cegas.');

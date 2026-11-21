@@ -86,3 +86,10 @@ test('capacity panel labels the provider inventory as all agent types, never rem
   assert.match(ui, /Não é possível afirmar quantas vagas restam/);
   assert.doesNotMatch(ui, /Coletores na workspace:/);
 });
+
+test('operator queue distinguishes new eligible references from already-created drafts', () => {
+  const ui = readFileSync('app/(app)/references/_components/operator-collector-intake-panel.tsx', 'utf8');
+  assert.match(ui, /Referências prontas para preparar: \{queue\.eligible\}/);
+  assert.match(ui, /Rascunhos já criados aguardando configuração: \{queue\.pendingSetup\}/);
+  assert.doesNotMatch(ui, /Aguardando configuração: \{queue\.pendingSetup\}/);
+});

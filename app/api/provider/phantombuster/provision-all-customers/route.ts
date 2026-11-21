@@ -10,6 +10,7 @@ import {
 } from '@/lib/providers/phantombuster-collector-drafts';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import { planCollectorProvisioning } from '@/lib/reference-collector-provisioning';
+import { sequentialCollectorReadiness } from '@/lib/reference-shared-collector-evidence';
 import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
   disabledAudienceReferenceKeys, resolveActiveAudienceSources,
@@ -111,6 +112,9 @@ export async function POST(request: Request) {
       ...plan,
       // The operator sees counts, not private customers' usernames.
       next: plan.next !== null,
+      // Informational only. Reusing an agent requires an exclusive run lease
+      // and provider-verified per-run input. Neither is enabled here.
+      sharedCollector: sequentialCollectorReadiness(plan.eligible),
       draftCreationEnabled: process.env.PHANTOMBUSTER_DRAFT_CREATION_ENABLED === 'yes',
       providerRequestsMade: 0,
       requiresProviderSetup: true,

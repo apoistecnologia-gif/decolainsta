@@ -144,14 +144,13 @@ export async function reserveSharedCollectorForFutureRead(input: {
       });
       if (!reference) return { status: 'not-owned' } as const;
 
-      const [previous, bindings, drafts] = await Promise.all([
-        tx.activityLog.findFirst({
-          where: {
-            action: SHARED_COLLECTOR_LEASE_ACTION,
-            targetUsername: input.collectorAgentId,
-          },
-          select: { details: true },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      const [sharedRows, bindings, drafts] = await Promise.all([
+        tx.activityLog.findMany({
+          // Read the whole global lease registry: malformed or cross-tenant
+          // rows must not silently free a previously reserved agent.
+          where: { action: SHARED_COLLECTOR_LEASE_ACTION },
+          select: { instagramAccountId: true, targetUsername: true, details: true },
+          take: MAX_SHARED_COLLECTOR_LEASE_LOGS + 1,
         }),
         tx.activityLog.findMany({
           where: { action: AUDIENCE_SOURCE_BINDING_ACTION },
@@ -167,15 +166,14 @@ export async function reserveSharedCollectorForFutureRead(input: {
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         }),
       ]);
-      if (previous) {
-        // Malformed reservations are NEVER ignored.
-        const event = parseSharedCollectorLease(previous.details);
-        return { status: event?.collectorAgentId === input.collectorAgentId ?
-          'already-reserved' : 'review-required' } as const;
-      }
-      if (bindings.length > MAX_SOURCE_BINDING_LOGS ||
+      if (sharedRows.length > MAX_SHARED_COLLECTOR_LEASE_LOGS ||
+        bindings.length > MAX_SOURCE_BINDING_LOGS ||
         drafts.length > COLLECTOR_DRAFT_MAX_LOGS)
         return { status: 'review-required' } as const;
+      const shared = reservedSharedCollectorAgents(sharedRows);
+      if (!shared.valid) return { status: 'review-required' } as const;
+      if (shared.agents.has(input.collectorAgentId))
+        return { status: 'already-reserved' } as const;
       if (resolveLatestAudienceBindings(bindings).some(
         source => source.collectorAgentId === input.collectorAgentId) ||
         reservedCollectorDraftAgents(drafts).has(input.collectorAgentId))

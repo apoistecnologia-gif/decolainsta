@@ -37,3 +37,12 @@ test('unverified collection blocks further launches but not review of existing r
   assert.match(route,/data\.plan\.attributionUnverified>0/);
   assert.match(route,/current\.plan\.attributionUnverified>0/);
 });
+
+test('finished container without importable proof is quarantined after grace',()=>{
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  assert.match(route,/withinDynamicResultGracePeriod\(last\.createdAt\)/);
+  assert.match(route,/const blocked=makeDynamicJobEvent\(\{\.\.\.event,state:'finished-unverified'\}\)/);
+  assert.match(route,/const quarantined=await prisma\.activityLog\.updateMany\(/);
+  assert.match(route,/if\(quarantined\.count!==1\)return bad\('Revisão concorrente da coleta',409\)/);
+  assert.match(route,/!collectionLimited&&activeProof\?\.reason!=='failed-run'/);
+});

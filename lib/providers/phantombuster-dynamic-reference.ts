@@ -205,9 +205,12 @@ export async function inspectDynamicRunProof(
     // conflicting launch; explicit metadata with another claim is.
     // This method must only be called with the trusted, account-owned
     // database launch receipt, never with client-provided input.
+    // If the provider explicitly returns a metadata object, it must include
+    // the matching claim. Only an OMITTED/NULL field enables receipt fallback.
     const metadata=rec(data.userCustomMetadata);
-    if(metadata&&Object.prototype.hasOwnProperty.call(metadata,'decolainstaClaimId')&&
-       metadata.decolainstaClaimId!==claimId)return 'finished-unverified';
+    if((data.userCustomMetadata!==undefined&&data.userCustomMetadata!==null)&&
+       (!metadata||metadata.decolainstaClaimId!==claimId))
+      return 'finished-unverified';
     if(data.argument!==undefined&&data.argument!==null&&
        configuredFollowerCollectorReference(data.argument)!==reference)
       return 'finished-unverified';

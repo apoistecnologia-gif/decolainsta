@@ -49,6 +49,14 @@ export async function GET(){
     businessTokenPresent:Boolean(account?.encryptedAccessToken),
     businessTokenCompatibleWithMessaging:false,
     currentAccountMetaIdKnown:Boolean(account?.instagramUserId),
+    existingFacebookLoginConfigured:Boolean(
+      process.env.INSTAGRAM_APP_ID&&process.env.INSTAGRAM_APP_SECRET&&
+      process.env.INSTAGRAM_CONFIG_ID),
+    sameMetaAppCanSupportInstagramProduct:true,
+    facebookMessagingRequiresPageAccessToken:true,
+    facebookMessagingPermissionsVerified:false,
+    facebookMessagingPageTokenConfigured:false,
+    existingBusinessIntegrationTokenIsPageToken:false,
     permissionRequired:'instagram_business_manage_messages',
     appReviewRequiredForThirdPartyAccounts:true,
     signedWebhookVerificationRequired:true,

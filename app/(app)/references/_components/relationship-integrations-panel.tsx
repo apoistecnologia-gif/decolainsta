@@ -8,6 +8,10 @@ type MetaReadiness={
   webhookConfigured:boolean;migrationReady:boolean;
   messagingConnected:boolean;accountRegistered:boolean;
   accountId?:string|null;nextStep:string;
+  existingFacebookLoginConfigured:boolean;
+  sameMetaAppCanSupportInstagramProduct:boolean;
+  facebookMessagingPermissionsVerified:boolean;
+  facebookMessagingPageTokenConfigured:boolean;
 };
 type UnfollowReadiness={
   linked:boolean;verification:string;
@@ -83,6 +87,16 @@ export function RelationshipIntegrationsPanel(){
     {error&&<p role="alert">{error}</p>}
     {meta&&<div className="space-y-1">
       <p className="font-medium">Meta — verificação oficial por mensagem</p>
+      <p>Aplicativo empresarial já configurado: {
+        meta.existingFacebookLoginConfigured?'sim':'não confirmado'}.
+        É possível acrescentar o produto Instagram ao aplicativo existente,
+        sem substituir a integração empresarial.</p>
+      <p>Alternativa pelo Facebook Login: requer permissões de mensagens e
+        token autorizado de Página. Permissões verificadas: {
+          meta.facebookMessagingPermissionsVerified?'sim':'não'}.
+        Token de Página: {
+          meta.facebookMessagingPageTokenConfigured?'configurado':'não configurado'}.
+        O token empresarial atual não deve ser tratado como token de Página.</p>
       <p>Conexão: {meta.messagingConnected?'conectada':'não conectada'}.
         Banco de testes: {meta.migrationReady?'preparado':'não confirmado'}.
         OAuth: {meta.oauthConfigured?'configurado':'pendente'}.

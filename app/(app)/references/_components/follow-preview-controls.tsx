@@ -1,6 +1,6 @@
 'use client';
 
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {Card,CardContent} from '@/components/ui/card';
 import {Button} from '@/components/ui/button';
 import type {FollowPreviewOperation,FollowPreviewState} from
@@ -10,6 +10,8 @@ type FollowView={
   accountId:string;state:FollowPreviewState;
   candidateCount:number;eligibleCount:number;excludedCount:number;
   lastChangedAt:string|null;mode:'simulation';
+  simulatedCount:number;remainingCount:number;recentSimulated:string[];
+  simulationComplete:boolean;
   liveFollowAvailable:false;realFollowsEnabled:false;realUnfollowsEnabled:false;
   instagramActionsExecuted:0;blocker:string;
 };
@@ -27,6 +29,7 @@ export function FollowPreviewControls({accountId}:Props){
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   const [unavailable,setUnavailable]=useState(false);
+  const tickInFlight=useRef(false);
 
   const read=useCallback(async(signal?:AbortSignal)=>{
     const response=await fetch('/api/operator/reference-follow-preview?accountId='+
@@ -73,6 +76,37 @@ export function FollowPreviewControls({accountId}:Props){
     finally{setBusy(false);}
   },[accountId,busy,read]);
 
+  // Each tick writes at most five simulated, deduplicated decisions in Neon.
+  // No browser API call here or server-side endpoint can follow anyone.
+  // Pausing, stopping or closing the page stops client-side tick scheduling.
+  useEffect(()=>{
+    if(view?.accountId!==accountId||view.state!=='simulating'||
+       view.simulationComplete)return;
+    let cancelled=false;
+    const tick=async()=>{
+      if(cancelled||document.visibilityState!=='visible'||tickInFlight.current)return;
+      tickInFlight.current=true;
+      try{
+        const response=await fetch('/api/operator/reference-follow-preview',{
+          method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({accountId,operation:'tick'}),
+        });
+        if(cancelled)return;
+        const updated=await read();
+        if(!cancelled&&updated)setView(updated);
+        if(!response.ok&&response.status!==409){
+          setError('Não foi possível registrar este lote simulado.');
+        }
+      }catch{
+        if(!cancelled)setError('Consulta da simulação indisponível.');
+      }finally{tickInFlight.current=false;}
+    };
+    void tick();
+    const interval=window.setInterval(()=>void tick(),8000);
+    return()=>{cancelled=true;window.clearInterval(interval);};
+  },[accountId,read,view?.accountId,view?.state,view?.simulationComplete]);
+
   if(unavailable||!accountId)return null;
   const ready=view?.accountId===accountId;
   const state=ready?view.state:'idle';
@@ -95,6 +129,26 @@ export function FollowPreviewControls({accountId}:Props){
           Elegíveis apenas para simulação: {view.eligibleCount}.
           Excluídos por proteção ou histórico: {view.excludedCount}.
         </p>}
+        {ready&&view.state!=='idle'&&
+          <div className="space-y-1">
+            <p role="status" className="text-sm">
+              Processados na simulação: {view.simulatedCount} de {view.eligibleCount}.
+              Restantes: {view.remainingCount}.
+              {view.simulationComplete?' Simulação concluída.':''}
+            </p>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted"
+              role="progressbar" aria-label="Progresso da simulação"
+              aria-valuemin={0} aria-valuemax={view.eligibleCount}
+              aria-valuenow={view.simulatedCount}>
+              <div className="h-full bg-primary transition-all"
+                style={{width:((view.simulatedCount/Math.max(1,view.eligibleCount))*100)+'%'}} />
+            </div>
+            {view.recentSimulated.length>0&&
+              <p className="text-xs text-muted-foreground">
+                Últimas avaliações simuladas: {view.recentSimulated.map(x=>'@'+x).join(', ')}.
+              </p>}
+          </div>}
+
         <div className="flex flex-wrap gap-2">
           {(state==='idle'||state==='stopped')&&
             <Button type="button" disabled={!canStart}
@@ -114,10 +168,10 @@ export function FollowPreviewControls({accountId}:Props){
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Iniciar o teste apenas registra e controla o modo de simulação.
-          Referências desativadas para ações reais continuam disponíveis
-          para avaliação simulada. Não executa ações, não inicia o
-          PhantomBuster e não agenda follows.
+          O modo de teste avalia candidatos em pequenos lotes enquanto
+          esta página estiver aberta, registrando decisões simuladas no histórico.
+          Pausar ou parar suspende novas avaliações.
+          Não segue ninguém, não aciona o PhantomBuster e não agenda follows reais.
         </p>
         {view?.blocker&&
           <p className="text-xs text-muted-foreground">

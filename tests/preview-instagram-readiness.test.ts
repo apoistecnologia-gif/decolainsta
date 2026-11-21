@@ -9,6 +9,9 @@ test('preview readiness is cron-secret protected and never releases a collection
   assert.match(route,/given\.length===expected\.length&&timingSafeEqual\(given,expected\)/);
   assert.match(route,/await connectedAccount\(account\.id,account\.userId\)/);
   assert.match(route,/await getProfile\(active\.token,account\.instagramUserId\)/);
+  assert.match(route,/profile\.id===account\.instagramUserId/);
+  assert.match(route,/profile\.username\.toLowerCase\(\)===alias/);
+  assert.match(route,/metaIdentity,/);
   assert.match(route,/inspectDynamicFailureOutput\(/);
   assert.match(route,/instagramRestrictionCleared:null/);
   assert.match(route,/providerLaunchesExecuted:0/);

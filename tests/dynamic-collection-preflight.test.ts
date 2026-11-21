@@ -28,7 +28,9 @@ test('GET performs read-only provider readiness check before enabling POST and d
   const ui=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
   assert.match(route,/const progress=enabled&&!ownLaunched/);
   assert.match(route,/inspectPinnedCollectorProgress\(key!,agentId\)/);
-  assert.match(route,/canAdvance,blocker,providerStatus:progress/);
+  assert.match(route,/canAdvance,canRetryFailed/);
+  assert.match(route,/blocker,providerStatus:progress/);
+  assert.match(route,/retryReference:canRetryFailed/);
   assert.match(route,/isSameOriginDynamicCollectionRequest/);
   assert.match(route,/progressBlocker\(provider\)/);
   assert.match(ui,/disabled=\{running\|\|!queue.canAdvance\}/);

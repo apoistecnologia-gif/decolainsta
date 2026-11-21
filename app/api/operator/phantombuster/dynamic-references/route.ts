@@ -44,15 +44,24 @@ const progressBlocker=(status:string):string=>{
   return explanations[status]??'O coletor ainda não foi confirmado como disponível.';
 };
 const bad=(error:string,status:number)=>NextResponse.json({error},{status,headers:HEADERS});
-/** The preview cron may inspect an existing launch, but never start one. */
-function previewReconcileCronAuthorized(request:Request):boolean{
-  if(process.env.VERCEL_ENV!=='preview'||
-     process.env.PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED!=='yes')return false;
+/** A preview-only cron identity, distinct from authenticated browser sessions.
+ * Each cron operation also needs its own explicit feature flag.
+ */
+function previewCronTokenAuthorized(request:Request):boolean{
+  if(process.env.VERCEL_ENV!=='preview')return false;
   const secret=process.env.CRON_SECRET;
   if(!secret||secret.length<32)return false;
   const given=Buffer.from(request.headers.get('authorization')??'','utf8');
   const expected=Buffer.from('Bearer '+secret,'utf8');
   return given.length===expected.length&&timingSafeEqual(given,expected);
+}
+function previewReconcileCronAuthorized(request:Request):boolean{
+  return process.env.PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED==='yes'&&
+    previewCronTokenAuthorized(request);
+}
+function previewCollectCronAuthorized(request:Request):boolean{
+  return process.env.PREVIEW_DYNAMIC_COLLECTION_CRON_ENABLED==='yes'&&
+    previewCronTokenAuthorized(request);
 }
 async function previewCronAccountId():Promise<string|null>{
   const username=process.env.PHANTOMBUSTER_SOCIAL_PILOT_ACCOUNT
@@ -251,9 +260,11 @@ export async function GET(){
 }
 export async function POST(request:Request){
   const cronAuthorized=previewReconcileCronAuthorized(request);
-  const accountId=cronAuthorized?await previewCronAccountId():await context();
+  const collectCronAuthorized=previewCollectCronAuthorized(request);
+  const serverCron=cronAuthorized||collectCronAuthorized;
+  const accountId=serverCron?await previewCronAccountId():await context();
   if(!accountId)return bad('Somente operador no Preview',403);
-  if(!cronAuthorized&&!isSameOriginDynamicCollectionRequest(
+  if(!serverCron&&!isSameOriginDynamicCollectionRequest(
     request.headers.get('origin'),request.url,request.headers.get('host')))
     return bad('Origem da solicitação não corresponde ao domínio do painel',403);
   if(!request.headers.get('content-type')?.startsWith('application/json'))
@@ -264,10 +275,13 @@ export async function POST(request:Request){
   if(!input||typeof input!=='object'||Array.isArray(input)||
     Object.keys(input).length!==2)return bad('Parâmetros inválidos',400);
   const body=input as Record<string,unknown>;
-  if(!['advance','retry-failed','reconcile-only'].includes(String(body.operation))||
+  if(!['advance','retry-failed','reconcile-only','collect-next'].includes(String(body.operation))||
      body.confirmDynamicCollection!==true)
     return bad('Operação inválida',400);
-  if(cronAuthorized!==(body.operation==='reconcile-only'))
+  const reconcileOnly=body.operation==='reconcile-only';
+  const collectNext=body.operation==='collect-next';
+  if((reconcileOnly&&!cronAuthorized)||(collectNext&&!collectCronAuthorized)||
+     (!reconcileOnly&&!collectNext&&serverCron))
     return bad('Modo de execução não autorizado',403);
   if(process.env.PHANTOMBUSTER_DYNAMIC_COLLECTION_ENABLED!=='yes')
     return bad('Execução desativada no Preview',403);
@@ -278,7 +292,7 @@ export async function POST(request:Request){
   const agentId=selected.agentId;
   const current=await queue(accountId,agentId);
   if(!current)return bad('Registro inválido',503);
-  if(cronAuthorized&&(
+  if(reconcileOnly&&(
     current.jobs[0]?.state!=='launched'||
     current.jobs[0]?.accountId!==accountId))
     return NextResponse.json({status:'no-pending-run',noAutomaticLaunch:true,
@@ -471,7 +485,7 @@ export async function POST(request:Request){
       },{headers:HEADERS});
     }catch{return bad('Erro ao salvar coleta concluída',503);}
   }
-  if(cronAuthorized)return NextResponse.json({
+  if(reconcileOnly)return NextResponse.json({
     status:'no-pending-run',noAutomaticLaunch:true,
     instagramActionsExecuted:0,launchesExecuted:0,
   },{headers:HEADERS});

@@ -110,3 +110,49 @@ test('verified dynamic container finalizes snapshots AND candidate index atomica
   assert.match(ui,/queue\.currentState==='launched'&&queue\.canAdvance/);
   assert.match(ui,/resumedExisting\.current=true/);
 });
+
+test('dynamic completed snapshots are indexed once, in the owning tenant, without follows',async()=>{
+  const {makeAudienceSnapshot,AUDIENCE_HISTORY_ACTION}=await import('../lib/reference-audience-history');
+  const {AUDIENCE_CANDIDATE_ACTION,parseCandidateEvidence}=await import('../lib/reference-candidate-queue');
+  const {indexSavedAudienceCandidates}=await import('../lib/server/dynamic-reference-candidate-index');
+  const accountId='account_test',refId='reference_test';
+  const snapshot=makeAudienceSnapshot(refId,'ammplamob',id,
+    ['alice_valid','excluded_name','apoistecnologia'],'completed_run');
+  assert.ok(snapshot);
+  const created: Array<{instagramAccountId:string;action:string;targetUsername:string;details:string}> = [];
+  const tx={
+    instagramAccount:{findUnique:async(input:{where:{id:string}})=>{
+      assert.equal(input.where.id,accountId);return {username:'apoistecnologia'};
+    }},
+    targetAccount:{findMany:async(input:{where:{instagramAccountId:string}})=>{
+      assert.equal(input.where.instagramAccountId,accountId);
+      return [{id:refId,username:'ammplamob'}];
+    }},
+    activityLog:{
+      findMany:async(input:{where:{instagramAccountId:string;action:string}})=>{
+        assert.equal(input.where.instagramAccountId,accountId);
+        if(input.where.action===AUDIENCE_HISTORY_ACTION)
+          return [{id:'snapshot_test',targetUsername:'ammplamob',
+            details:JSON.stringify(snapshot),createdAt:new Date('2026-11-21T14:00:00Z')}];
+        assert.equal(input.where.action,AUDIENCE_CANDIDATE_ACTION);
+        return created.map(x=>({targetUsername:x.targetUsername,details:x.details}));
+      },
+      createMany:async(input:{data:typeof created})=>{
+        for(const row of input.data){
+          assert.equal(row.instagramAccountId,accountId);
+          assert.equal(row.action,AUDIENCE_CANDIDATE_ACTION);
+          created.push(row);
+        }
+        return {count:input.data.length};
+      },
+    },
+    whitelist:{findMany:async()=>[{username:'excluded_name'}]},
+    followAction:{findMany:async()=>[]},
+  } as unknown as Parameters<typeof indexSavedAudienceCandidates>[0];
+  assert.deepEqual(await indexSavedAudienceCandidates(tx,accountId),{indexed:1});
+  assert.equal(created.length,1);
+  assert.equal(created[0].targetUsername,'alice_valid');
+  assert.equal(parseCandidateEvidence(created[0].details)?.actionsEnabled,false);
+  assert.deepEqual(await indexSavedAudienceCandidates(tx,accountId),{indexed:0});
+  assert.equal(created.length,1);
+});

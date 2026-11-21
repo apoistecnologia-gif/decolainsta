@@ -74,8 +74,9 @@ async function existingLaunchedAgent(accountId:string):Promise<string|null>{
   });
   if(!row)return null;
   const event=parseDynamicJobEvent(row.details);
-  return event?.state==='launched'&&event.containerId&&
-    event.accountId===accountId&&event.agentId===row.targetUsername
+  return (event?.state==='launched'||event?.state==='finished-unverified')&&
+    event.containerId&&event.accountId===accountId&&
+    event.agentId===row.targetUsername
     ?event.agentId:null;
 }
 async function agentForReconciliation(key:string,accountId:string){
@@ -135,11 +136,13 @@ export async function GET(){
   if(!data)return bad('Fila requer revisão',503);
   const enabled=process.env.PHANTOMBUSTER_DYNAMIC_COLLECTION_ENABLED==='yes';
   const current=data.jobs[0];
-  const ownLaunched=current?.accountId===accountId&&current.state==='launched';
+  const ownLaunched=current?.accountId===accountId&&
+    (current.state==='launched'||current.state==='finished-unverified')&&
+    Boolean(current.containerId);
   // Read-only preflight. A previous uncertain launch is not retried and a
   // provider state with no proof of idle does not enable a new launch.
   const activeProof=enabled&&current?.accountId===accountId&&
-    current.state==='launched'&&current.containerId
+    (current.state==='launched'||current.state==='finished-unverified')&&current.containerId
     ?await inspectDynamicRunProof(key!,agentId,current.containerId,
       current.referenceUsername,current.claimId):null;
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
@@ -198,7 +201,7 @@ export async function POST(request:Request){
     return NextResponse.json({
       status:'provider-busy',reason:'another-account-owns-active-run',
     },{headers:HEADERS});
-  if(last&&event?.state==='launched'&&event.containerId){
+  if(last&&(event?.state==='launched'||event?.state==='finished-unverified')&&event.containerId){
     const proof=await inspectDynamicRunProof(
       key!,agentId,event.containerId,event.referenceUsername,event.claimId);
     if(proof==='running'||proof==='unavailable')
@@ -207,11 +210,15 @@ export async function POST(request:Request){
         providerStatus:proof,noDuplicateLaunch:true,
       },{headers:HEADERS});
     if(proof!=='verified-finished'){
-      const changed=makeDynamicJobEvent({...event,state:'finished-unverified'});
-      if(!changed)return bad('Registro inválido',503);
-      await prisma.activityLog.update({
-        where:{id:last.id},data:{details:JSON.stringify(changed),success:false},
-      });
+      if(event.state==='launched'){
+        const changed=makeDynamicJobEvent({...event,state:'finished-unverified'});
+        if(!changed)return bad('Registro inválido',503);
+        await prisma.activityLog.updateMany({
+          where:{id:last.id,instagramAccountId:accountId,
+            action:DYNAMIC_COLLECTION_ACTION,details:last.details},
+          data:{details:JSON.stringify(changed),success:false},
+        });
+      }
       return NextResponse.json({
         status:'finished-without-input-proof',reference:event.referenceUsername,
         candidatesImported:0,reviewRequired:true,

@@ -105,7 +105,9 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
         onIndexed?.();
       }else{
         setRunning(false);
-        setMessage(info.status==='queue-complete'
+        if(info.status==='finished-without-input-proof'){
+          setMessage('O contêiner terminou, mas sua origem não pôde ser comprovada. Nenhum nome foi importado.');
+        }else setMessage(info.status==='queue-complete'
           ?'Todas as referências elegíveis foram processadas.'
           :'Execução interrompida para revisão: '+info.status);
       }
@@ -121,7 +123,8 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
     // Only resume a previously launched container; never auto-launch the
     // next reference on a fresh visit without a prior operator initiation.
     if(!resumedExisting.current&&!running&&queue?.enabled&&
-      queue.currentState==='launched'&&queue.canAdvance){
+      (queue.currentState==='launched'||
+       queue.currentState==='finished-unverified')&&queue.canAdvance){
       resumedExisting.current=true;
       setRunning(true);
       void advance();

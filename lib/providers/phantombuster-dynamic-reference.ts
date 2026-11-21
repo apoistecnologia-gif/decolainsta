@@ -199,8 +199,15 @@ export async function inspectDynamicRunProof(
        (data.exitCode!==undefined&&data.exitCode!==null&&
          Number(data.exitCode)!==0))
       return 'finished-unverified';
+    // The server already persisted the provider-issued containerId returned
+    // for this one-time bonusArgument and claim. Some workspaces omit
+    // userCustomMetadata on /containers/fetch. An omitted field is NOT a
+    // conflicting launch; explicit metadata with another claim is.
+    // This method must only be called with the trusted, account-owned
+    // database launch receipt, never with client-provided input.
     const metadata=rec(data.userCustomMetadata);
-    if(metadata?.decolainstaClaimId!==claimId)return 'finished-unverified';
+    if(metadata&&Object.prototype.hasOwnProperty.call(metadata,'decolainstaClaimId')&&
+       metadata.decolainstaClaimId!==claimId)return 'finished-unverified';
     if(data.argument!==undefined&&data.argument!==null&&
        configuredFollowerCollectorReference(data.argument)!==reference)
       return 'finished-unverified';

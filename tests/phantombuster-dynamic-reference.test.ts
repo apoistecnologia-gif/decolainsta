@@ -204,3 +204,26 @@ test('the persisted launched receipt bypasses mutable template discovery for pro
   assert.match(src,/activeContainerStatus:activeProof/);
   assert.match(src,/providerStatus:proof,noDuplicateLaunch:true/);
 });
+
+test('metadata omission may use trusted backend launch receipt, but explicit mismatch blocks',async()=>{
+  const {inspectDynamicRunProof}=await import('../lib/providers/phantombuster-dynamic-reference');
+  const basic={id:'2222222222222222',agentId:id,status:'finished',
+    endedAt:'2026-11-21T13:00:00Z',exitCode:0};
+  assert.equal(await inspectDynamicRunProof('key',id,'2222222222222222','uber',
+    claimId,async()=>Response.json(basic)),'verified-finished');
+  assert.equal(await inspectDynamicRunProof('key',id,'2222222222222222','uber',
+    claimId,async()=>Response.json({...basic,userCustomMetadata:{decolainstaClaimId:'another-claim'}})),
+    'finished-unverified');
+  assert.equal(await inspectDynamicRunProof('key',id,'2222222222222222','uber',
+    claimId,async()=>Response.json({...basic,argument:{spreadsheetUrl:'https://instagram.com/other/'}})),
+    'finished-unverified');
+});
+test('finished-unverified receipt is checked again without re-launching other references',()=>{
+  const src=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const ui=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
+  assert.match(src,/event\?\.state==='finished-unverified'/);
+  assert.match(src,/event\.state==='launched'/);
+  assert.match(src,/state:'finished'/);
+  assert.match(ui,/queue\.currentState==='finished-unverified'/);
+  assert.match(src,/event\.containerId,event\.referenceUsername/);
+});

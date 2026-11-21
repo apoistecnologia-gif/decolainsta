@@ -4,16 +4,20 @@ import {readFileSync} from 'node:fs';
 import {planDynamicReferenceQueue} from '../lib/reference-dynamic-collection';
 
 const id='1111111111111111';
-test('dynamic collector selects only enabled references from the database',()=>{
+test('collection remains independent of the disabled social-action flag',()=>{
   const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
-  assert.match(route,/prisma\.targetAccount\.findMany\(\{where:\{instagramAccountId:accountId,enabled:true\}/);
+  const create=readFileSync('app/api/instagram-accounts/[id]/targets/route.ts','utf8');
+  assert.match(create,/enabled: false/);
+  assert.match(route,/prisma\.targetAccount\.findMany\(\{where:\{instagramAccountId:accountId\}/);
+  assert.doesNotMatch(route,/prisma\.targetAccount\.findMany\(\{where:\{instagramAccountId:accountId,enabled:true\}/);
   assert.match(route,/if\(current\.plan\.unresolved\|\|current\.plan\.attributionUnverified>0\)/);
   assert.match(route,/if\(!current\.plan\.next\)/);
 });
-test('dynamic queue does not produce work when disabled references are filtered out',()=>{
-  const plan=planDynamicReferenceQueue([],[],id);
-  assert.equal(plan.next,null);
-  assert.equal(plan.total,0);
+test('reference collection planning does not initiate Instagram actions',()=>{
+  const references=[{id:'ref001',username:'uber'}];
+  const plan=planDynamicReferenceQueue(references,[],id);
+  assert.equal(plan.next?.username,'uber');
+  assert.equal(plan.total,1);
   assert.equal(plan.unresolved,false);
 });
 

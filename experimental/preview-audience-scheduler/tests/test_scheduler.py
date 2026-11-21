@@ -1,5 +1,6 @@
 import importlib.util
 import io
+from datetime import datetime, timezone
 import pathlib
 import unittest
 from unittest.mock import patch
@@ -138,7 +139,8 @@ class TestPreviewScheduler(unittest.TestCase):
             return FakeResponse(
                 b'{"status":"no-pending-run","noAutomaticLaunch":true,'
                 b'"launchesExecuted":0,"instagramActionsExecuted":0}')
-        self.assertEqual(module.run_reconciliation_once(env, fake_open),
+        due = datetime(2026, 11, 21, 21, 0, tzinfo=timezone.utc)
+        self.assertEqual(module.run_reconciliation_once(env, fake_open, now=due),
                          (0, "ok: status=no-pending-run"))
         self.assertEqual(len(requests), 1)
         request, timeout = requests[0]
@@ -148,6 +150,13 @@ class TestPreviewScheduler(unittest.TestCase):
         self.assertEqual(request.data, b'{"operation":"reconcile-only","confirmDynamicCollection":true}')
         self.assertEqual(timeout, 25)
         self.assertEqual(request.get_header("Authorization"), "Bearer " + "a" * 48)
+
+    def test_reconciliation_checks_provider_only_twice_per_hour(self):
+        env = {**self.env, "PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED": "yes"}
+        not_due = datetime(2026, 11, 21, 21, 10, tzinfo=timezone.utc)
+        self.assertEqual(module.run_reconciliation_once(
+            env, lambda *_args, **_kwargs: self.fail("too soon"), now=not_due),
+            (0, "interval-not-due"))
 
     def test_reconciliation_rejects_unsafe_or_unknown_responses(self):
         env = {**self.env, "PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED": "yes"}
@@ -159,7 +168,8 @@ class TestPreviewScheduler(unittest.TestCase):
         ]:
             with self.subTest(payload=payload[:24]):
                 code, message = module.run_reconciliation_once(
-                    env, lambda *_args, **_kwargs: FakeResponse(payload))
+                    env, lambda *_args, **_kwargs: FakeResponse(payload),
+                    now=datetime(2026, 11, 21, 21, 0, tzinfo=timezone.utc))
                 self.assertNotEqual(code, 0)
                 self.assertNotIn("sensitive", message)
 

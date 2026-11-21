@@ -30,6 +30,7 @@ import {
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { FadeIn } from '@/components/ui/animate';
+import { DynamicCollectorControl } from '@/app/(app)/references/_components/dynamic-collector-control';
 
 export function AccountDetail({ account }: { account: any }) {
   const router = useRouter();
@@ -286,6 +287,7 @@ export function AccountDetail({ account }: { account: any }) {
           </Card>}
         </TabsContent>
         <TabsContent value="targets" className="space-y-4">
+          {account.connected && <DynamicCollectorControl accountId={account.id} />}
           <FadeIn>
             <Card>
               <CardHeader>

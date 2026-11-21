@@ -1,0 +1,115 @@
+'use client';
+
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {Button} from '@/components/ui/button';
+
+/**
+ * Account-scoped pilot control. No PhantomBuster agent ID, session cookie, URL
+ * or follower is supplied by the browser. The server selects registered refs.
+ * A user authorizes the first run with one click; subsequent runs advance
+ * sequentially while the page remains open.
+ */
+type Queue={
+  enabled:boolean;accountId:string;total:number;attempted:number;
+  completed:number;unverified:number;nextReference:string|null;
+  unresolved:boolean;currentState:string;
+};
+type Advance={status:string;reference?:string;observedNames?:number};
+export function DynamicCollectorControl({accountId,onIndexed}:{
+  accountId:string;onIndexed?:()=>void;
+}){
+  const [queue,setQueue]=useState<Queue|null>(null);
+  const [running,setRunning]=useState(false);
+  const [message,setMessage]=useState('');
+  const lock=useRef(false);
+  const read=useCallback(async()=>{
+    try{
+      const response=await fetch('/api/operator/phantombuster/dynamic-references',{
+        credentials:'same-origin',cache:'no-store',
+      });
+      if(!response.ok)return null;
+      const value=await response.json() as Queue;
+      if(value.accountId!==accountId||!value.enabled)return null;
+      return value;
+    }catch{return null;}
+  },[accountId]);
+  useEffect(()=>{
+    let cancelled=false;
+    void read().then(value=>{if(!cancelled)setQueue(value);});
+    return ()=>{cancelled=true;};
+  },[read]);
+  const advance=useCallback(async()=>{
+    if(lock.current)return;
+    lock.current=true;
+    try{
+      const response=await fetch('/api/operator/phantombuster/dynamic-references',{
+        method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({operation:'advance',confirmDynamicCollection:true}),
+      });
+      if(!response.ok)throw new Error('Execução não autorizada');
+      const info=await response.json() as Advance;
+      if(info.status==='queued')
+        setMessage('Coleta iniciada para @'+(info.reference??'referência')+'.');
+      else if(info.status==='in-progress'||info.status==='provider-busy')
+        setMessage('Aguardando a conclusão da coleta atual.');
+      else if(info.status==='finished'){
+        setMessage('Coleta de @'+(info.reference??'referência')+
+          ' finalizada. Nomes observados: '+(info.observedNames??0)+'.');
+        const plan=await read();
+        if(plan){
+          const indexed=await fetch('/api/reference-candidate-queue',{
+            method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({accountId,operation:'sync-saved-history'}),
+          });
+          if(indexed.ok)onIndexed?.();
+        }
+      }else{
+        setRunning(false);
+        setMessage(info.status==='queue-complete'
+          ?'Todas as referências elegíveis foram processadas.'
+          :'Execução interrompida para revisão: '+info.status);
+      }
+      const updated=await read();
+      if(updated)setQueue(updated);
+    }catch{
+      setRunning(false);
+      setMessage('A execução não pôde ser confirmada; não será repetida automaticamente.');
+    }finally{lock.current=false;}
+  },[accountId,onIndexed,read]);
+  useEffect(()=>{
+    if(!running)return;
+    const timer=setInterval(()=>{void advance();},20000);
+    return ()=>clearInterval(timer);
+  },[advance,running]);
+  if(!queue)return null;
+  return <div className="rounded-lg border bg-card p-4 space-y-2">
+    <p className="text-sm font-semibold">Coleta automática de referências</p>
+    <p className="text-xs text-muted-foreground">
+      Um coletor existente recebe cada referência cadastrada diretamente do
+      DECOLA INSTA. Nenhuma URL precisa ser alterada no PhantomBuster.
+    </p>
+    <p className="text-sm">
+      Referências: {queue.total}. Iniciadas: {queue.attempted}.
+      Finalizadas: {queue.completed}.
+      {queue.unverified>0&&' Sem origem confirmada: '+queue.unverified+'.'}
+    </p>
+    {queue.nextReference&&<p className="text-xs text-muted-foreground">
+      Próxima: @{queue.nextReference}
+    </p>}
+    <div className="flex flex-wrap gap-2">
+      <Button type="button" disabled={running||(!queue.nextReference&&!queue.unresolved)}
+        onClick={()=>{setRunning(true);void advance();}}>
+        {running?'Coletando...':'Iniciar coletas'}
+      </Button>
+      {running&&<Button type="button" variant="outline"
+        onClick={()=>setRunning(false)}>Parar acompanhamento</Button>}
+    </div>
+    {message&&<p role="status" aria-live="polite" className="text-sm">{message}</p>}
+    <p className="text-xs text-muted-foreground">
+      As próximas execuções são solicitadas enquanto esta página estiver aberta.
+      Isso não inicia follows nem garante que pessoas seguirão sua conta.
+    </p>
+  </div>;
+}

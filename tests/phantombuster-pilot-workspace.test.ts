@@ -175,3 +175,18 @@ test('filtered inventory with mismatching ID or missing cookie never authorizes 
   assert.equal(fetches,1);
   assert.deepEqual(got,{status:'collector-not-found',agentId:null});
 });
+
+test('API inventory using _id remains safe and rejects conflicting IDs',async()=>{
+  const byAlternateId=await resolvePilotCollectorInWorkspace('key','mameto_lueji',name,
+    async(url)=>{
+      if(url.includes('fetch-all'))return response([collector(id,{id:undefined,_id:id})]);
+      throw Error('Complete inventory should skip separate agent fetch');
+    });
+  assert.deepEqual(byAlternateId,{status:'ready',agentId:id});
+  const conflict=await resolvePilotCollectorInWorkspace('key','mameto_lueji',name,
+    async(url)=>{
+      if(url.includes('fetch-all'))return response([collector(id,{_id:other})]);
+      return new Response(null,{status:404});
+    });
+  assert.deepEqual(conflict,{status:'collector-not-found',agentId:null});
+});

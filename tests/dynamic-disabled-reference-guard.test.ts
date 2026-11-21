@@ -7,7 +7,7 @@ const id='1111111111111111';
 test('dynamic collector selects only enabled references from the database',()=>{
   const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
   assert.match(route,/prisma\.targetAccount\.findMany\(\{where:\{instagramAccountId:accountId,enabled:true\}/);
-  assert.match(route,/if\(current\.plan\.unresolved\)/);
+  assert.match(route,/if\(current\.plan\.unresolved\|\|current\.plan\.attributionUnverified>0\)/);
   assert.match(route,/if\(!current\.plan\.next\)/);
 });
 test('dynamic queue does not produce work when disabled references are filtered out',()=>{
@@ -25,8 +25,15 @@ test('background reconciliation accepts only a secret-authenticated pre-existing
   assert.match(route,/cronAuthorized!==\(body\.operation==='reconcile-only'\)/);
   assert.match(route,/current\.jobs\[0\]\?\.state!=='launched'/);
   assert.match(route,/if\(cronAuthorized\)return NextResponse\.json/);
-  assert.match(route,/if\(current\.plan\.unresolved\)/);
+  assert.match(route,/if\(current\.plan\.unresolved\|\|current\.plan\.attributionUnverified>0\)/);
   const guarded=route.indexOf('if(cronAuthorized)return NextResponse.json');
   const launcher=route.indexOf('return launchReservedCollector(key!,agentId,claim);',guarded);
   assert.ok(guarded>0 && launcher>guarded);
+});
+
+test('unverified collection blocks further launches but not review of existing receipt',()=>{
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  assert.match(route,/data\.plan\.attributionUnverified===0/);
+  assert.match(route,/data\.plan\.attributionUnverified>0/);
+  assert.match(route,/current\.plan\.attributionUnverified>0/);
 });

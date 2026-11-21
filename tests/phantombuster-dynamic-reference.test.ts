@@ -202,8 +202,8 @@ test('the persisted launched receipt bypasses mutable template discovery for pro
   const src=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
   assert.match(src,/existingLaunchedAgent\(accountId\)/);
   assert.match(src,/agentForReconciliation\(key!,accountId\)/);
-  assert.match(src,/activeContainerStatus:activeProof/);
-  assert.match(src,/providerStatus:proof,noDuplicateLaunch:true/);
+  assert.match(src,/activeContainerStatus:activeProof\?\.status/);
+  assert.match(src,/providerStatus:proof\.status,providerReason:proof\.reason/);
 });
 
 test('metadata omission may use trusted backend launch receipt, but explicit mismatch blocks',async()=>{

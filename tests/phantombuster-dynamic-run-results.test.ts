@@ -77,7 +77,7 @@ test('no resultObject or broken response fails without using latest agent file',
 test('controller never imports unless run metadata matches claim and exact container results',()=>{
   const src=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
   assert.match(src,/inspectDynamicRunProof/);
-  assert.match(src,/proof!=='verified-finished'/);
+  assert.match(src,/proof\.status!=='verified-finished'/);
   assert.match(src,/readDynamicContainerResults/);
   assert.match(src,/makeAudienceSnapshot/);
   assert.match(src,/MAX_HISTORY_BATCHES/);

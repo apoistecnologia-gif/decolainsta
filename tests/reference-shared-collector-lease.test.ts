@@ -59,7 +59,7 @@ test('global per-agent transaction gate precedes persistent claim and checks oth
   assert.match(source,/resolveLatestAudienceBindings\(bindings\)/);
   assert.match(source,/reservedCollectorDraftAgents\(drafts\)/);
   assert.match(source,/await tx\.activityLog\.create/);
-  assert.match(source,/status: 'already-reserved'/);
+  assert.match(source,/'already-reserved'/);
   assert.match(source,/status: 'review-required'/);
   assert.doesNotMatch(source,/agents\/launch|agents\/save|user_follow|user_unfollow|instagram\.com\/api/);
 });

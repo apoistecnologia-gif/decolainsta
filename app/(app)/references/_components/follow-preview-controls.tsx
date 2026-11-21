@@ -174,9 +174,9 @@ export function FollowPreviewControls({accountId}:Props){
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          O modo de teste avalia candidatos em pequenos lotes enquanto
-          esta página estiver aberta, registrando decisões simuladas no histórico.
-          Pausar ou parar suspende novas avaliações.
+          O modo de teste registra avaliações em pequenos lotes no histórico.
+          No Preview, o agendador experimental também pode avançar a simulação
+          com a página fechada. Pausar ou parar suspende novos lotes.
           Não segue ninguém, não aciona o PhantomBuster e não agenda follows reais.
         </p>
         {view?.blocker&&

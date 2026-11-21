@@ -11,6 +11,8 @@ test('scheduled preview executor is simulation-only and shares the browser lock'
  assert.match(src,/PHANTOMBUSTER_READONLY_ENABLED/);
  assert.match(src,/resolvePreviewRun/);
  assert.match(src,/run\.state!=='simulating'/);
+ assert.match(src,/accounts\.length!==1/);
+ assert.match(src,/ambiguous-or-missing-account/);
  assert.match(src,/planPreviewEligible/);
  assert.match(src,/parsePreviewDecision/);
  assert.match(src,/Prisma\.TransactionIsolationLevel\.Serializable/);
@@ -23,4 +25,6 @@ test('scheduled preview executor is simulation-only and shares the browser lock'
   assert.match(source,/FOLLOW_PREVIEW_BATCH_MIN_MS/);
  }
  assert.doesNotMatch(src,/followAction\.create|agents\/launch|user_follow|user_unfollow|fetch\(/);
+ const ui=readFileSync('app/(app)/references/_components/follow-preview-controls.tsx','utf8');
+ assert.match(ui,/agendador experimental também pode avançar a simulação/);
 });

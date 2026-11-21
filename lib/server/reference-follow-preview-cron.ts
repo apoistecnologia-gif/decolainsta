@@ -24,10 +24,12 @@ export async function runPreviewFollowSimulationCron():Promise<Result>{
  const username=process.env.PHANTOMBUSTER_SOCIAL_PILOT_ACCOUNT
    ?.replace(/^@/,'').toLowerCase()??'';
  if(!/^[a-z0-9._]{1,30}$/.test(username))return result('not-configured',0,false);
- const account=await prisma.instagramAccount.findFirst({
-   where:{username},select:{id:true,username:true},
+ const accounts=await prisma.instagramAccount.findMany({
+   where:{username},select:{id:true,username:true},take:2,
  });
- if(!account)return result('account-not-found');
+ // A pilot alias must map to exactly one account. Never guess an owner.
+ if(accounts.length!==1)return result('ambiguous-or-missing-account');
+ const account=accounts[0];
  try{
   return await prisma.$transaction(async tx=>{
    const lock=await tx.$queryRaw<Array<{acquired:boolean}>>`

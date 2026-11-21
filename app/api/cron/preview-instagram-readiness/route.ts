@@ -12,6 +12,8 @@ import {
 import {isConfiguredPhantomBusterKey} from '@/lib/reference-audience-readiness';
 import {inspectDynamicFailureOutput,type DynamicFailureCategory} from
   '@/lib/providers/phantombuster-failure-diagnostic';
+import {resolvePilotCollectorInWorkspace} from '@/lib/providers/phantombuster-pilot-workspace';
+import {inspectPinnedCollectorProgress} from '@/lib/providers/phantombuster-collector-progress';
 
 const HEADERS={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'};
 function authorized(request:Request):boolean{
@@ -75,8 +77,27 @@ export async function GET(request:Request){
     previousContainerCategory=await inspectDynamicFailureOutput(
       process.env.PHANTOMBUSTER_API_KEY!,receipt.containerId);
 
+  // Inspect the CURRENT workspace configuration and provider history without
+  // changing the agent, touching cookies, or launching a new container.
+  let collectorConfiguration='not-configured';
+  let collectorProgress='not-checked';
+  const key=process.env.PHANTOMBUSTER_API_KEY;
+  const template=process.env.PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE?.toLowerCase()??'';
+  if(isConfiguredPhantomBusterKey(key)){
+    const inspection=await resolvePilotCollectorInWorkspace(key!,template);
+    collectorConfiguration=inspection.status;
+    if(inspection.status==='ready'&&inspection.agentId)
+      collectorProgress=await inspectPinnedCollectorProgress(key!,inspection.agentId);
+  }
+  const collectionHistoryRequiresReview=receipt?.state==='finished-unverified'||
+    receipt?.state==='unconfirmed'||receipt?.state==='claimed';
   return NextResponse.json({
     status:'read-only-diagnostic',
+    collectorConfiguration,
+    collectorProgress,
+    collectionHistoryRequiresReview,
+    newCollectionPermitted:false,
+    currentSessionOwnerVerifiedByProvider:false,
     metaRead,
     previousContainerCategory,
     previousContainerOnly:true,

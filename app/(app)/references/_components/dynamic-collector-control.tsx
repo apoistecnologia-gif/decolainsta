@@ -23,7 +23,9 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
   const [message,setMessage]=useState('');
   const [diagnostic,setDiagnostic]=useState('Verificando disponibilidade da coleta...');
   const lock=useRef(false);
-  const read=useCallback(async()=>{
+  // No state mutations in the fetch helper: React effects update state
+  // only after its asynchronous result is delivered.
+  const read=useCallback(async():Promise<{value:Queue|null;diagnostic:string}>=>{
     try{
       const response=await fetch('/api/operator/phantombuster/dynamic-references',{
         credentials:'same-origin',cache:'no-store',
@@ -35,32 +37,29 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
           409:'O servidor não identificou o coletor do PhantomBuster. A configuração precisa ser revisada.',
           503:'A fila de referências está indisponível ou exige revisão.',
         };
-        setDiagnostic(detail[response.status]??'Não foi possível consultar a coleta automática.');
-        setQueue(null);
-        return null;
+        return {value:null,diagnostic:detail[response.status]??
+          'Não foi possível consultar a coleta automática.'};
       }
       const value=await response.json() as Queue;
       if(value.accountId!==accountId){
-        setDiagnostic('Esta conta não corresponde à conta autorizada para o coletor piloto.');
-        setQueue(null);
-        return null;
+        return {value:null,diagnostic:
+          'Esta conta não corresponde à conta autorizada para o coletor piloto.'};
       }
       if(!value.enabled){
-        setDiagnostic('A coleta está desativada na configuração deste Preview.');
-        setQueue(null);
-        return null;
+        return {value:null,diagnostic:'A coleta está desativada na configuração deste Preview.'};
       }
-      setDiagnostic('');
-      return value;
+      return {value,diagnostic:''};
     }catch{
-      setDiagnostic('Não foi possível consultar a integração com o PhantomBuster.');
-      setQueue(null);
-      return null;
+      return {value:null,diagnostic:'Não foi possível consultar a integração com o PhantomBuster.'};
     }
   },[accountId]);
   useEffect(()=>{
     let cancelled=false;
-    void read().then(value=>{if(!cancelled)setQueue(value);});
+    void read().then(result=>{
+      if(cancelled)return;
+      setQueue(result.value);
+      setDiagnostic(result.diagnostic);
+    });
     return ()=>{cancelled=true;};
   },[read]);
   const advance=useCallback(async()=>{
@@ -82,7 +81,7 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
         setMessage('Coleta de @'+(info.reference??'referência')+
           ' finalizada. Nomes observados: '+(info.observedNames??0)+'.');
         const plan=await read();
-        if(plan){
+        if(plan.value){
           const indexed=await fetch('/api/reference-candidate-queue',{
             method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
             headers:{'Content-Type':'application/json'},
@@ -97,7 +96,8 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
           :'Execução interrompida para revisão: '+info.status);
       }
       const updated=await read();
-      if(updated)setQueue(updated);
+      setQueue(updated.value);
+      setDiagnostic(updated.diagnostic);
     }catch{
       setRunning(false);
       setMessage('A execução não pôde ser confirmada; não será repetida automaticamente.');

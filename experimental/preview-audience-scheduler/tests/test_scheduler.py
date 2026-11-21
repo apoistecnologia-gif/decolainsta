@@ -220,6 +220,63 @@ class TestPreviewScheduler(unittest.TestCase):
                 self.assertNotEqual(code, 0)
                 self.assertNotIn("secret", message)
 
+    def test_instagram_readiness_is_opt_in_and_never_triggers_remote(self):
+        self.assertEqual(module.run_instagram_readiness_once(
+            self.env, lambda *_args, **_kwargs: self.fail("unexpected network")),
+            (0, "disabled"))
+
+    def test_instagram_readiness_hits_only_preview_readonly_endpoint(self):
+        env = {**self.env, "PREVIEW_INSTAGRAM_READINESS_PROBE_ENABLED": "yes"}
+        due = datetime(2026, 11, 21, 21, 35, tzinfo=timezone.utc)
+        requests = []
+        def fake_open(request, timeout):
+            requests.append((request, timeout))
+            return FakeResponse(
+                b'{"status":"read-only-diagnostic","metaRead":"ok",'
+                b'"previousContainerCategory":"platform-limited",'
+                b'"previousContainerOnly":true,'
+                b'"currentPhantomSessionVerified":false,'
+                b'"instagramRestrictionCleared":null,'
+                b'"providerLaunchesExecuted":0,'
+                b'"instagramActionsExecuted":0,'
+                b'"dataMutations":0}')
+        self.assertEqual(module.run_instagram_readiness_once(
+            env, fake_open, now=due),
+            (0, "ok: meta=ok old-container=platform-limited"))
+        self.assertEqual(len(requests), 1)
+        request, timeout = requests[0]
+        self.assertEqual(request.full_url, "https://" + module.PREVIEW_HOST
+                         + module.INSTAGRAM_READINESS_PATH)
+        self.assertEqual(request.get_method(), "GET")
+        self.assertIsNone(request.data)
+        self.assertEqual(timeout, 25)
+        self.assertEqual(request.get_header("Authorization"), "Bearer " + "a"*48)
+
+    def test_readiness_rejects_unexpected_status_or_social_actions(self):
+        env = {**self.env, "PREVIEW_INSTAGRAM_READINESS_PROBE_ENABLED": "yes"}
+        due = datetime(2026, 11, 21, 21, 35, tzinfo=timezone.utc)
+        for body in [
+            b'{"status":"read-only-diagnostic","metaRead":"ok","instagramRestrictionCleared":true}',
+            b'{"status":"read-only-diagnostic","metaRead":"ok","providerLaunchesExecuted":1}',
+            b'{"status":"read-only-diagnostic","metaRead":"ok","instagramActionsExecuted":1}',
+            b'{"status":"read-only-diagnostic","metaRead":"ok","dataMutations":1}',
+            b'{"status":"read-only-diagnostic","metaRead":"ok","previousContainerCategory":"sensitive secret"}',
+            b'{"status":"unknown"}',
+            b'raw-secret',
+        ]:
+            with self.subTest(body=body[:26]):
+                code, msg = module.run_instagram_readiness_once(
+                    env, lambda *_args, **_kwargs: FakeResponse(body), now=due)
+                self.assertNotEqual(code, 0)
+                self.assertNotIn("secret", msg)
+
+    def test_readiness_is_throttled_between_half_hour_windows(self):
+        env = {**self.env, "PREVIEW_INSTAGRAM_READINESS_PROBE_ENABLED": "yes"}
+        now = datetime(2026, 11, 21, 21, 20, tzinfo=timezone.utc)
+        self.assertEqual(module.run_instagram_readiness_once(
+            env, lambda *_args, **_kwargs: self.fail("too early"), now=now),
+            (0, "interval-not-due"))
+
     def test_refuses_short_auth_and_missing_bypass(self):
         for name, value in [("PREVIEW_CRON_SECRET", "tiny"),("PREVIEW_PROTECTION_BYPASS", "")]:
             env = {**self.env, name: value}

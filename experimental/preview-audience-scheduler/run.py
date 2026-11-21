@@ -296,6 +296,9 @@ def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> 
     if (not isinstance(value, dict)
             or value.get("status") != "read-only-diagnostic"
             or value.get("metaRead") not in ("ok", "not-connected", "unavailable")
+            or value.get("metaIdentity") not in (
+                "verified", "username-mismatch", "unavailable")
+            or (value.get("metaIdentity") == "verified" and value.get("metaRead") != "ok")
             or value.get("previousContainerCategory") not in categories
             or value.get("collectorConfiguration") not in (
                 "ready", "not-configured", "invalid-key", "rate-limited",
@@ -317,6 +320,7 @@ def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> 
         return 1, "unsafe-readiness-response"
     # Safe allowlisted status, never raw logs, usernames, tokens or cookies.
     return 0, ("ok: meta=" + value["metaRead"] +
+               " identity=" + value["metaIdentity"] +
                " old-container=" + (value["previousContainerCategory"] or "none") +
                " collector=" + value["collectorConfiguration"] +
                " progress=" + value["collectorProgress"] +

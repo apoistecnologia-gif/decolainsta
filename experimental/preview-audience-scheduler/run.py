@@ -245,8 +245,20 @@ def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> 
     if env.get("PREVIEW_INSTAGRAM_READINESS_PROBE_ENABLED") != "yes":
         return 0, "disabled"
     now = now or datetime.now(timezone.utc)
-    # One window every 30 minutes; never poll provider on a 5-minute loop.
-    if not 5 <= now.minute % 30 < 10:
+    # A dated, UTC one-shot test can replace (not add to) the standard
+    # half-hour cadence. It expires automatically after five minutes.
+    one_shot = env.get("PREVIEW_INSTAGRAM_READINESS_ONE_SHOT_UTC", "")
+    if one_shot:
+        if len(one_shot) != 17 or not one_shot.endswith("Z"):
+            return 2, "invalid-one-shot-time"
+        try:
+            due = datetime.strptime(one_shot, "%Y-%m-%dT%H:%MZ").replace(
+                tzinfo=timezone.utc)
+        except ValueError:
+            return 2, "invalid-one-shot-time"
+        if not 0 <= (now - due).total_seconds() < 300:
+            return 0, "one-shot-not-due"
+    elif not 5 <= now.minute % 30 < 10:
         return 0, "interval-not-due"
     if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
             or len(env.get("PREVIEW_CRON_SECRET", "")) < 32

@@ -6,10 +6,9 @@ import {NextResponse} from 'next/server';
 import {auth} from '@/auth';
 import {prisma} from '@/lib/db';
 import {isConfiguredPhantomBusterKey} from '@/lib/reference-audience-readiness';
-import {discoverFollowerCollectors} from '@/lib/providers/phantombuster-collector-discovery';
-import {inspectExistingReferenceCollector} from '@/lib/providers/phantombuster-collector-progress';
+import {inspectPinnedCollectorProgress} from '@/lib/providers/phantombuster-collector-progress';
 import {
-  inspectDynamicCollectorTemplate,launchExistingCollectorForReference,
+  resolvePinnedDynamicCollector,launchExistingCollectorForReference,
   inspectDynamicRunProof,readDynamicContainerResults,
 } from '@/lib/providers/phantombuster-dynamic-reference';
 import {
@@ -40,18 +39,22 @@ async function context(){
   return account?.instagramUserId&&account.encryptedAccessToken?account.id:null;
 }
 async function agent(key:string){
-  const reference=process.env.PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE?.toLowerCase();
-  if(!reference||!/^[a-z0-9._]{1,30}$/.test(reference))return null;
-  const scan=await discoverFollowerCollectors(key);
-  if(scan.status!=='ok')return null;
-  const matches=scan.collectors.filter(x=>x.referenceUsername===reference);
-  // Prefer the already configured read-only pilot collector when it matches
-  // the verified template; never confuse it with the Follow Agent ID.
-  const preferred=process.env.PHANTOMBUSTER_PILOT_AGENT_ID;
-  if(preferred&&matches.some(x=>x.collectorAgentId===preferred))
-    return preferred;
-  return matches.length===1?matches[0].collectorAgentId:null;
+  // Preview pilot is pinned to the exact EXISTING Follower Collector console.
+  // Do not infer it by searching the old @mameto_lueji template target,
+  // and never use a Follow Agent or collector from another customer.
+  return resolvePinnedDynamicCollector(
+    key,process.env.PHANTOMBUSTER_DYNAMIC_COLLECTOR_AGENT_ID);
 }
+const collectorIssue=(status:string)=>{
+  const messages:Record<string,string>={
+    'not-configured':'O coletor piloto ainda não foi identificado neste Preview.',
+    'invalid-agent-id':'O identificador do coletor piloto está inválido.',
+    'missing-cookie':'O coletor identificado não tem uma sessão Instagram configurada.',
+    'mismatch':'O agente encontrado não corresponde a um Instagram Follower Collector configurado.',
+    'unavailable':'O PhantomBuster não confirmou o acesso ao coletor identificado.',
+  };
+  return messages[status]??'A identificação do coletor precisa de revisão.';
+};
 async function queue(accountId:string,agentId:string){
   const [references,rows]=await Promise.all([
     prisma.targetAccount.findMany({where:{instagramAccountId:accountId},
@@ -83,8 +86,9 @@ export async function GET(){
   if(!accountId)return bad('Somente operador no Preview',403);
   const key=process.env.PHANTOMBUSTER_API_KEY;
   if(!isConfiguredPhantomBusterKey(key))return bad('Provedor indisponível',409);
-  const agentId=await agent(key!);
-  if(!agentId)return bad('Coletor original não identificado de forma única',409);
+  const selected=await agent(key!);
+  if(!selected.agentId)return bad(collectorIssue(selected.status),409);
+  const agentId=selected.agentId;
   const data=await queue(accountId,agentId);
   if(!data)return bad('Fila requer revisão',503);
   return NextResponse.json({
@@ -117,8 +121,9 @@ export async function POST(request:Request){
     return bad('Execução desativada no Preview',403);
   const key=process.env.PHANTOMBUSTER_API_KEY;
   if(!isConfiguredPhantomBusterKey(key))return bad('Provedor indisponível',409);
-  const agentId=await agent(key!);
-  if(!agentId)return bad('Coletor original não identificado',409);
+  const selected=await agent(key!);
+  if(!selected.agentId)return bad(collectorIssue(selected.status),409);
+  const agentId=selected.agentId;
   const current=await queue(accountId,agentId);
   if(!current)return bad('Registro inválido',503);
   const last=current.rows[0],event=current.jobs[0];
@@ -209,10 +214,8 @@ export async function POST(request:Request){
     status:'queue-complete',total:current.plan.total,
   },{headers:HEADERS});
 
-  if(await inspectDynamicCollectorTemplate(key!,agentId)!=='ready')
-    return bad('A configuração do coletor precisa de revisão',409);
-  const reference=process.env.PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE!.toLowerCase();
-  const provider=await inspectExistingReferenceCollector(key!,reference);
+  // This agent was validated by resolvePinnedDynamicCollector above.
+  const provider=await inspectPinnedCollectorProgress(key!,agentId);
   if(provider.status==='running'||provider.status==='pending')
     return NextResponse.json({status:'provider-busy'}, {headers:HEADERS});
   if(provider.status!=='finished'&&provider.status!=='no-run')

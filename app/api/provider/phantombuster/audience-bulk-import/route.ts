@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/db';
 import { readCollectorAudience } from '@/lib/providers/phantombuster-audience';
+import { DYNAMIC_COLLECTION_ACTION } from '@/lib/reference-dynamic-collection';
 import { MAX_HISTORY_BATCHES, AUDIENCE_HISTORY_ACTION,
   makeAudienceSnapshot, parseAudienceSnapshot, type AudienceSnapshot } from '@/lib/reference-audience-history';
 
@@ -55,6 +56,16 @@ export async function POST(req: Request) {
   });
   if (!reference) return NextResponse.json({ error: 'Referência não encontrada' }, { status: 404, headers: HEADERS });
 
+  // Shared dynamic agents can switch input per run, so their latest
+  // result must never be imported by the legacy agent-wide route.
+  const dynamicallyAssigned = await prisma.activityLog.findFirst({
+    where: { action: DYNAMIC_COLLECTION_ACTION,
+      targetUsername: input.collectorAgentId },
+    select: { id: true },
+  });
+  if (dynamicallyAssigned)
+    return NextResponse.json({ error: 'Agente de coleta dinâmica: utilize o resultado por contêiner' },
+      { status: 409, headers: HEADERS });
   // Authentication key is ephemeral; request history only and discard raw output.
   const output = await readCollectorAudience(input.apiKey, input.collectorAgentId,
     [account.username, reference.username]);

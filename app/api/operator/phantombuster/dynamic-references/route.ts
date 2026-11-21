@@ -44,6 +44,12 @@ const progressBlocker=(status:string):string=>{
   return explanations[status]??'O coletor ainda não foi confirmado como disponível.';
 };
 const bad=(error:string,status:number)=>NextResponse.json({error},{status,headers:HEADERS});
+/** Provider/Instagram signals that prohibit any launch, including manual retry. */
+const blockedFailureDiagnostics=new Set([
+  'platform-limited','login-challenge','session-invalid','terms-update',
+  'credentials-missing','workspace-limit','followers-load-failed',
+  'profile-load-failed',
+]);
 /** A preview-only cron identity, distinct from authenticated browser sessions.
  * Each cron operation also needs its own explicit feature flag.
  */
@@ -216,7 +222,8 @@ export async function GET(){
   const retryTarget=planFailedDynamicReferenceRetry(
     data.references,data.jobs,accountId,agentId);
   const canRetryFailed=Boolean(enabled&&retryTarget&&
-    activeProof?.reason==='failed-run');
+    activeProof?.reason==='failed-run'&&
+    !blockedFailureDiagnostics.has(failureDiagnostic??''));
   // A rate-limit diagnosis belongs to the precise persisted container,
   // not to the agent-wide historical results. Manual read-only review
   // remains possible; do not initiate a new collection from this status.
@@ -313,6 +320,9 @@ export async function POST(request:Request){
       original.claimId);
     if(proof.reason!=='failed-run')
       return bad('O contêiner original não confirmou falha finalizada',409);
+    const reason=await inspectDynamicFailureOutput(key!,original.containerId!);
+    if(blockedFailureDiagnostics.has(reason))
+      return bad('Coleta bloqueada por indício de restrição, sessão inválida ou falha de acesso. Não repita a coleta.',409);
     // The current saved agent must be a valid Follower Collector with a
     // configured session, not just a previous successful DB receipt.
     const configured=await agent(key!);

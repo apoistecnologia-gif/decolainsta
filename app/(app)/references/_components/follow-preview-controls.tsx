@@ -92,7 +92,7 @@ export function FollowPreviewControls({accountId}:Props){
         </p>
         {ready&&<p className="text-xs text-muted-foreground">
           Candidatos salvos: {view.candidateCount}.
-          Elegíveis para avaliação: {view.eligibleCount}.
+          Elegíveis apenas para simulação: {view.eligibleCount}.
           Excluídos por proteção ou histórico: {view.excludedCount}.
         </p>}
         <div className="flex flex-wrap gap-2">
@@ -115,7 +115,9 @@ export function FollowPreviewControls({accountId}:Props){
         </div>
         <p className="text-xs text-muted-foreground">
           Iniciar o teste apenas registra e controla o modo de simulação.
-          Não executa ações, não inicia o PhantomBuster e não agenda follows.
+          Referências desativadas para ações reais continuam disponíveis
+          para avaliação simulada. Não executa ações, não inicia o
+          PhantomBuster e não agenda follows.
         </p>
         {view?.blocker&&
           <p className="text-xs text-muted-foreground">

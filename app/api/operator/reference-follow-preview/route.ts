@@ -42,7 +42,11 @@ async function eligibleForAccount(db:Prisma.TransactionClient|typeof prisma,
       take:MAX_QUEUE_ENTRIES_PER_SYNC+1,
     }),
     db.targetAccount.findMany({
-      where:{instagramAccountId:account.id,enabled:true},
+      // Simulation only: references are intentionally registered with
+      // enabled=false to prevent social actions. Match the read-only
+      // candidate index by account ownership and current reference ID.
+      // NEVER use these results to authorize a real follow.
+      where:{instagramAccountId:account.id},
       select:{id:true,username:true},take:101,
     }),
     db.whitelist.findMany({

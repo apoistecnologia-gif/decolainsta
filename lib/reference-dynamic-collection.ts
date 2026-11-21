@@ -71,12 +71,21 @@ export function planDynamicReferenceQueue(
   const jobs=events.filter(e=>e.agentId===agentId);
   const attemptedIds=new Set(jobs.map(e=>e.referenceId));
   const unresolved=jobs.some(e=>!['finished','finished-unverified','rejected'].includes(e.state));
+  // A successful retry resolves the old failed attempt for the same
+  // account/reference. Preserve the original event for audit, but do
+  // not keep reporting it as a live attribution problem to the operator.
+  const completedRefs=new Set(jobs.filter(e=>e.state==='finished')
+    .map(e=>e.accountId+':'+e.referenceId));
+  const failedRefs=new Set(jobs.filter(e=>
+    e.state==='finished-unverified'&&
+    !completedRefs.has(e.accountId+':'+e.referenceId))
+    .map(e=>e.accountId+':'+e.referenceId));
   const next=unresolved?null:references.find(r=>
     refname(r.username)&&local(r.id)&&!attemptedIds.has(r.id))??null;
   return {
     total:references.length,attempted:[...attemptedIds].length,next,
     unresolved,completed:jobs.filter(e=>e.state==='finished').length,
-    attributionUnverified:jobs.filter(e=>e.state==='finished-unverified').length,
+    attributionUnverified:failedRefs.size,
   };
 }
 

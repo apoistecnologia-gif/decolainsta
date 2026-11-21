@@ -290,3 +290,34 @@ test('failed-run retry is preview-only and reserved with serializable advisory l
   assert.match(panel,/disabled=\{running\}/);
   assert.doesNotMatch(route,/followSingle|unfollowSingle|InstagramFollowersAutoFollow|agents\/save/);
 });
+
+test('successful retry resolves old unverified count without deleting audit event',()=>{
+  const refs=[{id:'reference_one',username:'ammplamob'},{id:'reference_two',username:'prefeituradepetrolina'}];
+  const failed=makeDynamicJobEvent({state:'finished-unverified',
+    accountId:'account_one',referenceId:'reference_one',
+    referenceUsername:'ammplamob',agentId:id,claimId,
+    containerId:'2222222222222222'});
+  const success=makeDynamicJobEvent({state:'finished',
+    accountId:'account_one',referenceId:'reference_one',
+    referenceUsername:'ammplamob',agentId:id,
+    claimId:'b789b196-a830-4a44-93ca-9d2f53b0f772',
+    containerId:'3333333333333333'});
+  assert.ok(failed&&success);
+  assert.equal(planDynamicReferenceQueue(refs,[failed!],id).attributionUnverified,1);
+  const after=planDynamicReferenceQueue(refs,[success!,failed!],id);
+  assert.equal(after.attributionUnverified,0);
+  assert.equal(after.completed,1);
+  assert.equal(after.attempted,1);
+  assert.deepEqual(after.next,{id:'reference_two',username:'prefeituradepetrolina'});
+});
+test('rate limiting pauses browser polling, not the manual same-container query',()=>{
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const panel=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
+  assert.match(route,/collectionLimited=Boolean\(ownLaunched&&/);
+  assert.match(route,/failureDiagnostic==='platform-limited'/);
+  assert.match(route,/failureDiagnostic,collectionLimited,canAdvance/);
+  assert.match(panel,/if\(running&&queue\?\.collectionLimited\)/);
+  assert.match(panel,/!queue.collectionLimited&&/);
+  assert.match(panel,/Consultar resultado existente/);
+  assert.doesNotMatch(panel,/followSingle|unfollowSingle|agents\/launch/);
+});

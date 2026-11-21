@@ -186,6 +186,11 @@ export async function GET(){
     data.references,data.jobs,accountId,agentId);
   const canRetryFailed=Boolean(enabled&&retryTarget&&
     activeProof?.reason==='failed-run');
+  // A rate-limit diagnosis belongs to the precise persisted container,
+  // not to the agent-wide historical results. Manual read-only review
+  // remains possible; do not initiate a new collection from this status.
+  const collectionLimited=Boolean(ownLaunched&&
+    failureDiagnostic==='platform-limited');
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
   const canAdvance=Boolean(enabled&&(
@@ -193,6 +198,7 @@ export async function GET(){
     (!data.plan.unresolved&&!ownLaunched&&data.plan.next&&
       (progress==='finished'||progress==='no-run'))));
   const blocker=!enabled?'O piloto está desativado neste Preview.'
+    :collectionLimited?'Importação não confirmada: limite do Instagram indicado no log do contêiner. O acompanhamento automático foi pausado; não inicie nova coleta.'
     :ownLaunched&&activeProof?.status==='running'?'O contêiner existente continua em execução no PhantomBuster.'
     :ownLaunched&&activeProof?.status==='unavailable'?'Não foi possível confirmar o contêiner no PhantomBuster. Nenhuma coleta será repetida.'
     :ownLaunched&&activeProof?.status==='finished-unverified'?'O contêiner encerrou sem prova da referência. Importação bloqueada.'
@@ -212,7 +218,7 @@ export async function GET(){
     currentState:current?.state??'none',
     activeContainerStatus:activeProof?.status??null,
     activeContainerReason:activeProof?.reason??null,
-    failureDiagnostic,canAdvance,canRetryFailed,
+    failureDiagnostic,collectionLimited,canAdvance,canRetryFailed,
     retryReference:canRetryFailed?retryTarget?.username:null,
     blocker,providerStatus:progress,
     noManualUrlChanges:true,followersExecuted:0,unfollowsExecuted:0,

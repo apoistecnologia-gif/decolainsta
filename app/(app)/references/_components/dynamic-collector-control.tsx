@@ -16,6 +16,7 @@ type Queue={
   canAdvance:boolean;blocker:string|null;providerStatus:string|null;
   activeContainerStatus?:string|null;activeContainerReason?:string|null;
   failureDiagnostic?:string|null;
+  collectionLimited?:boolean;
   canRetryFailed?:boolean;retryReference?:string|null;
 };
 type Advance={status:string;reference?:string;observedNames?:number;
@@ -173,9 +174,18 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
     }finally{lock.current=false;}
   },[accountId,onIndexed,read]);
   useEffect(()=>{
+    // Stop the 20-second polling loop if the provider has explicitly
+    // limited Instagram access. This must NOT silently launch a new run.
+    if(running&&queue?.collectionLimited){
+      setRunning(false);
+      setMessage('Acompanhamento pausado por limite do Instagram. Nenhuma nova coleta será iniciada.');
+    }
+  },[running,queue?.collectionLimited]);
+  useEffect(()=>{
     // Only resume a previously launched container; never auto-launch the
     // next reference on a fresh visit without a prior operator initiation.
     if(!resumedExisting.current&&!running&&queue?.enabled&&
+      !queue.collectionLimited&&
       (queue.currentState==='launched'||
        queue.currentState==='finished-unverified')&&queue.canAdvance){
       resumedExisting.current=true;
@@ -225,8 +235,9 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
           :<Button type="button" disabled={running||!queue.canAdvance}
             onClick={()=>{setRunning(true);void advance();}}>
             {running?'Verificando...':
-              queue.currentState==='finished-unverified'||queue.currentState==='launched'
-                ?'Rever contêiner existente':'Iniciar coletas'}
+              queue.collectionLimited?'Consultar resultado existente':
+                queue.currentState==='finished-unverified'||queue.currentState==='launched'
+                  ?'Rever contêiner existente':'Iniciar coletas'}
           </Button>}
         {running&&<Button type="button" variant="outline"
           onClick={()=>setRunning(false)}>Parar acompanhamento</Button>}
@@ -236,8 +247,10 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
     </p>}
     {message&&<p role="status" aria-live="polite" className="text-sm">{message}</p>}
     <p className="text-xs text-muted-foreground">
-      As próximas execuções são solicitadas enquanto esta página estiver aberta.
-      Isso não inicia follows nem garante que pessoas seguirão sua conta.
+      Esta função coleta candidatos, não executa ações de seguir nem de deixar de seguir.
+      {queue?.collectionLimited
+        ?' Há uma restrição indicada pelo Instagram; a consulta de resultados existentes é manual e não relança o coletor.'
+        :' O avanço da fila depende da página aberta.'}
     </p>
   </div>;
 }

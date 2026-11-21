@@ -10,6 +10,8 @@ test('registered references feed one-click preview collector without URLs typed 
   assert.match(main,/accountId=\{accountId\}/);
   assert.match(panel,/Iniciar coletas/);
   assert.match(panel,/Rever contêiner existente/);
+  assert.match(panel,/Consultar resultado existente/);
+  assert.match(panel,/collectionLimited/);
   assert.match(panel,/Repetir coleta de @/);
   assert.match(panel,/advance\('retry-failed'\)/);
   assert.match(panel,/setInterval\(.*20000\)/);

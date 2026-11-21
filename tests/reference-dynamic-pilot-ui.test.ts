@@ -11,7 +11,9 @@ test('registered references feed one-click preview collector without URLs typed 
   assert.match(panel,/Iniciar coletas/);
   assert.match(panel,/setInterval\(.*20000\)/);
   assert.match(panel,/confirmDynamicCollection:true/);
-  assert.match(panel,/sync-saved-history/);
+  assert.doesNotMatch(panel,/sync-saved-history/);
+  assert.match(route,/indexSavedAudienceCandidates\(tx,event\.accountId\)/);
+  assert.match(panel,/queue\.currentState==='launched'&&queue\.canAdvance/);
   assert.match(route,/bonusArgument|launchExistingCollectorForReference/);
   assert.match(route,/instagramAccountId:accountId/);
   assert.match(route,/current\.plan\.next/);

@@ -170,7 +170,7 @@ export function OperatorCollectorIntakePanel() {
             ? 'Provedor respondeu à consulta de recursos.'
             : 'Capacidade não confirmada: ' + capacity.status} </p>
           {capacity.status === 'ok' && <p>
-            Coletores na workspace: {capacity.agents ?? 'desconhecido'}.
+            Agentes na workspace (todos os tipos, não apenas coletores): {capacity.agents ?? 'desconhecido'}.
           </p>}
           {capacity.slotMetrics.map(metric => <p key={metric.field}>
             {metric.field}: {metric.value}

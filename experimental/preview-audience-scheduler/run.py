@@ -19,6 +19,7 @@ PREVIEW_HOST = "decolainsta-git-experime-c65b12-mariajuvelina403-7231s-projects.
 PREVIEW_PATH = "/api/cron/refresh-reference-audiences"
 FOLLOW_PREVIEW_PATH = "/api/cron/preview-follow-simulation"
 DYNAMIC_RECONCILE_PATH = "/api/operator/phantombuster/dynamic-references"
+INSTAGRAM_READINESS_PATH = "/api/cron/preview-instagram-readiness"
 MAX_RESULT_BYTES = 8192
 
 class NoRedirects(HTTPRedirectHandler):
@@ -238,6 +239,63 @@ def run_collection_once(env: dict[str, str], opener=None, now=None) -> tuple[int
     return 0, "ok: status=" + value["status"]
 
 
+
+def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> tuple[int, str]:
+    """Read-only health probe: Meta account and exact previous Phantom log only."""
+    if env.get("PREVIEW_INSTAGRAM_READINESS_PROBE_ENABLED") != "yes":
+        return 0, "disabled"
+    now = now or datetime.now(timezone.utc)
+    # One window every 30 minutes; never poll provider on a 5-minute loop.
+    if not 5 <= now.minute % 30 < 10:
+        return 0, "interval-not-due"
+    if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
+            or len(env.get("PREVIEW_CRON_SECRET", "")) < 32
+            or len(env.get("PREVIEW_PROTECTION_BYPASS", "")) != 32
+            or not env["PREVIEW_PROTECTION_BYPASS"].isalnum()):
+        return 2, "invalid-configuration"
+    request = Request("https://" + PREVIEW_HOST + INSTAGRAM_READINESS_PATH,
+        method="GET", headers={
+            "Authorization": "Bearer " + env["PREVIEW_CRON_SECRET"],
+            "X-Vercel-Protection-Bypass": env["PREVIEW_PROTECTION_BYPASS"],
+            "Accept": "application/json",
+        })
+    if opener is None:
+        opener = build_opener(NoRedirects()).open
+    try:
+        with opener(request, timeout=25) as response:
+            if response.status != 200:
+                return 1, "preview-not-ready"
+            raw = response.read(MAX_RESULT_BYTES + 1)
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError):
+        return 1, "preview-request-failed"
+    if len(raw) > MAX_RESULT_BYTES:
+        return 1, "response-too-large"
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return 1, "invalid-response"
+    categories = {
+        "session-invalid", "login-challenge", "invalid-input", "private-target",
+        "platform-limited", "workspace-limit", "execution-timeout", "runtime-error",
+        "followers-load-failed", "profile-load-failed", "terms-update",
+        "credentials-missing", "no-matches", "proxy-failure", "unknown",
+        "empty-output", "output-too-large", "provider-unavailable", None,
+    }
+    if (not isinstance(value, dict)
+            or value.get("status") != "read-only-diagnostic"
+            or value.get("metaRead") not in ("ok", "not-connected", "unavailable")
+            or value.get("previousContainerCategory") not in categories
+            or value.get("previousContainerOnly") is not True
+            or value.get("currentPhantomSessionVerified") is not False
+            or value.get("instagramRestrictionCleared") is not None
+            or value.get("providerLaunchesExecuted") != 0
+            or value.get("instagramActionsExecuted") != 0
+            or value.get("dataMutations") != 0):
+        return 1, "unsafe-readiness-response"
+    # Safe allowlisted status, never raw logs, usernames, tokens or cookies.
+    return 0, ("ok: meta=" + value["metaRead"] +
+               " old-container=" + (value["previousContainerCategory"] or "none"))
+
 def main() -> int:
     refresh_status, refresh_message = run_once(os.environ)
     print("preview-readonly-refresh:", refresh_message, flush=True)
@@ -247,7 +305,9 @@ def main() -> int:
     print("preview-dynamic-reconciliation:", reconciliation_message, flush=True)
     collection_status, collection_message = run_collection_once(os.environ)
     print("preview-dynamic-collection:", collection_message, flush=True)
-    return max(refresh_status, sim_status, reconciliation_status, collection_status)
+    readiness_status, readiness_message = run_instagram_readiness_once(os.environ)
+    print("preview-instagram-readiness:", readiness_message, flush=True)
+    return max(refresh_status, sim_status, reconciliation_status, collection_status, readiness_status)
 
 if __name__ == "__main__":
     sys.exit(main())

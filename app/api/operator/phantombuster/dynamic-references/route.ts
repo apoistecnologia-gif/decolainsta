@@ -59,8 +59,13 @@ async function queue(accountId:string,agentId:string){
   if(jobs.some((p,i)=>!p||p.accountId!==rows[i].instagramAccountId||
     p.agentId!==rows[i].targetUsername))return null;
   const parsed=jobs.filter((p):p is DynamicJobEvent=>p!==null);
-  return {references,rows,jobs:parsed,
-    plan:planDynamicReferenceQueue(references,parsed,agentId)};
+  const local=parsed.filter(p=>p.accountId===accountId);
+  const plan=planDynamicReferenceQueue(references,local,agentId);
+  const globalUnresolved=parsed.some(p=>!['finished','finished-unverified','rejected'].includes(p.state));
+  return {references,rows,jobs:parsed,plan:{
+    ...plan, unresolved:plan.unresolved||globalUnresolved,
+    next:globalUnresolved?null:plan.next,
+  }};
 }
 /** Customer URLs come from saved references; never an HTTP request field. */
 export async function GET(){
@@ -106,6 +111,10 @@ export async function POST(request:Request){
   const current=await queue(accountId,agentId);
   if(!current)return bad('Registro inválido',503);
   const last=current.rows[0],event=current.jobs[0];
+  if(event&&event.accountId!==accountId&&current.plan.unresolved)
+    return NextResponse.json({
+      status:'provider-busy',reason:'another-account-owns-active-run',
+    },{headers:HEADERS});
   if(last&&event?.state==='launched'&&event.containerId){
     const inspected=await inspectPhantomBusterContainer(
       key!,agentId,event.containerId,event.referenceUsername);

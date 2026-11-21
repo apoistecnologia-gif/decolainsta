@@ -232,7 +232,7 @@ class TestPreviewScheduler(unittest.TestCase):
         def fake_open(request, timeout):
             requests.append((request, timeout))
             return FakeResponse(
-                b'{"status":"read-only-diagnostic","metaRead":"ok",'
+                b'{"status":"read-only-diagnostic","metaRead":"ok","metaIdentity":"verified",'
                 b'"previousContainerCategory":"platform-limited",'
                 b'"collectorConfiguration":"ready",'
                 b'"collectorProgress":"finished",'
@@ -247,7 +247,7 @@ class TestPreviewScheduler(unittest.TestCase):
                 b'"dataMutations":0}')
         self.assertEqual(module.run_instagram_readiness_once(
             env, fake_open, now=due),
-            (0, "ok: meta=ok old-container=platform-limited collector=ready progress=finished history-review=true"))
+            (0, "ok: meta=ok identity=verified old-container=platform-limited collector=ready progress=finished history-review=true"))
         self.assertEqual(len(requests), 1)
         request, timeout = requests[0]
         self.assertEqual(request.full_url, "https://" + module.PREVIEW_HOST
@@ -290,7 +290,7 @@ class TestPreviewScheduler(unittest.TestCase):
         }
         def good_response(*_args, **_kwargs):
             return FakeResponse(
-                b'{"status":"read-only-diagnostic","metaRead":"ok",'
+                b'{"status":"read-only-diagnostic","metaRead":"ok","metaIdentity":"verified",'
                 b'"previousContainerCategory":null,'
                 b'"collectorConfiguration":"missing-cookie",'
                 b'"collectorProgress":"not-checked",'
@@ -304,7 +304,7 @@ class TestPreviewScheduler(unittest.TestCase):
                 b'"instagramActionsExecuted":0,"dataMutations":0}')
         due = datetime(2026, 11, 21, 21, 45, tzinfo=timezone.utc)
         self.assertEqual(module.run_instagram_readiness_once(
-            env, good_response, now=due), (0, "ok: meta=ok old-container=none collector=missing-cookie progress=not-checked history-review=false"))
+            env, good_response, now=due), (0, "ok: meta=ok identity=verified old-container=none collector=missing-cookie progress=not-checked history-review=false"))
         late = datetime(2026, 11, 21, 21, 50, tzinfo=timezone.utc)
         self.assertEqual(module.run_instagram_readiness_once(
             env, lambda *_args, **_kwargs: self.fail("repeated later"), now=late),

@@ -123,7 +123,31 @@ export async function resolvePilotCollectorInWorkspace(
     if(selected.length===1 &&
       validateDynamicCollectorTemplateRecord(selected[0],id,templateReference)==='ready')
       return answer('ready',id);
-    // The inventory omitted some details, so request the individual agent.
+    // A few accounts omit arguments from unfiltered inventories.
+    // Try the documented /agents/fetch-all?agentIds=... filter before the
+    // individual endpoint; authorize ONLY after receiving one complete,
+    // correctly attributed, workspace-owned agent with a configured cookie.
+    const detailListUrl=new URL('https://api.phantombuster.com/api/v2/agents/fetch-all');
+    detailListUrl.searchParams.set('agentIds',id);
+    detailListUrl.searchParams.set('withArgument','true');
+    const detailList=await fetcher(detailListUrl.toString(),{
+      method:'GET',headers:phantomBusterRequestHeaders(apiKey),
+      credentials:'omit',redirect:'error',cache:'no-store',
+      signal:AbortSignal.timeout(8000),
+    });
+    if(detailList.status===401||detailList.status===403)return answer('invalid-key');
+    if(detailList.status===429)return answer('rate-limited');
+    if(detailList.ok){
+      const details=await boundedJson(detailList);
+      const detailsRoot=obj(details);
+      const detailRows=Array.isArray(details)?details:
+        Array.isArray(detailsRoot?.data)?detailsRoot.data:
+        Array.isArray(detailsRoot?.agents)?detailsRoot.agents:null;
+      if(detailRows?.length===1 &&
+        validateDynamicCollectorTemplateRecord(detailRows[0],id,templateReference)==='ready')
+        return answer('ready',id);
+    }
+    // Neither inventory proved the session; request the individual agent.
     // A 404 here cannot prove access: keep the operation disabled.
     const confirmed=await inspectDynamicCollectorTemplate(
       apiKey,id,fetcher,templateReference);

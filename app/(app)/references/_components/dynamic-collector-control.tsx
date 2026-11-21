@@ -16,6 +16,7 @@ type Queue={
   canAdvance:boolean;blocker:string|null;providerStatus:string|null;
   activeContainerStatus?:string|null;activeContainerReason?:string|null;
   failureDiagnostic?:string|null;
+  canRetryFailed?:boolean;retryReference?:string|null;
 };
 type Advance={status:string;reference?:string;observedNames?:number;providerStatus?:string;providerReason?:string;failureDiagnostic?:string|null};
 export function DynamicCollectorControl({accountId,onIndexed}:{
@@ -104,14 +105,14 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
     });
     return ()=>{cancelled=true;};
   },[read]);
-  const advance=useCallback(async()=>{
+  const advance=useCallback(async(operation:'advance'|'retry-failed'='advance')=>{
     if(lock.current)return;
     lock.current=true;
     try{
       const response=await fetch('/api/operator/phantombuster/dynamic-references',{
         method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({operation:'advance',confirmDynamicCollection:true}),
+        body:JSON.stringify({operation,confirmDynamicCollection:true}),
       });
       if(!response.ok){
         // The server deliberately sends an allowlisted Portuguese reason,
@@ -205,12 +206,18 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
           Indício no log da execução: {failureExplanations[queue.failureDiagnostic]}
         </p>}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={running||!queue.canAdvance}
-          onClick={()=>{setRunning(true);void advance();}}>
-          {running?'Verificando...':
-            queue.currentState==='finished-unverified'||queue.currentState==='launched'
-              ?'Rever contêiner existente':'Iniciar coletas'}
-        </Button>
+        {queue.canRetryFailed&&queue.retryReference
+          ?<Button type="button" disabled={running}
+            onClick={()=>{setRunning(true);void advance('retry-failed');}}>
+            {running?'Verificando...':
+              'Repetir coleta de @'+queue.retryReference+' após reconexão'}
+          </Button>
+          :<Button type="button" disabled={running||!queue.canAdvance}
+            onClick={()=>{setRunning(true);void advance();}}>
+            {running?'Verificando...':
+              queue.currentState==='finished-unverified'||queue.currentState==='launched'
+                ?'Rever contêiner existente':'Iniciar coletas'}
+          </Button>}
         {running&&<Button type="button" variant="outline"
           onClick={()=>setRunning(false)}>Parar acompanhamento</Button>}
       </div>

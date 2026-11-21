@@ -21,9 +21,12 @@ import {
 import {indexSavedAudienceCandidates} from '@/lib/server/dynamic-reference-candidate-index';
 import {inspectDynamicFailureOutput} from
   '@/lib/providers/phantombuster-failure-diagnostic';
+import {inspectFailedRetryPreflight} from
+  '@/lib/providers/phantombuster-failed-run-retry';
 import {
   DYNAMIC_COLLECTION_ACTION,MAX_DYNAMIC_COLLECTION_LOGS,
   makeDynamicJobEvent,parseDynamicJobEvent,planDynamicReferenceQueue,
+  planFailedDynamicReferenceRetry,
   type DynamicJobEvent,
 } from '@/lib/reference-dynamic-collection';
 
@@ -125,6 +128,29 @@ async function queue(accountId:string,agentId:string){
     next:globalUnresolved?null:plan.next,
   }};
 }
+type ReservedCollectorClaim={id:string;event:DynamicJobEvent};
+async function launchReservedCollector(
+  key:string,agentId:string,claim:ReservedCollectorClaim,
+){
+  // The database claim is durable BEFORE the remote launch. If the request
+  // becomes ambiguous, its claimed/unconfirmed state blocks all retries.
+  const launched=await launchExistingCollectorForReference(
+    key,agentId,claim.event.referenceUsername,claim.event.claimId);
+  const changed=makeDynamicJobEvent({
+    ...claim.event,state:launched.status==='queued'?'launched':'unconfirmed',
+    containerId:launched.containerId,
+  });
+  if(changed)await prisma.activityLog.update({
+    where:{id:claim.id},data:{details:JSON.stringify(changed)},
+  }).catch(()=>undefined);
+  return NextResponse.json({
+    status:launched.status==='queued'?'queued':'review-required',
+    reference:claim.event.referenceUsername,
+    savedPhantomSettingsChanged:false,
+    noAutomaticRetry:launched.status!=='queued',
+    followsExecuted:0,unfollowsExecuted:0,
+  },{headers:HEADERS});
+}
 /** Customer URLs come from saved references; never an HTTP request field. */
 export async function GET(){
   const accountId=await context();
@@ -152,10 +178,15 @@ export async function GET(){
   const failureDiagnostic=enabled&&current?.containerId&&
     activeProof?.reason==='failed-run'
       ?await inspectDynamicFailureOutput(key!,current.containerId):null;
+  const retryTarget=planFailedDynamicReferenceRetry(
+    data.references,data.jobs,accountId,agentId);
+  const canRetryFailed=Boolean(enabled&&retryTarget&&
+    activeProof?.reason==='failed-run');
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
-  const canAdvance=Boolean(enabled&&(ownLaunched||
-    (!data.plan.unresolved&&data.plan.next&&
+  const canAdvance=Boolean(enabled&&(
+    (ownLaunched&&activeProof?.reason!=='failed-run')||
+    (!data.plan.unresolved&&!ownLaunched&&data.plan.next&&
       (progress==='finished'||progress==='no-run'))));
   const blocker=!enabled?'O piloto está desativado neste Preview.'
     :ownLaunched&&activeProof?.status==='running'?'O contêiner existente continua em execução no PhantomBuster.'
@@ -177,7 +208,9 @@ export async function GET(){
     currentState:current?.state??'none',
     activeContainerStatus:activeProof?.status??null,
     activeContainerReason:activeProof?.reason??null,
-    failureDiagnostic,canAdvance,blocker,providerStatus:progress,
+    failureDiagnostic,canAdvance,canRetryFailed,
+    retryReference:canRetryFailed?retryTarget?.username:null,
+    blocker,providerStatus:progress,
     noManualUrlChanges:true,followersExecuted:0,unfollowsExecuted:0,
   },{headers:HEADERS});
 }
@@ -195,7 +228,8 @@ export async function POST(request:Request){
   if(!input||typeof input!=='object'||Array.isArray(input)||
     Object.keys(input).length!==2)return bad('Parâmetros inválidos',400);
   const body=input as Record<string,unknown>;
-  if(body.operation!=='advance'||body.confirmDynamicCollection!==true)
+  if(!['advance','retry-failed'].includes(String(body.operation))||
+     body.confirmDynamicCollection!==true)
     return bad('Operação inválida',400);
   if(process.env.PHANTOMBUSTER_DYNAMIC_COLLECTION_ENABLED!=='yes')
     return bad('Execução desativada no Preview',403);
@@ -206,6 +240,77 @@ export async function POST(request:Request){
   const agentId=selected.agentId;
   const current=await queue(accountId,agentId);
   if(!current)return bad('Registro inválido',503);
+  if(body.operation==='retry-failed'){
+    // Explicit button only. Never initiate this operation on page load,
+    // from polling, or using a reference typed by the browser.
+    const original=current.jobs[0],receipt=current.rows[0];
+    const target=planFailedDynamicReferenceRetry(
+      current.references,current.jobs,accountId,agentId);
+    if(!receipt||!original||!target||current.plan.unresolved)
+      return bad('Repetição não autorizada: histórico exige revisão',409);
+    const proof=await inspectDynamicRunProofDetailed(
+      key!,agentId,original.containerId!,original.referenceUsername,
+      original.claimId);
+    if(proof.reason!=='failed-run')
+      return bad('O contêiner original não confirmou falha finalizada',409);
+    // The current saved agent must be a valid Follower Collector with a
+    // configured session, not just a previous successful DB receipt.
+    const configured=await agent(key!);
+    if(configured.agentId!==agentId)
+      return bad('Sessão ou agente não confirmado na workspace do PhantomBuster',409);
+    const preflight=await inspectFailedRetryPreflight(
+      key!,agentId,original.containerId!);
+    if(preflight!=='ready')return bad(
+      preflight==='active'?'Outra execução do coletor está em andamento':
+      preflight==='other-run'?'Há outra execução posterior à falha registrada':
+      'Não foi possível comprovar que o coletor está disponível para repetir',
+      409);
+    let claim:ReservedCollectorClaim|null=null;
+    try{
+      claim=await prisma.$transaction(async tx=>{
+        const locks=await tx.$queryRaw<Array<{acquired:boolean}>>`
+          SELECT pg_try_advisory_xact_lock(
+            hashtext('decolainsta_dynamic_reference_v1'),
+            hashtext(${agentId})
+          ) AS acquired
+        `;
+        if(locks.length!==1||locks[0].acquired!==true)return null;
+        const rows=await tx.activityLog.findMany({
+          where:{action:DYNAMIC_COLLECTION_ACTION,targetUsername:agentId},
+          select:{id:true,instagramAccountId:true,targetUsername:true,details:true},
+          orderBy:[{createdAt:'desc'},{id:'desc'}],
+          take:MAX_DYNAMIC_COLLECTION_LOGS+1,
+        });
+        if(rows.length>MAX_DYNAMIC_COLLECTION_LOGS||!rows.length)return null;
+        const events=rows.map(row=>parseDynamicJobEvent(row.details));
+        if(events.some((e,i)=>!e||e.accountId!==rows[i].instagramAccountId||
+           e.agentId!==rows[i].targetUsername))return null;
+        const valid=planFailedDynamicReferenceRetry(current.references,
+          events.filter((x):x is DynamicJobEvent=>x!==null),accountId,agentId);
+        if(!valid||valid.id!==target.id||valid.username!==target.username||
+           rows[0].id!==receipt.id||rows[0].details!==receipt.details)return null;
+        const reference=await tx.targetAccount.findFirst({
+          where:{id:valid.id,instagramAccountId:accountId,
+            username:valid.username},select:{id:true},
+        });
+        if(!reference)return null;
+        const job=makeDynamicJobEvent({
+          state:'claimed',accountId,agentId,referenceId:valid.id,
+          referenceUsername:valid.username,
+          claimId:randomUUID(),containerId:null,
+        });
+        if(!job)return null;
+        const inserted=await tx.activityLog.create({data:{
+          instagramAccountId:accountId,targetUsername:agentId,
+          action:DYNAMIC_COLLECTION_ACTION,details:JSON.stringify(job),
+          success:false,
+        },select:{id:true}});
+        return {id:inserted.id,event:job};
+      },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+    }catch{return bad('Não foi possível reservar a repetição no Neon',503);}
+    if(!claim)return bad('Outra tentativa já foi registrada; repetição bloqueada',409);
+    return launchReservedCollector(key!,agentId,claim);
+  }
   const last=current.rows[0],event=current.jobs[0];
   if(event&&event.accountId!==accountId&&current.plan.unresolved)
     return NextResponse.json({
@@ -377,20 +482,5 @@ export async function POST(request:Request){
     return bad(explanation,503);
   }
   if(!claim)return bad('Agente reservado ou referência já processada',409);
-  const launched=await launchExistingCollectorForReference(
-    key!,agentId,claim.event.referenceUsername,claim.event.claimId);
-  const changed=makeDynamicJobEvent({
-    ...claim.event,state:launched.status==='queued'?'launched':'unconfirmed',
-    containerId:launched.containerId,
-  });
-  if(changed)await prisma.activityLog.update({
-    where:{id:claim.id},data:{details:JSON.stringify(changed)},
-  }).catch(()=>undefined);
-  return NextResponse.json({
-    status:launched.status==='queued'?'queued':'review-required',
-    reference:claim.event.referenceUsername,
-    savedPhantomSettingsChanged:false,
-    noAutomaticRetry:launched.status!=='queued',
-    followsExecuted:0,unfollowsExecuted:0,
-  },{headers:HEADERS});
+  return launchReservedCollector(key!,agentId,claim);
 }

@@ -79,3 +79,28 @@ export function planDynamicReferenceQueue(
     attributionUnverified:jobs.filter(e=>e.state==='finished-unverified').length,
   };
 }
+
+/** A single, explicitly authorized recovery is possible only after a
+ * verified failed container, with no concurrent/global unresolved claims.
+ * Every earlier attempt remains in the append-only ActivityLog.
+ */
+export function planFailedDynamicReferenceRetry(
+  references:readonly ReferenceForDynamicPlan[],
+  events:readonly DynamicJobEvent[],
+  accountId:string,agentId:string,
+):ReferenceForDynamicPlan|null{
+  if(!local(accountId)||!agent(agentId)||events.length===0)return null;
+  const latest=events[0];
+  if(latest.accountId!==accountId||latest.agentId!==agentId||
+     latest.state!=='finished-unverified'||!latest.containerId)return null;
+  if(events.some(event=>event.agentId===agentId&&
+     !['finished','finished-unverified','rejected'].includes(event.state)))
+    return null;
+  const attempts=events.filter(e=>e.accountId===accountId&&
+    e.agentId===agentId&&e.referenceId===latest.referenceId);
+  // One original attempt, at most one controlled retry.
+  if(attempts.length!==1)return null;
+  return references.find(ref=>ref.id===latest.referenceId&&
+    ref.username===latest.referenceUsername&&local(ref.id)&&
+    refname(ref.username))??null;
+}

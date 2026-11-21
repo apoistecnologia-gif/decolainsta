@@ -257,3 +257,37 @@ test('read-only review keeps next ref hidden and labels button for existing cont
   assert.match(ui,/Rever contêiner existente/);
   assert.match(ui,/Diagnóstico:/);
 });
+
+test('failed receipt offers one explicit retry of SAME reference only, never auto next',()=>{
+  const {planFailedDynamicReferenceRetry}=require('../lib/reference-dynamic-collection') as
+    typeof import('../lib/reference-dynamic-collection');
+  const references=[{id:'reference1',username:'ammplamob'},
+    {id:'reference2',username:'prefeituradepetrolina'}];
+  const initial=makeDynamicJobEvent({state:'finished-unverified',
+    accountId:'account1',referenceId:'reference1',referenceUsername:'ammplamob',
+    agentId:id,claimId,containerId:'2222222222222222'});
+  assert.ok(initial);
+  assert.deepEqual(planFailedDynamicReferenceRetry(references,[initial!],'account1',id),
+    references[0]);
+  assert.equal(planFailedDynamicReferenceRetry(references,[initial!],'otherAccount',id),null);
+  const retry=makeDynamicJobEvent({...initial!,state:'claimed',claimId:'b789b196-a830-4a44-93ca-9d2f53b0f772',containerId:null});
+  assert.ok(retry);
+  assert.equal(planFailedDynamicReferenceRetry(references,[retry!,initial!],'account1',id),null);
+  const fail2=makeDynamicJobEvent({...retry!,state:'finished-unverified',containerId:'3333333333333333'});
+  assert.equal(planFailedDynamicReferenceRetry(references,[fail2!,initial!],'account1',id),null);
+  assert.equal(planFailedDynamicReferenceRetry(references,[initial!], 'account1','2222222222222222'),null);
+});
+test('failed-run retry is preview-only and reserved with serializable advisory lock',()=>{
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const panel=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
+  assert.match(route,/body\\.operation==='retry-failed'/);
+  assert.match(route,/inspectFailedRetryPreflight/);
+  assert.match(route,/planFailedDynamicReferenceRetry/);
+  assert.match(route,/const configured=await agent\\(key!\\)/);
+  assert.match(route,/rows\\[0\\]\\.details!==receipt\\.details/);
+  assert.match(route,/pg_try_advisory_xact_lock/);
+  assert.match(route,/Prisma\\.TransactionIsolationLevel\\.Serializable/);
+  assert.match(panel,/advance\\('retry-failed'\\)/);
+  assert.match(panel,/disabled=\\{running\\}/);
+  assert.doesNotMatch(route,/followSingle|unfollowSingle|InstagramFollowersAutoFollow|agents\\/save/);
+});

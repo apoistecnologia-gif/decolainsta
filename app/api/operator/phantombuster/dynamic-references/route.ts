@@ -423,7 +423,7 @@ export async function POST(request:Request){
     // A completed container with a detected Instagram restriction must
     // not supply candidates, even when the provider returns a partial list.
     const severe=await inspectDynamicFailureOutput(key!,event.containerId);
-    if(['platform-limited','login-challenge','session-invalid'].includes(severe)){
+    if(blockedFailureDiagnostics.has(severe)){
       const blocked=makeDynamicJobEvent({...event,state:'finished-unverified'});
       if(!blocked)return bad('Registro inválido',503);
       const changed=await prisma.activityLog.updateMany({

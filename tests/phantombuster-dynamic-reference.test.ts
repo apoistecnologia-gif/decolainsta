@@ -84,7 +84,10 @@ test('dynamic controller is preview gated, operator only, idempotent and account
   assert.match(src,/request\.headers\.get\('origin'\)/);
   assert.match(src,/PHANTOMBUSTER_DYNAMIC_COLLECTION_ENABLED!=='yes'/);
   assert.match(src,/instagramAccountId:accountId/);
-  assert.match(src,/pg_advisory_xact_lock/);
+  assert.match(src,/pg_try_advisory_xact_lock/);
+  assert.match(src,/\$queryRaw<Array<\{acquired:boolean\}>>/);
+  assert.match(src,/lockRows\[0\]\.acquired!==true/);
+  assert.doesNotMatch(src,/\$queryRawUnsafe\(/);
   assert.match(src,/Prisma\.TransactionIsolationLevel\.Serializable/);
   assert.match(src,/event&&event.accountId!==accountId/);
   assert.match(src,/state:'claimed'/);

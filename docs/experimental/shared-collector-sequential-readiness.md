@@ -32,8 +32,29 @@ Fonte: https://support.phantombuster.com/hc/en-us/articles/26971109041170-How-to
 `lib/reference-shared-collector-evidence.ts` contém o verificador puro e
 `sequentialCollectorReadiness` retorna uma descrição dos bloqueios.
 A operação `plan` do endpoint de preparação inclui somente essa descrição.
-O leitor legando mantém vinculação exclusiva por referência e NÃO passa
-a aceitar agentes compartilhados. Não existem ainda reserva exclusiva de
-agente, verificação de input por contêiner nem importação de resultados
-compartilhados. Isso precisa de contrato validado com a API do provedor antes
-de habilitar ações externas. Nenhum segredo é exposto.
+O leitor legado mantém vinculação exclusiva por referência e NÃO passa
+a aceitar agentes compartilhados.
+
+`lib/reference-shared-collector-lease.ts` adiciona a **reserva inicial,
+durável e exclusiva** por agente usando `pg_advisory_xact_lock` e o histórico
+atual de `ActivityLog` (sem migração). Uma reserva impede novas reservas do
+mesmo agente em outros clientes. Também bloqueia agentes previamente vinculados
+ou reservados por rascunhos. Ela só pode ser solicitada por um serviço interno,
+com operador administrador, referência da própria conta e duas variáveis
+explícitas na branch Preview:
+`PHANTOMBUSTER_SHARED_COLLECTOR_LEASE_ENABLED=yes` e
+`PHANTOMBUSTER_SHARED_COLLECTOR_AGENT_ID=<ID verificado>`.
+Nenhuma das duas foi configurada por esta alteração.
+
+**Atenção:** o ciclo completo de lease NÃO está habilitado. Uma reserva
+bem-sucedida ainda não tem endpoint de liberação, pois seria necessário
+comprovar que o contêiner da execução foi finalizado e que não existe uma
+operação remota incerta. Não há integração entre essa reserva e qualquer
+execução, mudança de argumentos ou importação; não chamar essa função até que
+o reconciliador de finalização e testes de concorrência com PostgreSQL
+estejam prontos.
+
+O leitor legado não foi alterado. Ainda faltam verificação de entrada por
+contêiner, orquestração segura de reutilização e importação de resultados
+atribuídos. As três referências permanecem pendentes. Nenhum segredo é exposto,
+nenhuma conta Instagram foi acionada e nenhum agente externo foi criado.

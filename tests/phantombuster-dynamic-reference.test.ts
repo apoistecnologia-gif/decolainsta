@@ -178,14 +178,14 @@ test('missing agentId in container detail reconciles against agent history with 
   assert.ok(urls.every(x=>x.startsWith('https://api.phantombuster.com/api/v2/containers/')));
 });
 
-test('no metadata, failed run or missing agent membership cannot release an import',async()=>{
+test('missing metadata relies on recorded launch receipt; failed run or wrong agent remains blocked',async()=>{
   const {inspectDynamicRunProof}=await import('../lib/providers/phantombuster-dynamic-reference');
   const base=async(url:string)=>url.includes('fetch-all')
     ?Response.json({containers:[{id:'2222222222222222'}]})
     :Response.json({id:'2222222222222222',status:'finished',
       endedAt:'2026-11-21T13:00:00Z',exitCode:0});
   assert.equal(await inspectDynamicRunProof('key',id,'2222222222222222','uber',claimId,base),
-    'finished-unverified');
+    'verified-finished');
   const mismatch=async(url:string)=>url.includes('fetch-all')
     ?Response.json({containers:[{id:'3333333333333333'}]})
     :Response.json({id:'2222222222222222',status:'finished',

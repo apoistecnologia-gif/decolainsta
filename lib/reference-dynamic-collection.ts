@@ -89,6 +89,33 @@ export function planDynamicReferenceQueue(
   };
 }
 
+/** Select one previously unverified reference for a single operator-confirmed
+ * pilot recheck. Do NOT delete history, authorize scheduled retries, or accept
+ * a user-supplied reference URL. The current receipt must be the last event.
+ */
+export function planOneShotUnverifiedRecovery(
+  references:readonly ReferenceForDynamicPlan[],
+  events:readonly DynamicJobEvent[],accountId:string,agentId:string,
+):ReferenceForDynamicPlan|null{
+  if(!local(accountId)||!agent(agentId)||events.length===0)return null;
+  const latest=events[0];
+  if(latest.accountId!==accountId||latest.agentId!==agentId||
+     latest.state!=='finished-unverified'||!latest.containerId)return null;
+  if(events.some(e=>e.agentId===agentId&&
+    !['finished','finished-unverified','rejected'].includes(e.state)))return null;
+  const sameReference=events.filter(e=>e.accountId===accountId&&
+    e.agentId===agentId&&e.referenceId===latest.referenceId);
+  if(sameReference.length!==1)return null; // No repeated recovery attempts.
+  const completed=new Set(events.filter(e=>e.accountId===accountId&&
+    e.agentId===agentId&&e.state==='finished').map(e=>e.referenceId));
+  const pending=new Set(events.filter(e=>e.accountId===accountId&&
+    e.agentId===agentId&&e.state==='finished-unverified'&&
+    !completed.has(e.referenceId)).map(e=>e.referenceId));
+  if(pending.size!==1||!pending.has(latest.referenceId))return null;
+  return references.find(r=>r.id===latest.referenceId&&
+    r.username===latest.referenceUsername&&local(r.id)&&refname(r.username))??null;
+}
+
 /** A single, explicitly authorized recovery is possible only after a
  * verified failed container, with no concurrent/global unresolved claims.
  * Every earlier attempt remains in the append-only ActivityLog.

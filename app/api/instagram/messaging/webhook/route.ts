@@ -4,6 +4,7 @@ export const runtime='nodejs';
 import { NextRequest,NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { messagingEnabled } from '@/lib/instagram/messaging-oauth';
+import { resolveMessagingWebhookAppSecret } from '@/lib/instagram/messaging-webhook-app-secret';
 import {equalSecret,verifyMetaWebhookSignature,
   extractInboundMessagingReceipts} from '@/lib/instagram/messaging-webhook';
 const headers={'Cache-Control':'no-store'};
@@ -22,7 +23,7 @@ export async function GET(req:NextRequest){
 }
 /** Signed incoming DMs only; no message bodies saved and no replies sent. */
 export async function POST(req:NextRequest){
-  const appSecret=process.env.INSTAGRAM_MESSAGING_WEBHOOK_APP_SECRET??'';
+  const appSecret=resolveMessagingWebhookAppSecret();
   if(!messagingEnabled()||!appSecret)
     return new NextResponse(null,{status:403,headers});
   const declared=req.headers.get('content-length');

@@ -5,6 +5,7 @@ import {NextResponse} from 'next/server';
 import {auth} from '@/auth';
 import {prisma} from '@/lib/db';
 import {messagingEnabled,messagingOAuthConfig} from '@/lib/instagram/messaging-oauth';
+import {resolveMessagingWebhookAppSecret} from '@/lib/instagram/messaging-webhook-app-secret';
 const HEADERS={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'};
 /** Permission names and presence only, never secret values or tokens. */
 export async function GET(){
@@ -25,7 +26,7 @@ export async function GET(){
   const oauthConfigured=messagingOAuthConfig()!==null;
   const webhookConfigured=Boolean(
     (process.env.INSTAGRAM_MESSAGING_WEBHOOK_VERIFY_TOKEN??'').length>=24&&
-    (process.env.INSTAGRAM_MESSAGING_WEBHOOK_APP_SECRET??'').length>=12);
+    resolveMessagingWebhookAppSecret().length>=12);
   let messagingConnected=false;
   let migrationReady=false;
   if(enabled&&account){

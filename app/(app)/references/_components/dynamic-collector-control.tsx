@@ -18,10 +18,11 @@ type Queue={
   failureDiagnostic?:string|null;
   collectionLimited?:boolean;
   canRetryFailed?:boolean;retryReference?:string|null;
+  canRetestUnverified?:boolean;retestReference?:string|null;
 };
 type Advance={status:string;reference?:string;observedNames?:number;
   providerStatus?:string;providerReason?:string;failureDiagnostic?:string|null;
-  resultStatus?:'unavailable'|'unsupported';};
+  resultStatus?:'unavailable'|'unsupported';oneShotRecovery?:boolean;};
 export function DynamicCollectorControl({accountId,onIndexed}:{
   accountId:string;onIndexed?:()=>void;
 }){
@@ -109,17 +110,21 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
     });
     return ()=>{cancelled=true;};
   },[read]);
-  const advance=useCallback(async(operation:'advance'|'retry-failed'='advance')=>{
+  const advance=useCallback(async(operation:
+    'advance'|'retry-failed'|'retest-unverified-once'='advance')=>{
     if(lock.current)return;
     // Latch the limiting status before the import changes the GET state.
     // A successful late import must not auto-launch the next reference.
-    const limitedAtStart=queue?.collectionLimited===true;
+    const limitedAtStart=queue?.collectionLimited===true&&
+      operation!=='retest-unverified-once';
     lock.current=true;
     try{
       const response=await fetch('/api/operator/phantombuster/dynamic-references',{
         method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({operation,confirmDynamicCollection:true}),
+        body:JSON.stringify(operation==='retest-unverified-once'
+          ?{operation,confirmDynamicCollection:true,confirmLimitedAccessRisk:true}
+          :{operation,confirmDynamicCollection:true}),
       });
       if(!response.ok){
         // The server deliberately sends an allowlisted Portuguese reason,
@@ -149,6 +154,8 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
         // The server committed the saved snapshots and candidate index in
         // the same transaction; no second browser-side POST is required.
         onIndexed?.();
+        // This one-off recovery is never permission to auto-launch another ref.
+        if(info.oneShotRecovery)setRunning(false);
       }else{
         setRunning(false);
         if(info.status==='finished-without-input-proof'){
@@ -229,6 +236,18 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
           Indício no log da execução: {failureExplanations[queue.failureDiagnostic]}
         </p>}
       <div className="flex flex-wrap gap-2">
+        {queue.canRetestUnverified&&queue.retestReference&&
+          <Button type="button" disabled={running}
+            onClick={()=>{
+              if(window.confirm('Teste REAL e único da coleta de @'+queue.retestReference+
+                '. O Instagram já apresentou limite; uma nova restrição é possível. '+
+                'Não haverá follow nem repetição automática. Confirmar?')){
+                setRunning(true);
+                void advance('retest-unverified-once');
+              }
+            }}>
+            {running?'Testando...':'Testar uma coleta única de @'+queue.retestReference}
+          </Button>}
         {queue.canRetryFailed&&queue.retryReference
           ?<Button type="button" disabled={running}
             onClick={()=>{setRunning(true);void advance('retry-failed');}}>

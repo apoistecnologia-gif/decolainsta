@@ -1,6 +1,6 @@
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {Prisma} from '@prisma/client';
 import {NextResponse} from 'next/server';
 import {auth} from '@/auth';
@@ -44,6 +44,28 @@ const progressBlocker=(status:string):string=>{
   return explanations[status]??'O coletor ainda não foi confirmado como disponível.';
 };
 const bad=(error:string,status:number)=>NextResponse.json({error},{status,headers:HEADERS});
+/** The preview cron may inspect an existing launch, but never start one. */
+function previewReconcileCronAuthorized(request:Request):boolean{
+  if(process.env.VERCEL_ENV!=='preview'||
+     process.env.PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED!=='yes')return false;
+  const secret=process.env.CRON_SECRET;
+  if(!secret||secret.length<32)return false;
+  const given=Buffer.from(request.headers.get('authorization')??'','utf8');
+  const expected=Buffer.from('Bearer '+secret,'utf8');
+  return given.length===expected.length&&timingSafeEqual(given,expected);
+}
+async function previewCronAccountId():Promise<string|null>{
+  const username=process.env.PHANTOMBUSTER_SOCIAL_PILOT_ACCOUNT
+    ?.replace(/^@/,'').toLowerCase()??'';
+  if(!/^[a-z0-9._]{1,30}$/.test(username))return null;
+  const accounts=await prisma.instagramAccount.findMany({
+    where:{username},select:{id:true,instagramUserId:true,encryptedAccessToken:true},
+    take:2,
+  });
+  if(accounts.length!==1||!accounts[0].instagramUserId||
+     !accounts[0].encryptedAccessToken)return null;
+  return accounts[0].id;
+}
 async function context(){
   if(process.env.VERCEL_ENV!=='preview')return null;
   const session=await auth();
@@ -225,9 +247,10 @@ export async function GET(){
   },{headers:HEADERS});
 }
 export async function POST(request:Request){
-  const accountId=await context();
+  const cronAuthorized=previewReconcileCronAuthorized(request);
+  const accountId=cronAuthorized?await previewCronAccountId():await context();
   if(!accountId)return bad('Somente operador no Preview',403);
-  if(!isSameOriginDynamicCollectionRequest(
+  if(!cronAuthorized&&!isSameOriginDynamicCollectionRequest(
     request.headers.get('origin'),request.url,request.headers.get('host')))
     return bad('Origem da solicitação não corresponde ao domínio do painel',403);
   if(!request.headers.get('content-type')?.startsWith('application/json'))
@@ -238,9 +261,11 @@ export async function POST(request:Request){
   if(!input||typeof input!=='object'||Array.isArray(input)||
     Object.keys(input).length!==2)return bad('Parâmetros inválidos',400);
   const body=input as Record<string,unknown>;
-  if(!['advance','retry-failed'].includes(String(body.operation))||
+  if(!['advance','retry-failed','reconcile-only'].includes(String(body.operation))||
      body.confirmDynamicCollection!==true)
     return bad('Operação inválida',400);
+  if(cronAuthorized!==(body.operation==='reconcile-only'))
+    return bad('Modo de execução não autorizado',403);
   if(process.env.PHANTOMBUSTER_DYNAMIC_COLLECTION_ENABLED!=='yes')
     return bad('Execução desativada no Preview',403);
   const key=process.env.PHANTOMBUSTER_API_KEY;
@@ -250,6 +275,11 @@ export async function POST(request:Request){
   const agentId=selected.agentId;
   const current=await queue(accountId,agentId);
   if(!current)return bad('Registro inválido',503);
+  if(cronAuthorized&&(
+    current.jobs[0]?.state!=='launched'||
+    current.jobs[0]?.accountId!==accountId))
+    return NextResponse.json({status:'no-pending-run',noAutomaticLaunch:true,
+      instagramActionsExecuted:0,launchesExecuted:0},{headers:HEADERS});
   if(body.operation==='retry-failed'){
     // Explicit button only. Never initiate this operation on page load,
     // from polling, or using a reference typed by the browser.
@@ -427,6 +457,10 @@ export async function POST(request:Request){
       },{headers:HEADERS});
     }catch{return bad('Erro ao salvar coleta concluída',503);}
   }
+  if(cronAuthorized)return NextResponse.json({
+    status:'no-pending-run',noAutomaticLaunch:true,
+    instagramActionsExecuted:0,launchesExecuted:0,
+  },{headers:HEADERS});
   if(current.plan.unresolved)return NextResponse.json({
     status:'review-required',reason:'existing-run-unconfirmed',
     noAutomaticRetry:true,

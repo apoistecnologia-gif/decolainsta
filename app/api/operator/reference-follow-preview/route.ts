@@ -64,7 +64,7 @@ const toState=(event:FollowPreviewEvent|null)=>
 
 export async function GET(request:Request){
   const ctx=await ownedAccount(new URL(request.url).searchParams.get('accountId'));
-  if('error' in ctx)return error(ctx.error,ctx.code);
+  if('error' in ctx)return error(ctx.error??'Não autorizado',ctx.code??403);
   const account=ctx.account;
   const [counts,last]=await Promise.all([
     eligibleForAccount(prisma,account),
@@ -103,7 +103,7 @@ export async function POST(request:Request){
      !['start','pause','resume','stop'].includes(String(body.operation)))
     return error('Operação não permitida',400);
   const ctx=await ownedAccount(body.accountId);
-  if('error' in ctx)return error(ctx.error,ctx.code);
+  if('error' in ctx)return error(ctx.error??'Não autorizado',ctx.code??403);
   const account=ctx.account;
   const operation=body.operation as FollowPreviewOperation;
   try{

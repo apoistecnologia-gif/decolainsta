@@ -36,3 +36,9 @@ test('provider response errors do not authorize retry',async()=>{
   assert.equal(await inspectFailedRetryPreflight('key','bad',container,
     async()=>{throw Error('not reachable');}),'unavailable');
 });
+
+test('top-level container arrays are accepted without loosening the last-run check',async()=>{
+  const result=await inspectFailedRetryPreflight('key',id,container,
+    async()=>Response.json([{id:container,agentId:id,status:'failed'}]));
+  assert.equal(result,'ready');
+});

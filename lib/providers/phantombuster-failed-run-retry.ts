@@ -46,11 +46,12 @@ export async function inspectFailedRetryPreflight(
     if(!result.ok)return 'unavailable';
     const raw=await limitedJson(result);
     const root=obj(raw);
-    if(!root||root.status==='error')return 'unavailable';
-    const nested=obj(root.data);
+    if((!root&&!Array.isArray(raw))||root?.status==='error')
+      return 'unavailable';
+    const nested=obj(root?.data);
     const items=Array.isArray(raw)?raw:
-      Array.isArray(root.data)?root.data:
-      Array.isArray(root.containers)?root.containers:
+      Array.isArray(root?.data)?root.data:
+      Array.isArray(root?.containers)?root.containers:
       nested&&Array.isArray(nested.containers)?nested.containers:null;
     if(!items||!items.length||items.length>5)return 'unavailable';
     const rows=items.map(obj);

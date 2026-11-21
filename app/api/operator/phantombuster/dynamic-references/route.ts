@@ -105,7 +105,7 @@ const collectorIssue=(status:string)=>{
 };
 async function queue(accountId:string,agentId:string){
   const [references,rows]=await Promise.all([
-    prisma.targetAccount.findMany({where:{instagramAccountId:accountId},
+    prisma.targetAccount.findMany({where:{instagramAccountId:accountId,enabled:true},
       select:{id:true,username:true},
       orderBy:[{createdAt:'asc'},{id:'asc'}],take:101}),
     prisma.activityLog.findMany({

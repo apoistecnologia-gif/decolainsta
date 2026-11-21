@@ -216,9 +216,9 @@ export async function POST(request:Request){
 
   // This agent was validated by resolvePinnedDynamicCollector above.
   const provider=await inspectPinnedCollectorProgress(key!,agentId);
-  if(provider.status==='running'||provider.status==='pending')
+  if(provider==='running'||provider==='pending')
     return NextResponse.json({status:'provider-busy'}, {headers:HEADERS});
-  if(provider.status!=='finished'&&provider.status!=='no-run')
+  if(provider!=='finished'&&provider!=='no-run')
     return bad('O coletor não está comprovadamente disponível',409);
 
   let claim:{id:string;event:DynamicJobEvent}|null=null;

@@ -175,8 +175,12 @@ export async function GET(){
       current.referenceUsername,current.claimId):null;
   // Read only the registered failed container's own output (never latest
   // agent logs). The response contains an allowlisted classification ONLY.
+  // The exact container may report a successful finish yet have no
+  // importable result because Instagram limited access. Only publish a
+  // fixed category derived from that container's own log.
   const failureDiagnostic=enabled&&current?.containerId&&
-    activeProof?.reason==='failed-run'
+    (activeProof?.reason==='failed-run'||
+      (current.state==='launched'&&activeProof?.status==='verified-finished'))
       ?await inspectDynamicFailureOutput(key!,current.containerId):null;
   const retryTarget=planFailedDynamicReferenceRetry(
     data.references,data.jobs,accountId,agentId);
@@ -358,9 +362,12 @@ export async function POST(request:Request){
           providerStatus:'awaiting-results',providerReason:'results-pending',
           noDuplicateLaunch:true,
         },{headers:HEADERS});
+      const failureDiagnostic=await inspectDynamicFailureOutput(
+        key!,event.containerId);
       return NextResponse.json({
         status:'import-unavailable',reference:event.referenceUsername,
-        resultStatus:result.status,noAutomaticRetry:true,
+        resultStatus:result.status,failureDiagnostic,
+        noAutomaticRetry:true,
       },{headers:HEADERS});
     }
     const batches: AudienceSnapshot[]=[];

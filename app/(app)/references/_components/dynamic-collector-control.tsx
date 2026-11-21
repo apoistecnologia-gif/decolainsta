@@ -18,7 +18,9 @@ type Queue={
   failureDiagnostic?:string|null;
   canRetryFailed?:boolean;retryReference?:string|null;
 };
-type Advance={status:string;reference?:string;observedNames?:number;providerStatus?:string;providerReason?:string;failureDiagnostic?:string|null};
+type Advance={status:string;reference?:string;observedNames?:number;
+  providerStatus?:string;providerReason?:string;failureDiagnostic?:string|null;
+  resultStatus?:'unavailable'|'unsupported';};
 export function DynamicCollectorControl({accountId,onIndexed}:{
   accountId:string;onIndexed?:()=>void;
 }){
@@ -151,6 +153,13 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
             ?proofExplanations[info.providerReason]
             :'O contêiner terminou, mas sua origem não pôde ser comprovada.'))+
             ' Nenhum nome foi importado.');
+        }else if(info.status==='import-unavailable'){
+          const category=info.failureDiagnostic&&
+            failureExplanations[info.failureDiagnostic];
+          setMessage((category??(info.resultStatus==='unsupported'
+            ?'O resultado deste contêiner não possui uma lista de perfis no formato esperado.'
+            :'O PhantomBuster não disponibilizou os resultados desse contêiner.'))+
+            ' Nenhum nome foi atribuído a esta referência. Não haverá nova coleta automática.');
         }else setMessage(info.status==='queue-complete'
           ?'Todas as referências elegíveis foram processadas.'
           :'Execução interrompida para revisão: '+info.status);

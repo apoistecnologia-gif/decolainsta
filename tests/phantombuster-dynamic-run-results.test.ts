@@ -101,3 +101,40 @@ test('finished launch waits briefly for its exact result object without restarti
   assert.match(route,/noDuplicateLaunch:true/);
   assert.match(ui,/'results-pending':/);
 });
+
+test('fallback uses documented withResultObject on SAME container, never agent files',async()=>{
+  const urls:string[]=[];
+  const result=await readDynamicContainerResults('KEY',containerId,'prefeituradepetrolina',
+    async(url,init)=>{
+      urls.push(url);
+      assert.equal(init?.method,'GET');
+      if(url.includes('fetch-result-object'))
+        return Response.json({data:{success:true}});
+      assert.equal(new URL(url).pathname,'/api/v2/containers/fetch');
+      assert.equal(new URL(url).searchParams.get('id'),containerId);
+      assert.equal(new URL(url).searchParams.get('withResultObject'),'true');
+      return Response.json({data:{id:containerId,resultObject:{
+        followers:[{username:'person.one'},{profileUrl:'https://instagram.com/person.two/'}]
+      }}});
+    });
+  assert.equal(urls.length,2);
+  assert.ok(urls.every(x=>x.includes('/containers/')));
+  assert.deepEqual(result,{status:'found',usernames:['person.one','person.two']});
+});
+test('fallback rejects result from a DIFFERENT container, preserving earlier run data',async()=>{
+  const result=await readDynamicContainerResults('KEY',containerId,'prefeituradepetrolina',
+    async(url)=>url.includes('fetch-result-object')
+      ?Response.json({data:{success:true}})
+      :Response.json({data:{id:'9999999999999999',resultObject:[{username:'wrong_run'}]}}));
+  assert.deepEqual(result,{status:'unsupported',usernames:[]});
+});
+test('file-reference-only or unknown nonempty object never counts as empty success',async()=>{
+  const result=await readDynamicContainerResults('KEY',containerId,'prefeituradepetrolina',
+    async()=>Response.json({data:{resultObject:[{downloadUrl:'https://example.com/result.csv'}]}}));
+  assert.deepEqual(result,{status:'unsupported',usernames:[]});
+  const source=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const ui=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
+  assert.match(source,/failureDiagnostic=await inspectDynamicFailureOutput/);
+  assert.match(source,/resultStatus:result\.status,failureDiagnostic/);
+  assert.match(ui,/info\.status==='import-unavailable'/);
+});

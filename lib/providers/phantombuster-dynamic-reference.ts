@@ -243,50 +243,91 @@ export type DynamicContainerResults=Readonly<{
   status:'found'|'empty'|'unsupported'|'unavailable';
   usernames:string[];
 }>;
-/** Read ONLY the exact completed container resultObject, never a mutable
- * result.json file or historical agent-wide output. 250-name hard limit.
+/** Reads ONLY an immutable, already-verified container. No agent-wide
+ * result files: those may contain earlier references and other customers.
+ * fetch-result-object is primary; /containers/fetch?withResultObject=true
+ * is a documented secondary read for the SAME container ID.
  */
 export async function readDynamicContainerResults(
   apiKey:string,containerId:string,reference:string,fetcher:Fetcher=fetch,
 ):Promise<DynamicContainerResults>{
   const answer=(status:DynamicContainerResults['status'],usernames:string[]=[])=>({status,usernames});
-  if(!apiKey||!safeId(containerId)||!safeUser(reference))return answer('unsupported');
-  try{
-    const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch-result-object');
-    url.searchParams.set('id',containerId);
-    const response=await fetcher(url.toString(),{
-      method:'GET',headers:phantomBusterRequestHeaders(apiKey),cache:'no-store',
-      credentials:'omit',redirect:'error',signal:AbortSignal.timeout(8000),
-    });
-    if(!response.ok)return answer('unavailable');
-    const wrapper=rec(await boundedJson(response,4_000_000));
-    const source=rec(wrapper?.data)??wrapper;
-    if(!source||!Object.prototype.hasOwnProperty.call(source,'resultObject'))
-      return answer('unsupported');
-    let data:unknown=source.resultObject;
+  if(!apiKey||!safeId(containerId)||!safeUser(reference))
+    return answer('unsupported');
+
+  const parseRows=(raw:unknown):DynamicContainerResults=>{
+    let data:unknown=raw;
     if(typeof data==='string'){
       try{data=JSON.parse(data) as unknown;}catch{return answer('unsupported');}
     }
     if(data===null||data===undefined||data==='')return answer('empty');
-    const items=Array.isArray(data)?data:rec(data)?.results;
-    if(!Array.isArray(items))return answer('unsupported');
-    const usernames=new Set<string>();
-    for(const v of items.slice(0,1000)){
-      const row=rec(v);
+    const asObject=rec(data);
+    // Only explicit collections, never arbitrary nested records or URLs.
+    const items=Array.isArray(data)?data:
+      asObject&&Array.isArray(asObject.results)?asObject.results:
+      asObject&&Array.isArray(asObject.data)?asObject.data:
+      asObject&&Array.isArray(asObject.followers)?asObject.followers:
+      asObject&&Array.isArray(asObject.profiles)?asObject.profiles:
+      asObject&&Array.isArray(asObject.items)?asObject.items:
+      asObject&&Array.isArray(asObject.rows)?asObject.rows:null;
+    if(!items)return answer('unsupported');
+    if(items.length===0)return answer('empty');
+    const names=new Set<string>();
+    for(const item of items.slice(0,1000)){
+      const row=rec(item);
       if(!row)continue;
       let username=row.username??row.profileName;
       if(typeof username!=='string'&&typeof row.profileUrl==='string'){
         try{
-          const u=new URL(row.profileUrl);
-          if(u.protocol==='https:'&&['instagram.com','www.instagram.com'].includes(u.hostname))
-            username=u.pathname.replace(/^\/|\/$/g,'');
+          const profile=new URL(row.profileUrl);
+          if(profile.protocol==='https:'&&
+             ['instagram.com','www.instagram.com'].includes(profile.hostname))
+            username=profile.pathname.replace(/^\\/|\\/$/g,'');
         }catch{continue;}
       }
       if(typeof username!=='string')continue;
       const name=username.trim().replace(/^@/,'').toLowerCase();
-      if(safeUser(name)&&name!==reference)usernames.add(name);
-      if(usernames.size>=250)break;
+      if(safeUser(name)&&name!==reference)names.add(name);
+      if(names.size>=250)break;
     }
-    return answer(usernames.size?'found':'empty',[...usernames].sort());
-  }catch{return answer('unavailable');}
+    // A nonempty object with no valid usernames may be a FILE REFERENCE,
+    // not an empty follower list. Do not finish the reference silently.
+    return names.size?answer('found',[...names].sort()):answer('unsupported');
+  };
+  const init:RequestInit={
+    method:'GET',headers:phantomBusterRequestHeaders(apiKey),
+    cache:'no-store',credentials:'omit',redirect:'error',
+    signal:AbortSignal.timeout(8000),
+  };
+  let prior:DynamicContainerResults=answer('unavailable');
+  try{
+    const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch-result-object');
+    url.searchParams.set('id',containerId);
+    const response=await fetcher(url.toString(),init);
+    if(response.ok){
+      const wrapper=rec(await boundedJson(response,4_000_000));
+      const source=rec(wrapper?.data)??wrapper;
+      if(source&&Object.prototype.hasOwnProperty.call(source,'resultObject')){
+        prior=parseRows(source.resultObject);
+        if(prior.status==='found'||prior.status==='empty')return prior;
+      }else prior=answer('unsupported');
+    }
+    if([401,403,429].includes(response.status))return prior;
+  }catch{/* A secondary read is safe only for the original container. */}
+
+  try{
+    const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch');
+    url.searchParams.set('id',containerId);
+    url.searchParams.set('withResultObject','true');
+    const response=await fetcher(url.toString(),{
+      ...init,signal:AbortSignal.timeout(8000),
+    });
+    if(!response.ok)return prior;
+    const wrapper=rec(await boundedJson(response,4_000_000));
+    const source=rec(wrapper?.data)??wrapper;
+    if(!source||String(source.id??'')!==containerId||
+       !Object.prototype.hasOwnProperty.call(source,'resultObject'))
+      return prior;
+    return parseRows(source.resultObject);
+  }catch{return prior;}
 }

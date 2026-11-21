@@ -93,7 +93,9 @@ export function validateDynamicCollectorTemplateRecord(
 ):'ready'|'missing-cookie'|'mismatch'|'invalid-response'{
   const agent=rec(value);
   if(!agent)return 'invalid-response';
-  if(String(agent.id??'')!==agentId||
+  if(String(agent.id??agent._id??'')!==agentId||
+    (agent.id!==undefined&&agent._id!==undefined&&
+      String(agent.id)!==String(agent._id))||
     agent.script!=='Instagram Follower Collector.js')return 'mismatch';
   let argument:unknown=agent.argument;
   if(typeof argument==='string'){

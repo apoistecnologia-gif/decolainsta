@@ -58,11 +58,12 @@ test('live progress check is read-only and keyed by the same pinned collector',a
   assert.equal(state,'running');
   assert.equal(count,1);
 });
-test('dynamic endpoint prefers exact pinned collector over ambiguous reference discovery',()=>{
+test('dynamic endpoint resolves within the API key workspace, not from an unverified numeric ID',()=>{
   const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
-  assert.match(route,/PHANTOMBUSTER_DYNAMIC_COLLECTOR_AGENT_ID/);
-  assert.match(route,/resolvePinnedDynamicCollector/);
+  assert.match(route,/resolvePilotCollectorInWorkspace/);
   assert.match(route,/inspectPinnedCollectorProgress/);
+  assert.match(route,/PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE/);
+  assert.doesNotMatch(route,/PHANTOMBUSTER_DYNAMIC_COLLECTOR_AGENT_ID/);
   assert.doesNotMatch(route,/discoverFollowerCollectors\(/);
   assert.doesNotMatch(route,/inspectExistingReferenceCollector\(/);
   assert.match(route,/collectorIssue\(selected.status\)/);

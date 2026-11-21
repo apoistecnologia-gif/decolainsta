@@ -173,3 +173,19 @@ test('batch operation is account-scoped, deduplicated and does not contact Insta
   assert.doesNotMatch(api,/agents\/launch|user_follow|user_unfollow|fetch\('https:\/\//);
   assert.doesNotMatch(ui,/agents\/launch|user_follow|user_unfollow/);
 });
+
+test('real follow readiness lists explicit blockers without activating the executor',()=>{
+  const api=readFileSync('app/api/operator/reference-follow-preview/route.ts','utf8');
+  const ui=readFileSync('app/(app)/references/_components/follow-preview-controls.tsx','utf8');
+  for(const id of ['instagram-restriction','session-identity','recipient-control',
+    'privacy-verification','validated-executor'])
+    assert.ok(api.includes("id:'"+id+"'"));
+  assert.match(api,/realActivation:\{/);
+  assert.match(api,/available:false/);
+  assert.match(api,/liveFollowAvailable:false,instagramActionsExecuted:0/);
+  assert.match(ui,/O que falta para habilitar o seguir real\?/);
+  assert.match(ui,/view\.realActivation\.checks\.map/);
+  assert.match(ui,/Começar a seguir de verdade/);
+  assert.match(ui,/variant="outline" disabled/);
+  assert.doesNotMatch(api,/launchFollowersTrial\(|user_follow|followAction\.create/);
+});

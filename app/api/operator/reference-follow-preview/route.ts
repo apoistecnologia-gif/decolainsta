@@ -142,7 +142,27 @@ export async function GET(request:Request){
     simulationComplete:run.runId!==null&&summary.remainingCount===0,
     mode:'simulation',realFollowsEnabled:false,realUnfollowsEnabled:false,
     liveFollowAvailable:false,instagramActionsExecuted:0,
-    blocker:'Follows reais indisponíveis até validar a integração e cessar a restrição do Instagram.',
+    realActivation:{
+      available:false,
+      checks:[
+        {id:'instagram-restriction',state:'unverified',
+          label:'Restrição do Instagram',
+          explanation:'Ainda não há comprovação de que o limite detectado na última coleta terminou.'},
+        {id:'session-identity',state:'unverified',
+          label:'Identidade da conta executora',
+          explanation:'A sessão do PhantomBuster ainda não comprova tecnicamente que o follow seria feito pela conta selecionada.'},
+        {id:'recipient-control',state:'blocked',
+          label:'Controle dos destinatários',
+          explanation:'O agente Followers Auto Follow escolhe seguidores por conta própria; não garante que o alvo seja um candidato validado e fora da whitelist.'},
+        {id:'privacy-verification',state:'unverified',
+          label:'Proteções por perfil',
+          explanation:'Os candidatos coletados ainda não têm comprovação individual de privacidade e elegibilidade para uma ação real.'},
+        {id:'validated-executor',state:'blocked',
+          label:'Executor de follows reais',
+          explanation:'Ainda não existe executor validado para a fila com registro individual e confirmação de cada ação.'},
+      ],
+    },
+    blocker:'Seguir real indisponível: integração e liberação do Instagram ainda não comprovadas.',
   },{headers:HEADERS});
 }
 

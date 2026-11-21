@@ -14,6 +14,12 @@ type FollowView={
   simulationComplete:boolean;
   liveFollowAvailable:false;realFollowsEnabled:false;realUnfollowsEnabled:false;
   instagramActionsExecuted:0;blocker:string;
+  realActivation:{
+    available:false;
+    checks:Array<{
+      id:string;state:'blocked'|'unverified';label:string;explanation:string;
+    }>;
+  };
 };
 const labels:Record<FollowPreviewState,string>={
   idle:'Teste não iniciado',
@@ -177,6 +183,20 @@ export function FollowPreviewControls({accountId}:Props){
           <p className="text-xs text-muted-foreground">
             Ação real bloqueada: {view.blocker}
           </p>}
+        {ready&&view.realActivation&&
+          <details className="space-y-2 text-xs">
+            <summary className="cursor-pointer font-medium">
+              O que falta para habilitar o seguir real?
+            </summary>
+            <ul className="list-disc space-y-2 pl-5 text-muted-foreground">
+              {view.realActivation.checks.map(check=>
+                <li key={check.id}>
+                  <span className="font-medium">{check.label}:</span>{' '}
+                  {check.explanation}
+                </li>
+              )}
+            </ul>
+          </details>}
         {notice&&<p role="status" className="text-sm">{notice}</p>}
         {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
       </CardContent>

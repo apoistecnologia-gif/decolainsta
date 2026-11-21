@@ -55,7 +55,8 @@ test('server controls are account scoped, preview only, serializable and never c
   assert.match(s,/FOLLOW_PREVIEW_CONTROL_ACTION/);
   assert.match(s,/pg_try_advisory_xact_lock/);
   assert.match(s,/Prisma.TransactionIsolationLevel.Serializable/);
-  assert.match(s,/parseCandidateEvidence/);
+  const helper=readFileSync('lib/reference-follow-preview-control.ts','utf8');
+  assert.match(helper,/parseCandidateEvidence/);
   assert.match(s,/realFollowsEnabled:false,realUnfollowsEnabled:false/);
   assert.doesNotMatch(s,/agents\/launch|user_follow|user_unfollow|followAction\.create|followAction\.update|fetch\('https:\/\//);
 });

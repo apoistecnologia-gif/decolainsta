@@ -88,7 +88,9 @@ export async function launchExistingCollectorForReference(
  */
 export async function inspectDynamicCollectorTemplate(
   apiKey:string,agentId:string,fetcher:Fetcher=fetch,
-):Promise<'ready'|'missing-cookie'|'mismatch'|'unavailable'>{
+  expectedReference?:string,
+):Promise<'ready'|'missing-cookie'|'mismatch'|'unavailable'|
+  'invalid-key'|'not-found'|'rate-limited'|'invalid-response'>{
   if(!apiKey||!safeId(agentId))return 'unavailable';
   try{
     const url=new URL('https://api.phantombuster.com/api/v2/agents/fetch');
@@ -100,18 +102,24 @@ export async function inspectDynamicCollectorTemplate(
       cache:'no-store',credentials:'omit',redirect:'error',
       signal:AbortSignal.timeout(8000),
     });
+    if(response.status===401||response.status===403)return 'invalid-key';
+    if(response.status===404)return 'not-found';
+    if(response.status===429)return 'rate-limited';
     if(!response.ok)return 'unavailable';
     const raw=rec(await boundedJson(response));
     const agent=rec(raw?.data)??raw;
-    if(!agent||String(agent.id??'')!==agentId||
+    if(!agent)return 'invalid-response';
+    if(String(agent.id??'')!==agentId||
       agent.script!=='Instagram Follower Collector.js')return 'mismatch';
     let argument:unknown=agent.argument;
     if(typeof argument==='string'){
       try{argument=JSON.parse(argument) as unknown;}catch{return 'mismatch';}
     }
     const saved=rec(argument);
-    if(!saved||typeof saved.spreadsheetUrl!=='string'||
-       !configuredFollowerCollectorReference(saved))return 'mismatch';
+    const source=saved&&configuredFollowerCollectorReference(saved);
+    if(!saved||typeof saved.spreadsheetUrl!=='string'||!source||
+       (expectedReference!==undefined&&source!==expectedReference))
+      return 'mismatch';
     // Never return, log or write the value of the session cookie.
     return typeof saved.sessionCookie==='string'&&saved.sessionCookie.length>=12
       ?'ready':'missing-cookie';

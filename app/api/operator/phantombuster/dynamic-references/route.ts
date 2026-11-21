@@ -225,12 +225,15 @@ export async function GET(){
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
   const canAdvance=Boolean(enabled&&(
-    (ownLaunched&&!collectionLimited&&activeProof?.reason!=='failed-run')||
+    (ownLaunched&&current.state==='launched'&&
+      !collectionLimited&&activeProof?.reason!=='failed-run')||
     (!data.plan.unresolved&&data.plan.attributionUnverified===0&&
       !ownLaunched&&data.plan.next&&
       (progress==='finished'||progress==='no-run'))));
   const blocker=!enabled?'O piloto está desativado neste Preview.'
     :collectionLimited?'Importação não confirmada: limite do Instagram indicado no log do contêiner. O acompanhamento automático foi pausado; não inicie nova coleta.'
+    :ownLaunched&&current.state==='finished-unverified'
+      ?'Coleta suspensa para revisão. Nenhuma nova coleta será iniciada.'
     :ownLaunched&&activeProof?.status==='running'?'O contêiner existente continua em execução no PhantomBuster.'
     :ownLaunched&&activeProof?.status==='unavailable'?'Não foi possível confirmar o contêiner no PhantomBuster. Nenhuma coleta será repetida.'
     :ownLaunched&&activeProof?.status==='finished-unverified'?'O contêiner encerrou sem prova da referência. Importação bloqueada.'
@@ -369,6 +372,11 @@ export async function POST(request:Request){
     return launchReservedCollector(key!,agentId,claim);
   }
   const last=current.rows[0],event=current.jobs[0];
+  if(event?.state==='finished-unverified')
+    return NextResponse.json({
+      status:'review-required',reason:'unverified-completed-run',
+      noAutomaticRetry:true,instagramActionsExecuted:0,
+    },{headers:HEADERS});
   if(event&&event.accountId!==accountId&&current.plan.unresolved)
     return NextResponse.json({
       status:'provider-busy',reason:'another-account-owns-active-run',
@@ -397,6 +405,24 @@ export async function POST(request:Request){
         status:'finished-without-input-proof',reference:event.referenceUsername,
         providerReason:proof.reason,failureDiagnostic,
         candidatesImported:0,reviewRequired:true,
+      },{headers:HEADERS});
+    }
+    // A completed container with a detected Instagram restriction must
+    // not supply candidates, even when the provider returns a partial list.
+    const severe=await inspectDynamicFailureOutput(key!,event.containerId);
+    if(['platform-limited','login-challenge','session-invalid'].includes(severe)){
+      const blocked=makeDynamicJobEvent({...event,state:'finished-unverified'});
+      if(!blocked)return bad('Registro inválido',503);
+      const changed=await prisma.activityLog.updateMany({
+        where:{id:last.id,instagramAccountId:accountId,
+          action:DYNAMIC_COLLECTION_ACTION,details:last.details},
+        data:{details:JSON.stringify(blocked),success:false},
+      });
+      if(changed.count!==1)return bad('Revisão concorrente da coleta',409);
+      return NextResponse.json({
+        status:'finished-without-input-proof',reference:event.referenceUsername,
+        failureDiagnostic:severe,candidatesImported:0,
+        reviewRequired:true,noAutomaticRetry:true,
       },{headers:HEADERS});
     }
     // Exact container ID + launch claim metadata have been verified.

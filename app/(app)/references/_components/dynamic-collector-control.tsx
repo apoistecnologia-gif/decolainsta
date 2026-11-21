@@ -34,10 +34,13 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
         const detail:Record<number,string>={
           401:'A sessão do DECOLA INSTA expirou. Entre novamente no painel.',
           403:'A coleta experimental está restrita ao operador do Preview.',
-          409:'O servidor não identificou o coletor do PhantomBuster. A configuração precisa ser revisada.',
+          409:'O coletor do PhantomBuster precisa de verificação.',
           503:'A fila de referências está indisponível ou exige revisão.',
         };
-        return {value:null,diagnostic:detail[response.status]??
+        const payload=await response.json().catch(()=>null) as {error?:unknown}|null;
+        const safeExplanation=typeof payload?.error==='string'&&payload.error.length<230
+          ?payload.error:null;
+        return {value:null,diagnostic:safeExplanation??detail[response.status]??
           'Não foi possível consultar a coleta automática.'};
       }
       const value=await response.json() as Queue;

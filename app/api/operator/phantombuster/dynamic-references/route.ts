@@ -26,7 +26,7 @@ import {inspectFailedRetryPreflight} from
 import {
   DYNAMIC_COLLECTION_ACTION,MAX_DYNAMIC_COLLECTION_LOGS,
   makeDynamicJobEvent,parseDynamicJobEvent,planDynamicReferenceQueue,
-  planFailedDynamicReferenceRetry,
+  planFailedDynamicReferenceRetry,withinDynamicResultGracePeriod,
   type DynamicJobEvent,
 } from '@/lib/reference-dynamic-collection';
 
@@ -110,7 +110,7 @@ async function queue(accountId:string,agentId:string){
       orderBy:[{createdAt:'asc'},{id:'asc'}],take:101}),
     prisma.activityLog.findMany({
       where:{action:DYNAMIC_COLLECTION_ACTION,targetUsername:agentId},
-      select:{id:true,instagramAccountId:true,targetUsername:true,details:true},
+      select:{id:true,instagramAccountId:true,targetUsername:true,details:true,createdAt:true},
       orderBy:[{createdAt:'desc'},{id:'desc'}],
       take:MAX_DYNAMIC_COLLECTION_LOGS+1,
     }),
@@ -347,11 +347,22 @@ export async function POST(request:Request){
     // to the previously saved template reference.
     const result=await readDynamicContainerResults(
       key!,event.containerId,event.referenceUsername);
-    if(result.status!=='found'&&result.status!=='empty')
+    if(result.status!=='found'&&result.status!=='empty'){
+      // Some finished launches expose their result object after the final
+      // status becomes visible. Retry GET for this SAME container only,
+      // bounded by a 15-minute grace period since the persisted launch.
+      // Neither path invokes agents/launch or accesses the agent-wide file.
+      if(withinDynamicResultGracePeriod(last.createdAt))
+        return NextResponse.json({
+          status:'in-progress',reference:event.referenceUsername,
+          providerStatus:'awaiting-results',providerReason:'results-pending',
+          noDuplicateLaunch:true,
+        },{headers:HEADERS});
       return NextResponse.json({
         status:'import-unavailable',reference:event.referenceUsername,
-        noAutomaticRetry:true,
+        resultStatus:result.status,noAutomaticRetry:true,
       },{headers:HEADERS});
+    }
     const batches: AudienceSnapshot[]=[];
     for(let i=0;i<result.usernames.length;i+=10){
       const snapshot=makeAudienceSnapshot(

@@ -40,6 +40,7 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
     'missing-claim':'A resposta apresentou metadados sem o identificador do lançamento.',
     'wrong-claim':'O identificador de lançamento retornado não corresponde ao registro salvo.',
     'wrong-reference':'A referência associada à execução não corresponde à referência cadastrada.',
+    'results-pending':'O PhantomBuster finalizou o contêiner, mas os resultados ainda não estão disponíveis. O sistema consultará o mesmo contêiner novamente, sem relançar.',
   };
   const failureExplanations:Record<string,string>={
     'session-invalid':'Indício de sessão Instagram expirada ou inválida no PhantomBuster.',

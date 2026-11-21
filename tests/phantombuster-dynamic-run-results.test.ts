@@ -86,3 +86,18 @@ test('controller never imports unless run metadata matches claim and exact conta
   assert.match(src,/status:'finished-without-input-proof'/);
   assert.doesNotMatch(src,/agents\/save|user_follow|user_unfollow|unfollowSingle/);
 });
+
+test('finished launch waits briefly for its exact result object without restarting the agent',async()=>{
+  const {withinDynamicResultGracePeriod}=await import('../lib/reference-dynamic-collection');
+  const now=new Date('2026-11-21T17:50:00Z');
+  assert.equal(withinDynamicResultGracePeriod(new Date('2026-11-21T17:49:00Z'),now),true);
+  assert.equal(withinDynamicResultGracePeriod(new Date('2026-11-21T17:35:00Z'),now),true);
+  assert.equal(withinDynamicResultGracePeriod(new Date('2026-11-21T17:34:59Z'),now),false);
+  assert.equal(withinDynamicResultGracePeriod(new Date('2026-11-21T17:50:01Z'),now),false);
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const ui=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
+  assert.match(route,/withinDynamicResultGracePeriod\(last\.createdAt\)/);
+  assert.match(route,/providerStatus:'awaiting-results',providerReason:'results-pending'/);
+  assert.match(route,/noDuplicateLaunch:true/);
+  assert.match(ui,/'results-pending':/);
+});

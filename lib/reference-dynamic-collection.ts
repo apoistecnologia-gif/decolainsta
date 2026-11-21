@@ -104,3 +104,11 @@ export function planFailedDynamicReferenceRetry(
     ref.username===latest.referenceUsername&&local(ref.id)&&
     refname(ref.username))??null;
 }
+
+/** Read-only recheck grace period for an already verified final container.
+ * This never retries a PhantomBuster launch or accepts unauthenticated data.
+ */
+export function withinDynamicResultGracePeriod(createdAt:Date,now:Date=new Date()):boolean{
+  const age=now.getTime()-createdAt.getTime();
+  return Number.isFinite(age)&&age>=0&&age<=15*60*1000;
+}

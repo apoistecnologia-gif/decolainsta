@@ -8,9 +8,11 @@ import {prisma} from '@/lib/db';
 import {isConfiguredPhantomBusterKey} from '@/lib/reference-audience-readiness';
 import {inspectPinnedCollectorProgress} from '@/lib/providers/phantombuster-collector-progress';
 import {
-  resolvePinnedDynamicCollector,launchExistingCollectorForReference,
+  launchExistingCollectorForReference,
   inspectDynamicRunProof,readDynamicContainerResults,
 } from '@/lib/providers/phantombuster-dynamic-reference';
+import {resolvePilotCollectorInWorkspace} from
+  '@/lib/providers/phantombuster-pilot-workspace';
 import {
   AUDIENCE_HISTORY_ACTION,MAX_HISTORY_BATCHES,
   makeAudienceSnapshot,parseAudienceSnapshot,type AudienceSnapshot,
@@ -39,21 +41,27 @@ async function context(){
   return account?.instagramUserId&&account.encryptedAccessToken?account.id:null;
 }
 async function agent(key:string){
-  // Preview pilot is pinned to the exact EXISTING Follower Collector console.
-  // Do not infer it by searching the old @mameto_lueji template target,
-  // and never use a Follow Agent or collector from another customer.
-  return resolvePinnedDynamicCollector(
-    key,process.env.PHANTOMBUSTER_DYNAMIC_COLLECTOR_AGENT_ID);
+  // Discover the configured EXISTING collector from the workspace visible to
+  // this API key. The previous manually assigned ID is not authoritative:
+  // it may belong to a different workspace or even a container launch.
+  // Source, script, session and uniqueness are checked without launching it.
+  const template=process.env.PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE?.toLowerCase()??'';
+  return resolvePilotCollectorInWorkspace(key,template);
 }
 const collectorIssue=(status:string)=>{
   const messages:Record<string,string>={
-    'not-configured':'O coletor piloto ainda não foi identificado neste Preview.',
-    'invalid-agent-id':'O identificador do coletor piloto está inválido.',
-    'missing-cookie':'O coletor identificado não tem uma sessão Instagram configurada.',
-    'mismatch':'O agente encontrado não corresponde a um Instagram Follower Collector configurado.',
-    'unavailable':'O PhantomBuster não confirmou o acesso ao coletor identificado.',
+    'not-configured':'A referência-base ou chave API do coletor não está configurada.',
+    'invalid-key':'A chave API do PhantomBuster foi recusada. Verifique a chave da mesma workspace do coletor.',
+    'rate-limited':'O PhantomBuster limitou a consulta da API. Nenhuma coleta foi iniciada.',
+    'workspace-mismatch':'A chave API do servidor não encontrou o Follower Collector (2) na workspace vinculada.',
+    'ambiguous-match':'Há mais de um coletor compatível na workspace. A seleção automática foi bloqueada.',
+    'invalid-inventory':'A API retornou uma lista de agentes inesperada; nenhum coletor foi selecionado.',
+    'collector-not-found':'O coletor apareceu na lista da workspace, mas não pôde ser consultado pelo ID.',
+    'missing-cookie':'O coletor localizado não tem sessão Instagram salva no PhantomBuster.',
+    'mismatch':'O agente localizado não confirmou o tipo e a referência-base esperados.',
+    'unavailable':'A consulta à API do PhantomBuster falhou ou expirou. Nenhuma coleta foi iniciada.',
   };
-  return messages[status]??'A identificação do coletor precisa de revisão.';
+  return messages[status]??'A verificação do coletor precisa de revisão.';
 };
 async function queue(accountId:string,agentId:string){
   const [references,rows]=await Promise.all([

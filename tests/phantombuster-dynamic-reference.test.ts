@@ -258,9 +258,8 @@ test('read-only review keeps next ref hidden and labels button for existing cont
   assert.match(ui,/Diagnóstico:/);
 });
 
-test('failed receipt offers one explicit retry of SAME reference only, never auto next',()=>{
-  const {planFailedDynamicReferenceRetry}=require('../lib/reference-dynamic-collection') as
-    typeof import('../lib/reference-dynamic-collection');
+test('failed receipt offers one explicit retry of SAME reference only, never auto next',async()=>{
+  const {planFailedDynamicReferenceRetry}=await import('../lib/reference-dynamic-collection');
   const references=[{id:'reference1',username:'ammplamob'},
     {id:'reference2',username:'prefeituradepetrolina'}];
   const initial=makeDynamicJobEvent({state:'finished-unverified',

@@ -19,6 +19,8 @@ import {
   makeAudienceSnapshot,parseAudienceSnapshot,type AudienceSnapshot,
 } from '@/lib/reference-audience-history';
 import {indexSavedAudienceCandidates} from '@/lib/server/dynamic-reference-candidate-index';
+import {inspectDynamicFailureOutput} from
+  '@/lib/providers/phantombuster-failure-diagnostic';
 import {
   DYNAMIC_COLLECTION_ACTION,MAX_DYNAMIC_COLLECTION_LOGS,
   makeDynamicJobEvent,parseDynamicJobEvent,planDynamicReferenceQueue,
@@ -145,6 +147,11 @@ export async function GET(){
     (current.state==='launched'||current.state==='finished-unverified')&&current.containerId
     ?await inspectDynamicRunProofDetailed(key!,agentId,current.containerId,
       current.referenceUsername,current.claimId):null;
+  // Read only the registered failed container's own output (never latest
+  // agent logs). The response contains an allowlisted classification ONLY.
+  const failureDiagnostic=enabled&&current?.containerId&&
+    activeProof?.reason==='failed-run'
+      ?await inspectDynamicFailureOutput(key!,current.containerId):null;
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
   const canAdvance=Boolean(enabled&&(ownLaunched||
@@ -170,7 +177,7 @@ export async function GET(){
     currentState:current?.state??'none',
     activeContainerStatus:activeProof?.status??null,
     activeContainerReason:activeProof?.reason??null,
-    canAdvance,blocker,providerStatus:progress,
+    failureDiagnostic,canAdvance,blocker,providerStatus:progress,
     noManualUrlChanges:true,followersExecuted:0,unfollowsExecuted:0,
   },{headers:HEADERS});
 }
@@ -222,9 +229,12 @@ export async function POST(request:Request){
           data:{details:JSON.stringify(changed),success:false},
         });
       }
+      const failureDiagnostic=proof.reason==='failed-run'
+        ?await inspectDynamicFailureOutput(key!,event.containerId):null;
       return NextResponse.json({
         status:'finished-without-input-proof',reference:event.referenceUsername,
-        providerReason:proof.reason,candidatesImported:0,reviewRequired:true,
+        providerReason:proof.reason,failureDiagnostic,
+        candidatesImported:0,reviewRequired:true,
       },{headers:HEADERS});
     }
     // Exact container ID + launch claim metadata have been verified.

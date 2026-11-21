@@ -15,8 +15,9 @@ type Queue={
   unresolved:boolean;currentState:string;
   canAdvance:boolean;blocker:string|null;providerStatus:string|null;
   activeContainerStatus?:string|null;activeContainerReason?:string|null;
+  failureDiagnostic?:string|null;
 };
-type Advance={status:string;reference?:string;observedNames?:number;providerStatus?:string;providerReason?:string};
+type Advance={status:string;reference?:string;observedNames?:number;providerStatus?:string;providerReason?:string;failureDiagnostic?:string|null};
 export function DynamicCollectorControl({accountId,onIndexed}:{
   accountId:string;onIndexed?:()=>void;
 }){
@@ -38,6 +39,20 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
     'missing-claim':'A resposta apresentou metadados sem o identificador do lançamento.',
     'wrong-claim':'O identificador de lançamento retornado não corresponde ao registro salvo.',
     'wrong-reference':'A referência associada à execução não corresponde à referência cadastrada.',
+  };
+  const failureExplanations:Record<string,string>={
+    'session-invalid':'Indício de sessão Instagram expirada ou inválida no PhantomBuster.',
+    'login-challenge':'Indício de desafio de segurança ou verificação de login do Instagram.',
+    'invalid-input':'Indício de entrada ou URL de referência inválida.',
+    'private-target':'Indício de conta de referência privada ou inacessível.',
+    'platform-limited':'Indício de limite ou restrição do Instagram.',
+    'workspace-limit':'Indício de limite de créditos, armazenamento ou capacidade do PhantomBuster.',
+    'execution-timeout':'Indício de tempo máximo, memória ou contexto de execução encerrado.',
+    'runtime-error':'Indício de erro de execução do próprio coletor.',
+    'unknown':'O log não apresenta uma causa reconhecível automaticamente.',
+    'empty-output':'O contêiner não retornou log de execução.',
+    'output-too-large':'O log excede o limite de leitura segura do painel.',
+    'provider-unavailable':'O PhantomBuster não disponibilizou o log desse contêiner.',
   };
   const lock=useRef(false);
   const resumedExisting=useRef(false);
@@ -123,9 +138,10 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       }else{
         setRunning(false);
         if(info.status==='finished-without-input-proof'){
-          setMessage((info.providerReason&&proofExplanations[info.providerReason]
+          const cause=info.failureDiagnostic&&failureExplanations[info.failureDiagnostic];
+          setMessage((cause??(info.providerReason&&proofExplanations[info.providerReason]
             ?proofExplanations[info.providerReason]
-            :'O contêiner terminou, mas sua origem não pôde ser comprovada.')+
+            :'O contêiner terminou, mas sua origem não pôde ser comprovada.'))+
             ' Nenhum nome foi importado.');
         }else setMessage(info.status==='queue-complete'
           ?'Todas as referências elegíveis foram processadas.'
@@ -177,6 +193,10 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       {queue.activeContainerReason&&proofExplanations[queue.activeContainerReason]&&
         <p role="status" className="text-sm text-muted-foreground">
           Diagnóstico: {proofExplanations[queue.activeContainerReason]}
+        </p>}
+      {queue.failureDiagnostic&&failureExplanations[queue.failureDiagnostic]&&
+        <p role="status" className="text-sm text-muted-foreground">
+          Indício no log da execução: {failureExplanations[queue.failureDiagnostic]}
         </p>}
       <div className="flex flex-wrap gap-2">
         <Button type="button" disabled={running||!queue.canAdvance}

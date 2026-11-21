@@ -1,0 +1,88 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
+import {
+  inspectDynamicRunProof,readDynamicContainerResults,
+} from '../lib/providers/phantombuster-dynamic-reference';
+
+const agentId='1111111111111111';
+const containerId='2222222222222222';
+const claimId='a789b196-a830-4a44-93ca-9d2f53b0f772';
+const good={
+  id:containerId,agentId,status:'finalized',
+  endedAt:'2026-11-21T03:20:00.000Z',
+  userCustomMetadata:{decolainstaClaimId:claimId},
+  argument:JSON.stringify({spreadsheetUrl:'https://instagram.com/uber/',
+    sessionCookie:'SECRET_DO_NOT_RETURN'}),
+};
+test('verified container binds source reference and durable claim, not editable agent settings',async()=>{
+  let count=0;
+  const got=await inspectDynamicRunProof('SENSITIVE_KEY',agentId,containerId,
+    'uber',claimId,async(url,init)=>{
+      count++;
+      assert.equal(new URL(url).pathname,'/api/v2/containers/fetch');
+      assert.equal(new URL(url).searchParams.get('id'),containerId);
+      assert.equal(init?.method,'GET');
+      return Response.json({data:good});
+    });
+  assert.equal(count,1);
+  assert.equal(got,'verified-finished');
+});
+test('different tenant claim, different input, unfinished container never import',async()=>{
+  const mutate=[
+    [{...good,userCustomMetadata:{}},'finished-unverified'],
+    [{...good,userCustomMetadata:{decolainstaClaimId:'wrong'}},'finished-unverified'],
+    [{...good,argument:JSON.stringify({spreadsheetUrl:'https://instagram.com/mameto_lueji/'})},'finished-unverified'],
+    [{...good,exitCode:1},'finished-unverified'],
+    [{...good,status:'running',endedAt:null},'running'],
+    [{...good,id:'3333333333333333'},'unavailable'],
+    [{...good,agentId:'3333333333333333'},'unavailable'],
+  ] as const;
+  for(const [data,wanted] of mutate){
+    const result=await inspectDynamicRunProof('key',agentId,containerId,
+      'uber',claimId,async()=>Response.json({data}));
+    assert.equal(result,wanted);
+  }
+});
+test('only exact container resultObject can supply up to 250 candidate usernames',async()=>{
+  let calls=0;
+  const output=await readDynamicContainerResults('SECRET_KEY',containerId,'uber',
+    async(url,init)=>{
+      calls++;
+      assert.equal(new URL(url).pathname,'/api/v2/containers/fetch-result-object');
+      assert.equal(new URL(url).searchParams.get('id'),containerId);
+      assert.equal(init?.method,'GET');
+      assert.equal(init?.redirect,'error');
+      return Response.json({data:{resultObject:[
+        {username:'test.one',sessionCookie:'SECRET_PRIVATE'},
+        {profileUrl:'https://www.instagram.com/test.two/'},
+        {username:'test.one'},
+        {username:'uber'},
+        {profileUrl:'https://attacker.example/inject/'},
+        {username:'../escape'},
+      ]}});
+    });
+  assert.equal(calls,1);
+  assert.deepEqual(output,{status:'found',usernames:['test.one','test.two']});
+  assert.doesNotMatch(JSON.stringify(output),/SECRET|sessionCookie|attacker|escape/);
+});
+test('no resultObject or broken response fails without using latest agent file',async()=>{
+  const unknown=await readDynamicContainerResults('key',containerId,'uber',
+    async()=>Response.json({data:{success:true}}));
+  assert.equal(unknown.status,'unsupported');
+  const empty=await readDynamicContainerResults('key',containerId,'uber',
+    async()=>Response.json({data:{resultObject:[]}}));
+  assert.deepEqual(empty,{status:'empty',usernames:[]});
+});
+test('controller never imports unless run metadata matches claim and exact container results',()=>{
+  const src=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  assert.match(src,/inspectDynamicRunProof/);
+  assert.match(src,/proof!=='verified-finished'/);
+  assert.match(src,/readDynamicContainerResults/);
+  assert.match(src,/makeAudienceSnapshot/);
+  assert.match(src,/MAX_HISTORY_BATCHES/);
+  assert.match(src,/isolationLevel:Prisma.TransactionIsolationLevel.Serializable/);
+  assert.match(src,/event&&event.accountId!==accountId/);
+  assert.match(src,/status:'finished-without-input-proof'/);
+  assert.doesNotMatch(src,/agents\/save|user_follow|user_unfollow|unfollowSingle/);
+});

@@ -112,6 +112,8 @@ export async function getProfile(token: string, igUserId: string): Promise<Insta
   const profile = await graphGet<InstagramProfile>(igUserId, token,
     'id,username,name,followers_count,follows_count,media_count,profile_picture_url');
   if (!profile.id || !profile.username) throw new InstagramApiError('Conta Instagram inacessível. Confira as permissões concedidas.', 403);
+  // Never associate data from a different Instagram account with the requested account.
+  if (profile.id !== igUserId) throw new InstagramApiError('A Meta retornou um perfil diferente da conta Instagram autorizada.', 403);
   return profile;
 }
 

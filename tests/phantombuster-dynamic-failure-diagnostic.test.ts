@@ -69,7 +69,7 @@ test('diagnostics available only on preview operator route for saved failed cont
   assert.match(route,/process.env.VERCEL_ENV!=='preview'/);
   assert.match(route,/user\?\.role!=='admin'/);
   assert.match(route,/activeProof\?\.reason==='failed-run'/);
-  assert.match(route,/failureDiagnostic,canAdvance/);
+  assert.match(route,/failureDiagnostic,collectionLimited,canAdvance/);
   assert.match(route,/inspectDynamicFailureOutput\(key!,event.containerId\)/);
   assert.match(ui,/Indício no log da execução:/);
 });

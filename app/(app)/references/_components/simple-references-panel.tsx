@@ -6,6 +6,7 @@ import { ArrowUpRight, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DynamicCollectorControl } from './dynamic-collector-control';
 
 type Account = { id: string; username: string; connected?: boolean; profileFollowersCount?: number | null; lastSyncedAt?: string | null };
 type Reference = { id: string; username: string };
@@ -405,6 +406,17 @@ export function SimpleReferencesPanel() {
         A contagem oficial de seguidores não comprova que novos seguidores vieram
         das referências. Nomes coletados são candidatos, não seguidores conquistados.
       </p>}
+      {selectedAccount?.connected && <DynamicCollectorControl
+        accountId={accountId}
+        onIndexed={()=>{
+          void loadAccount(accountId).then(data=>{
+            setReferences(data.references);
+            setIndex(data.index);
+            setCollection(data.collection);
+            setRelationships(data.relationships);
+          }).catch(()=>undefined);
+        }}
+      />}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Referências cadastradas</CardTitle>

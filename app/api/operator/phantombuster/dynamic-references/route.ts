@@ -6,6 +6,7 @@ import {NextResponse} from 'next/server';
 import {auth} from '@/auth';
 import {prisma} from '@/lib/db';
 import {isConfiguredPhantomBusterKey} from '@/lib/reference-audience-readiness';
+import {isSameOriginDynamicCollectionRequest} from '@/lib/server/dynamic-collection-csrf';
 import {inspectPinnedCollectorProgress} from '@/lib/providers/phantombuster-collector-progress';
 import {
   launchExistingCollectorForReference,
@@ -24,6 +25,18 @@ import {
 } from '@/lib/reference-dynamic-collection';
 
 const HEADERS={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'};
+const progressBlocker=(status:string):string=>{
+  const explanations:Record<string,string>={
+    running:'O PhantomBuster está executando outra coleta. Aguarde a conclusão.',
+    pending:'O coletor está na fila do PhantomBuster. Aguarde a execução existente.',
+    failed:'A última execução terminou com erro. Confira o diagnóstico antes de iniciar outra.',
+    unverified:'O PhantomBuster não confirmou o estado da última execução. Verifique a aba Activity do agente.',
+    'invalid-key':'A chave da API não autorizou a consulta de execuções.',
+    'rate-limited':'O PhantomBuster limitou as consultas. Nenhuma coleta será iniciada.',
+    unavailable:'A consulta do histórico de execuções falhou. Nenhuma coleta será iniciada.',
+  };
+  return explanations[status]??'O coletor ainda não foi confirmado como disponível.';
+};
 const bad=(error:string,status:number)=>NextResponse.json({error},{status,headers:HEADERS});
 async function context(){
   if(process.env.VERCEL_ENV!=='preview')return null;
@@ -99,22 +112,39 @@ export async function GET(){
   const agentId=selected.agentId;
   const data=await queue(accountId,agentId);
   if(!data)return bad('Fila requer revisão',503);
+  const enabled=process.env.PHANTOMBUSTER_DYNAMIC_COLLECTION_ENABLED==='yes';
+  const current=data.jobs[0];
+  const ownLaunched=current?.accountId===accountId&&current.state==='launched';
+  // Read-only preflight. A previous uncertain launch is not retried and a
+  // provider state with no proof of idle does not enable a new launch.
+  const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
+    ?await inspectPinnedCollectorProgress(key!,agentId):null;
+  const canAdvance=Boolean(enabled&&(ownLaunched||
+    (!data.plan.unresolved&&data.plan.next&&
+      (progress==='finished'||progress==='no-run'))));
+  const blocker=!enabled?'O piloto está desativado neste Preview.'
+    :ownLaunched?null
+    :data.plan.unresolved
+      ?'Há uma execução anterior ainda sem confirmação. Nenhuma nova coleta será iniciada.'
+    :!data.plan.next?'Todas as referências elegíveis já foram processadas.'
+    :canAdvance?null:progressBlocker(progress??'unavailable');
   return NextResponse.json({
-    enabled:process.env.PHANTOMBUSTER_DYNAMIC_COLLECTION_ENABLED==='yes',
-    accountId,
+    enabled,accountId,
     total:data.plan.total,attempted:data.plan.attempted,
     completed:data.plan.completed,unverified:data.plan.attributionUnverified,
     nextReference:data.plan.next?.username??null,
     unresolved:data.plan.unresolved,
-    currentState:data.jobs[0]?.state??'none',
+    currentState:current?.state??'none',
+    canAdvance,blocker,providerStatus:progress,
     noManualUrlChanges:true,followersExecuted:0,unfollowsExecuted:0,
   },{headers:HEADERS});
 }
 export async function POST(request:Request){
   const accountId=await context();
   if(!accountId)return bad('Somente operador no Preview',403);
-  if(request.headers.get('origin')!==new URL(request.url).origin)
-    return bad('Origem inválida',403);
+  if(!isSameOriginDynamicCollectionRequest(
+    request.headers.get('origin'),request.url,request.headers.get('host')))
+    return bad('Origem da solicitação não corresponde ao domínio do painel',403);
   if(!request.headers.get('content-type')?.startsWith('application/json'))
     return bad('Formato inválido',415);
   const raw=await request.text().catch(()=>'');
@@ -227,7 +257,7 @@ export async function POST(request:Request){
   if(provider==='running'||provider==='pending')
     return NextResponse.json({status:'provider-busy'}, {headers:HEADERS});
   if(provider!=='finished'&&provider!=='no-run')
-    return bad('O coletor não está comprovadamente disponível',409);
+    return bad(progressBlocker(provider),409);
 
   let claim:{id:string;event:DynamicJobEvent}|null=null;
   try{

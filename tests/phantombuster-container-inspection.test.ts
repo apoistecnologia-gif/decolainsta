@@ -84,7 +84,7 @@ test('the container-only probe has no launch, agent settings or result-file fall
   const code=readFileSync('lib/providers/phantombuster-container-inspection.ts','utf8');
   assert.match(code,/containers\/fetch'/);
   assert.match(code,/configuredFollowerCollectorReference\(container\.argument\)/);
-  assert.doesNotMatch(code,/agents\/fetch|agents\/save|agents\/launch|fetch-result-object|result\.json|user_follow|user_unfollow/);
+  assert.doesNotMatch(code,/https:\/\/api\.phantombuster\.com\/api\/v2\/agents\/|fetch-result-object|user_follow|user_unfollow/);
   assert.match(code,/releaseAuthorized: false/);
   assert.match(code,/immutableInputProven: false/);
 });

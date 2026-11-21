@@ -24,6 +24,25 @@ export function dynamicReferenceLaunchPayload(agentId:unknown, reference:unknown
     userCustomMetadata:{decolainstaClaimId:claimId},
   } as const;
 }
+/**
+ * The pilot uses the exact Follower Collector chosen from its existing
+ * PhantomBuster console, not a best-effort search by the old template URL.
+ * Inspect the persisted agent configuration before enabling any execution.
+ * The provider API key must be authorized to read this specific agent.
+ */
+export type PinnedDynamicCollectorStatus =
+  | 'ready' | 'not-configured' | 'invalid-agent-id' |
+    'missing-cookie' | 'mismatch' | 'unavailable';
+export async function resolvePinnedDynamicCollector(
+  apiKey:string, configuredId:string|undefined, fetcher:Fetcher=fetch,
+):Promise<{status:PinnedDynamicCollectorStatus;agentId:string|null}>{
+  if(!configuredId)return {status:'not-configured',agentId:null};
+  if(!safeId(configuredId))return {status:'invalid-agent-id',agentId:null};
+  const status=await inspectDynamicCollectorTemplate(apiKey,configuredId,fetcher);
+  return status==='ready' ? {status:'ready',agentId:configuredId} :
+    {status,agentId:null};
+}
+
 export type DynamicLaunchResult=Readonly<{
   status:'queued'|'invalid-request'|'unauthorized'|'rate-limited'|
     'rejected'|'unconfirmed'|'unavailable';

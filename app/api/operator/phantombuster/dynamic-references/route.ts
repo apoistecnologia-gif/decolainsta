@@ -400,6 +400,15 @@ export async function POST(request:Request){
         },{headers:HEADERS});
       const failureDiagnostic=await inspectDynamicFailureOutput(
         key!,event.containerId);
+      // Stop repeated background reads if Instagram or session needs review.
+      if(['platform-limited','login-challenge','session-invalid'].includes(failureDiagnostic)){
+        const blocked=makeDynamicJobEvent({...event,state:'finished-unverified'});
+        if(blocked)await prisma.activityLog.updateMany({
+          where:{id:last.id,instagramAccountId:accountId,
+            action:DYNAMIC_COLLECTION_ACTION,details:last.details},
+          data:{details:JSON.stringify(blocked),success:false},
+        });
+      }
       return NextResponse.json({
         status:'import-unavailable',reference:event.referenceUsername,
         resultStatus:result.status,failureDiagnostic,

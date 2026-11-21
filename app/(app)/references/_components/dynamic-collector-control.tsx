@@ -42,6 +42,12 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
   };
   const failureExplanations:Record<string,string>={
     'session-invalid':'Indício de sessão Instagram expirada ou inválida no PhantomBuster.',
+    'credentials-missing':'Indício de credenciais ou sessão ausentes no PhantomBuster.',
+    'terms-update':'Indício de termos atualizados do Instagram aguardando aceite na conta.',
+    'followers-load-failed':'Indício de falha ao carregar a lista de seguidores no Instagram.',
+    'profile-load-failed':'Indício de falha ao abrir ou carregar o perfil de referência.',
+    'no-matches':'Indício de entrada vazia, sem perfis ou sem resultados elegíveis.',
+    'proxy-failure':'Indício de falha de conexão por proxy no PhantomBuster.',
     'login-challenge':'Indício de desafio de segurança ou verificação de login do Instagram.',
     'invalid-input':'Indício de entrada ou URL de referência inválida.',
     'private-target':'Indício de conta de referência privada ou inacessível.',

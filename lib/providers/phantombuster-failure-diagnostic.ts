@@ -8,6 +8,8 @@ import {phantomBusterRequestHeaders} from './phantombuster-request-headers';
 export type DynamicFailureCategory =
   'session-invalid'|'login-challenge'|'invalid-input'|'private-target'|
   'platform-limited'|'workspace-limit'|'execution-timeout'|'runtime-error'|
+  'followers-load-failed'|'profile-load-failed'|'terms-update'|
+  'credentials-missing'|'no-matches'|'proxy-failure'|
   'unknown'|'empty-output'|'output-too-large'|'provider-unavailable';
 type Fetcher=(url:string,init?:RequestInit)=>Promise<Response>;
 const safeContainer=(id:string)=>/^\d{10,25}$/.test(id);
@@ -35,8 +37,22 @@ async function boundedRawOutput(response:Response):Promise<string|null>{
 export function classifyDynamicFailureOutput(raw:string):DynamicFailureCategory{
   const text=raw.slice(0,MAX_LOG_BYTES).toLowerCase();
   if(!text.trim())return 'empty-output';
+  if(/manual action required[: -]+instagram terms update|instagram terms (?:update|of service)|accept (?:the )?(?:new |updated )?terms|terms of service (?:must|need) (?:be |to be )?accepted/.test(text))
+    return 'terms-update';
   if(/challenge_required|checkpoint_required|security challenge|two[- ]factor authentication|verification code required|verify your identity|checkpoint blocked/.test(text))
     return 'login-challenge';
+  // Match the concrete errors used by Instagram-specific PhantomBuster guides
+  // before generic network/rate-limit fallbacks.
+  if(/error loading followers|could(?:n['’]t| not) load followers|failed to (?:load|retrieve|fetch) followers/.test(text))
+    return 'followers-load-failed';
+  if(/error opening page|could(?:n['’]t| not) load profile|failed to (?:open|load) (?:the )?(?:instagram )?(?:profile|page)|unable to open (?:the )?(?:profile|page)/.test(text))
+    return 'profile-load-failed';
+  if(/no matches found|no profiles? (?:to process|found|matched)|empty (?:or already processed )?input/.test(text))
+    return 'no-matches';
+  if(/no valid credentials found|missing (?:session )?cookie|session cookie required|a session cookie is required|not authenticated/.test(text))
+    return 'credentials-missing';
+  if(/can['’]?t connect through this proxy|proxy (?:connection|authentication) (?:failed|error)|unable to connect (?:to |through )?(?:the )?proxy/.test(text))
+    return 'proxy-failure';
   if(/session (?:cookie )?(?:has )?(?:expired|invalid)|(?:invalid|expired) (?:instagram )?(?:session|cookie)|login required|not logged in|could not log in|failed to log in|login failed|authentication failed|invalid sessioncookie|cookie is invalid/.test(text))
     return 'session-invalid';
   if(/private (?:instagram )?(?:account|profile)|profile is private|account is private|this account is private/.test(text))

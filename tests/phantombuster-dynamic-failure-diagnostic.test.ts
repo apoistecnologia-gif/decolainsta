@@ -13,6 +13,15 @@ test('recognize common failures without exposing provider text',()=>{
     ['Invalid input URL','invalid-input'],
     ['This account is private','private-target'],
     ['Instagram feedback_required','platform-limited'],
+    ['Error loading followers','followers-load-failed'],
+    ['Couldn’t load followers','followers-load-failed'],
+    ['Error opening page','profile-load-failed'],
+    ['Couldn\'t load profile','profile-load-failed'],
+    ['Manual Action Required: Instagram Terms Update','terms-update'],
+    ['No valid credentials found','credentials-missing'],
+    ['Session cookie required','credentials-missing'],
+    ['No matches found','no-matches'],
+    ["Can't connect through this proxy",'proxy-failure'],
     ['Workspace quota exceeded','workspace-limit'],
     ['Maximum execution time reached','execution-timeout'],
     ['TypeError: cannot read properties','runtime-error'],
@@ -63,4 +72,20 @@ test('diagnostics available only on preview operator route for saved failed cont
   assert.match(route,/failureDiagnostic,canAdvance/);
   assert.match(route,/inspectDynamicFailureOutput\(key!,event.containerId\)/);
   assert.match(ui,/Indício no log da execução:/);
+});
+
+test('new collector-specific reasons are inert allowlisted codes, never raw logs',async()=>{
+  const raw=[
+    'Error loading followers for private-target @sensitive_user',
+    'Manual Action Required: Instagram Terms Update (sessionCookie=SECRET)',
+    'Error opening page: https://www.instagram.com/secret_profile/',
+  ];
+  for(const line of raw){
+    const code=classifyDynamicFailureOutput(line);
+    assert.notEqual(code,'unknown');
+    assert.doesNotMatch(code,/sensitive|instagram\.com|sessionCookie|SECRET/);
+  }
+  const src=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
+  assert.match(src,/failureExplanations\\[queue\\.failureDiagnostic\\]/);
+  assert.match(src,/Indício no log da execução/);
 });

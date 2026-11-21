@@ -88,6 +88,8 @@ export function sequentialCollectorReadiness(eligibleReferences: number) {
     collectorAssigned: false,
     providerRunInputVerified: false,
     exclusiveAgentLeaseImplemented: false,
+    exclusiveAgentClaimPrepared: true,
+    exclusiveAgentLeaseEnabled: false,
     importsEnabled: false,
     actionsEnabled: false,
   };

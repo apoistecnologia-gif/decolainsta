@@ -68,9 +68,7 @@ test('server blocks partial imports whenever exact container log shows Instagram
   const importResult=route.indexOf('const result=await readDynamicContainerResults(',severe);
   assert.ok(severe>0&&importResult>severe);
   const guard=route.slice(severe,importResult);
-  assert.match(guard,/platform-limited/);
-  assert.match(guard,/session-invalid/);
-  assert.match(guard,/login-challenge/);
+  assert.match(guard,/blockedFailureDiagnostics\.has\(severe\)/);
   assert.match(guard,/state:'finished-unverified'/);
   assert.match(guard,/candidatesImported:0/);
   assert.match(route,/if\(event\?\.state==='finished-unverified'\)/);

@@ -76,3 +76,19 @@ test('server blocks partial imports whenever exact container log shows Instagram
   assert.match(route,/if\(event\?\.state==='finished-unverified'\)/);
   assert.match(route,/current\.state==='launched'&&/);
 });
+
+test('manual retry is denied for known Instagram rate limits, checkpoints and invalid sessions',()=>{
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const guard=route.slice(route.indexOf('const blockedFailureDiagnostics=new Set(['),
+    route.indexOf('async function previewCronTokenAuthorized'));
+  for(const name of ['platform-limited','login-challenge','session-invalid',
+      'terms-update','credentials-missing','workspace-limit',
+      'followers-load-failed','profile-load-failed'])
+    assert.ok(guard.includes(name));
+  assert.match(route,/!blockedFailureDiagnostics\.has\(failureDiagnostic\?\?''\)/);
+  assert.match(route,/if\(blockedFailureDiagnostics\.has\(reason\)\)/);
+  const retry=route.indexOf("if(body.operation==='retry-failed')");
+  const launch=route.indexOf('return launchReservedCollector(key!,agentId,claim);',retry);
+  const blocked=route.indexOf('if(blockedFailureDiagnostics.has(reason))',retry);
+  assert.ok(blocked>retry&&launch>blocked);
+});

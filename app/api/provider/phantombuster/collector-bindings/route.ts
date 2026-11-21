@@ -8,6 +8,10 @@ import { prisma } from '@/lib/db';
 import { verifyConfiguredFollowerCollector } from '@/lib/providers/phantombuster-collector-discovery';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
+  SHARED_COLLECTOR_LEASE_ACTION, MAX_SHARED_COLLECTOR_LEASE_LOGS,
+  reservedSharedCollectorAgents,
+} from '@/lib/reference-shared-collector-lease';
+import {
   COLLECTOR_DRAFT_ACTION, COLLECTOR_DRAFT_MAX_LOGS,
   reservedCollectorDraftAgents,
 } from '@/lib/reference-collector-draft-events';
@@ -106,7 +110,7 @@ export async function POST(request: Request) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const outcome = await prisma.$transaction(async tx => {
-        const [rows, drafts] = await Promise.all([
+        const [rows, drafts, leases] = await Promise.all([
           tx.activityLog.findMany({
             where: { action: AUDIENCE_SOURCE_BINDING_ACTION },
             select: {
@@ -124,10 +128,22 @@ export async function POST(request: Request) {
                 take: COLLECTOR_DRAFT_MAX_LOGS + 1,
               })
             : Promise.resolve([]),
+          operation === 'bind'
+            ? tx.activityLog.findMany({
+                where: { action: SHARED_COLLECTOR_LEASE_ACTION },
+                select: { instagramAccountId: true, targetUsername: true, details: true },
+                take: MAX_SHARED_COLLECTOR_LEASE_LOGS + 1,
+              })
+            : Promise.resolve([]),
         ]);
         if (rows.length > MAX_SOURCE_BINDING_LOGS ||
-            drafts.length > COLLECTOR_DRAFT_MAX_LOGS)
+            drafts.length > COLLECTOR_DRAFT_MAX_LOGS ||
+            leases.length > MAX_SHARED_COLLECTOR_LEASE_LOGS)
           return 'registry-capacity' as const;
+        const shared = reservedSharedCollectorAgents(leases);
+        if (!shared.valid) return 'registry-capacity' as const;
+        if (operation === 'bind' && shared.agents.has(agentId!))
+          return 'agent-reserved' as const;
         const current = resolveLatestAudienceBindings(rows);
         if (operation === 'bind' && current.some(s =>
           s.collectorAgentId === agentId &&

@@ -13,6 +13,10 @@ import {
 } from '@/lib/reference-collector-draft-events';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import {
+  SHARED_COLLECTOR_LEASE_ACTION, MAX_SHARED_COLLECTOR_LEASE_LOGS,
+  reservedSharedCollectorAgents,
+} from '@/lib/reference-shared-collector-lease';
+import {
   AUDIENCE_SOURCE_BINDING_ACTION, MAX_SOURCE_BINDING_LOGS,
   makeAudienceSourceBinding, resolveLatestAudienceBindings,
   disabledAudienceReferenceKeys,
@@ -93,7 +97,7 @@ export async function POST(request: Request) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const summary = await prisma.$transaction(async tx => {
-        const [rows, currentRefs, drafts, allRefs] = await Promise.all([
+        const [rows, currentRefs, drafts, allRefs, leases] = await Promise.all([
           tx.activityLog.findMany({
             where: { action: AUDIENCE_SOURCE_BINDING_ACTION },
             select: {
@@ -120,10 +124,18 @@ export async function POST(request: Request) {
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             take: 1001,
           }),
+          tx.activityLog.findMany({
+            where: { action: SHARED_COLLECTOR_LEASE_ACTION },
+            select: { instagramAccountId: true, targetUsername: true, details: true },
+            take: MAX_SHARED_COLLECTOR_LEASE_LOGS + 1,
+          }),
         ]);
         if (rows.length > MAX_SOURCE_BINDING_LOGS ||
             drafts.length > COLLECTOR_DRAFT_MAX_LOGS ||
-            allRefs.length > 1000) return null;
+            allRefs.length > 1000 ||
+            leases.length > MAX_SHARED_COLLECTOR_LEASE_LOGS) return null;
+        const shared = reservedSharedCollectorAgents(leases);
+        if (!shared.valid) return null;
         // Protect against deleted/renamed refs and concurrent binds.
         const active = resolveLatestAudienceBindings(rows);
         const suppressed = disabledAudienceReferenceKeys(rows);
@@ -142,7 +154,7 @@ export async function POST(request: Request) {
           (owners.get(ref.username.toLowerCase())?.size ?? 0) === 1);
         const plan = planExactReadOnlyCollectorBindings(
           uniqueToCustomer, discovered.collectors, active, 3,
-          reservedCollectorDraftAgents(drafts));
+          new Set([...reservedCollectorDraftAgents(drafts), ...shared.agents]));
         if (plan.candidates.length) await tx.activityLog.createMany({
           data: plan.candidates.map(source => ({
             instagramAccountId: source.accountId,

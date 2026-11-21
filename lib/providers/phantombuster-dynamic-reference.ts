@@ -282,7 +282,7 @@ export async function readDynamicContainerResults(
           const profile=new URL(row.profileUrl);
           if(profile.protocol==='https:'&&
              ['instagram.com','www.instagram.com'].includes(profile.hostname))
-            username=profile.pathname.replace(/^\\/|\\/$/g,'');
+            username=profile.pathname.replace(/^\/|\/$/g,'');
         }catch{continue;}
       }
       if(typeof username!=='string')continue;

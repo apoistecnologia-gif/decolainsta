@@ -65,7 +65,16 @@ export async function inspectFailedRetryPreflight(
     // the failed receipt: manual reconciliation is needed, not duplication.
     const latest=rows[0]!;
     if(String(latest?.id)!==oldContainerId)return 'other-run';
-    return ['failed','error','aborted','cancelled','canceled'].includes(
-      String(latest?.status??'').toLowerCase())?'ready':'unavailable';
+    const state=String(latest?.status??'').toLowerCase();
+    const visiblyFailed=['failed','error','aborted','cancelled','canceled'].includes(state);
+    const finalized=['finished','finalized','completed','success'].includes(state);
+    // PhantomBuster may report "finished" plus an exitCode > 0 rather
+    // than the literal "failed" state. An explicit nonzero exit code is
+    // required for this second case: successful runs are never retryable.
+    const exitCode=latest?.exitCode;
+    const failedExit=(typeof exitCode==='number'||typeof exitCode==='string')&&
+      String(exitCode).trim()!==''&&Number.isFinite(Number(exitCode))&&
+      Number(exitCode)!==0;
+    return visiblyFailed||(finalized&&failedExit)?'ready':'unavailable';
   }catch{return 'unavailable';}
 }

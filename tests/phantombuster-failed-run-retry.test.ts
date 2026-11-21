@@ -24,6 +24,9 @@ test('active or newer other container prevents repeat',async()=>{
   assert.equal(await run([{id:'3333333333333333',status:'failed'},
     {id:container,status:'failed'}]),'other-run');
   assert.equal(await run([{id:container,status:'completed'}]),'unavailable');
+  assert.equal(await run([{id:container,status:'finalized',exitCode:1}]),'ready');
+  assert.equal(await run([{id:container,status:'finished',exitCode:'1'}]),'ready');
+  assert.equal(await run([{id:container,status:'finalized',exitCode:0}]),'unavailable');
   assert.equal(await run([{id:container,status:'failed',agentId:'9999999999999999'}]),
     'unavailable');
   assert.equal(await run([]),'unavailable');

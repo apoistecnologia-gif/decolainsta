@@ -394,7 +394,7 @@ export async function POST(request:Request){
     return NextResponse.json({
       status:'provider-busy',reason:'another-account-owns-active-run',
     },{headers:HEADERS});
-  if(last&&(event?.state==='launched'||event?.state==='finished-unverified')&&event.containerId){
+  if(last&&event?.state==='launched'&&event.containerId){
     const proof=await inspectDynamicRunProofDetailed(
       key!,agentId,event.containerId,event.referenceUsername,event.claimId);
     if(proof.status==='running'||proof.status==='unavailable')

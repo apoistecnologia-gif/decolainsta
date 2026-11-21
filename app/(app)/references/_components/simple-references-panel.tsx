@@ -535,7 +535,7 @@ export function SimpleReferencesPanel() {
         <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-sm">
             <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-            <span>Automação do Instagram inativa nesta versão.</span>
+            <span>Seguir e deixar de seguir automaticamente: desativados. A coleta de candidatos funciona separadamente.</span>
           </div>
           <Link href="/references/diagnostics"
             className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">

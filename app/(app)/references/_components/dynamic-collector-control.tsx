@@ -133,7 +133,7 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       </div>
     </> : <p role="status" className="text-sm text-muted-foreground">
       {diagnostic}
-    </p>
+    </p>}
     {message&&<p role="status" aria-live="polite" className="text-sm">{message}</p>}
     <p className="text-xs text-muted-foreground">
       As próximas execuções são solicitadas enquanto esta página estiver aberta.

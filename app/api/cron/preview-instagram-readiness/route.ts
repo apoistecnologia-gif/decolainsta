@@ -50,13 +50,17 @@ export async function GET(request:Request){
     return NextResponse.json({error:'Conta piloto não exclusiva'},{status:409,headers:HEADERS});
   const account=accounts[0];
   let metaRead:'ok'|'not-connected'|'unavailable'='not-connected';
+  let metaIdentity:'verified'|'username-mismatch'|'unavailable'='unavailable';
   if(account.instagramUserId&&account.encryptedAccessToken){
     metaRead='unavailable';
     try{
       const active=await connectedAccount(account.id,account.userId);
       if(active){
         const profile=await getProfile(active.token,account.instagramUserId);
-        if(profile.id===account.instagramUserId)metaRead='ok';
+        if(profile.id===account.instagramUserId){
+          metaRead='ok';
+          metaIdentity=profile.username.toLowerCase()===alias?'verified':'username-mismatch';
+        }
       }
     }catch{
       // Never surface Graph OAuth token, provider error text or account data.
@@ -99,6 +103,7 @@ export async function GET(request:Request){
     newCollectionPermitted:false,
     currentSessionOwnerVerifiedByProvider:false,
     metaRead,
+    metaIdentity,
     previousContainerCategory,
     previousContainerOnly:true,
     currentPhantomSessionVerified:false,

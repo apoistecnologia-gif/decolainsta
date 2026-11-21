@@ -48,7 +48,7 @@ test('finished container without importable proof is quarantined after grace',()
   assert.match(route,/const blocked=makeDynamicJobEvent\(\{\.\.\.event,state:'finished-unverified'\}\)/);
   assert.match(route,/const quarantined=await prisma\.activityLog\.updateMany\(/);
   assert.match(route,/if\(quarantined\.count!==1\)return bad\('Revisão concorrente da coleta',409\)/);
-  assert.match(route,/!collectionLimited&&activeProof\?\.reason!=='failed-run'/);
+  assert.match(route,/!accessBlocked&&activeProof\?\.reason!=='failed-run'/);
 });
 
 test('server-only collection requires independent opt-in and cannot impersonate browser',()=>{

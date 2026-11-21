@@ -1,8 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
+type DynamicCollectionStatus = {
+  enabled:boolean;
+  total:number;
+  attempted:number;
+  completed:number;
+  unverified:number;
+  nextReference:string|null;
+  unresolved:boolean;
+  currentState:string;
+};
+type DynamicAdvanceStatus = {
+  status:string;
+  reference?:string;
+  reason?:string;
+};
 type CollectorProgress = {
   status: 'running'|'finished'|'failed'|'pending'|'unverified'|'no-run'|
     'no-matching-collector'|'ambiguous-collector'|'invalid-key'|
@@ -80,6 +95,9 @@ type Result = {
 
 export function OperatorCollectorIntakePanel() {
   const [busy, setBusy] = useState(false);
+  const [dynamicStatus, setDynamicStatus] = useState<DynamicCollectionStatus | null>(null);
+  const [dynamicOutcome, setDynamicOutcome] = useState<DynamicAdvanceStatus | null>(null);
+  const [dynamicRunning, setDynamicRunning] = useState(false);
   const [capacity, setCapacity] = useState<WorkspaceCapacity | null>(null);
   const [sessionCheck, setSessionCheck] = useState<SessionDiagnostic | null>(null);
   const [collectorProgress, setCollectorProgress] = useState<CollectorProgress | null>(null);
@@ -89,6 +107,49 @@ export function OperatorCollectorIntakePanel() {
   const [reconciled, setReconciled] = useState<Reconciled | null>(null);
   const [reconciliationOffset, setReconciliationOffset] = useState(0);
   const [error, setError] = useState('');
+  async function checkDynamicQueue() {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const response = await fetch('/api/operator/phantombuster/dynamic-references',{
+        method:'GET',cache:'no-store',credentials:'same-origin',
+      });
+      if(!response.ok) throw new Error('Fila indisponível');
+      setDynamicStatus(await response.json() as DynamicCollectionStatus);
+    } catch {
+      setError('A fila automática de referências não pôde ser consultada.');
+    } finally {setBusy(false);}
+  }
+  const advanceDynamicQueue=useCallback(async () => {
+    if(busy)return;
+    setBusy(true);setError('');
+    try{
+      const response=await fetch('/api/operator/phantombuster/dynamic-references',{
+        method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({operation:'advance',confirmDynamicCollection:true}),
+      });
+      if(!response.ok)throw new Error('Execução não autorizada ou indisponível');
+      const result=await response.json() as DynamicAdvanceStatus;
+      setDynamicOutcome(result);
+      if(!['queued','in-progress','finished','provider-busy'].includes(result.status))
+        setDynamicRunning(false);
+      // The next read remains operator-scoped; nothing is scheduled in PhantomBuster.
+      const plan=await fetch('/api/operator/phantombuster/dynamic-references',{
+        method:'GET',credentials:'same-origin',cache:'no-store',
+      });
+      if(plan.ok)setDynamicStatus(await plan.json() as DynamicCollectionStatus);
+    }catch{
+      setDynamicRunning(false);
+      setError('A consulta ou execução não pôde ser confirmada. Não tente repetir às cegas.');
+    }finally{setBusy(false);}
+  },[busy]);
+  useEffect(()=>{
+    if(!dynamicRunning)return;
+    const interval=setInterval(()=>{void advanceDynamicQueue();},20000);
+    return ()=>clearInterval(interval);
+  },[dynamicRunning,advanceDynamicQueue]);
+
   async function checkCollectorProgress() {
     if(busy) return;
     setBusy(true); setError(''); setCollectorProgress(null);
@@ -219,6 +280,62 @@ export function OperatorCollectorIntakePanel() {
         após conferir o alvo exato; nunca cria ou executa agentes. Referências
         iguais em clientes diferentes ficam pendentes de revisão.
       </p>
+      <div className="rounded-md border p-3 space-y-2">
+        <h3 className="text-sm font-semibold">Coleta das referências cadastradas — sem trocar URLs</h3>
+        <p className="text-xs text-muted-foreground">
+          O backend usa uma referência do DECOLA INSTA por execução no coletor
+          autenticado, preservando a configuração original. Não executa follows.
+          É um piloto do operador, não uma função liberada a outros clientes.
+        </p>
+        <Button type="button" variant="outline" disabled={busy}
+          onClick={() => void checkDynamicQueue()}>
+          Consultar fila automática
+        </Button>
+        {dynamicStatus && <div role="status" className="space-y-2 text-sm">
+          <p>Referências: {dynamicStatus.total}. Tentativas: {dynamicStatus.attempted}.
+            Finalizadas e verificadas: {dynamicStatus.completed}.
+            Finalizadas sem prova de origem: {dynamicStatus.unverified}.
+          </p>
+          <p>{dynamicStatus.nextReference
+            ? 'Próxima referência: @' + dynamicStatus.nextReference
+            : 'Nenhuma referência liberada para a próxima execução.'}</p>
+          {!dynamicStatus.enabled && <p className="text-xs text-muted-foreground">
+            A execução externa está bloqueada até a ativação específica
+            do piloto neste Preview. Não é necessário mudar o PhantomBuster.
+          </p>}
+          {dynamicStatus.enabled && <div className="flex flex-wrap gap-2">
+            <Button type="button" disabled={busy || dynamicRunning}
+              onClick={()=>{
+                setDynamicRunning(true);
+                void advanceDynamicQueue();
+              }}>
+              {dynamicRunning?'Processando...':'Iniciar processamento das referências'}
+            </Button>
+            {dynamicRunning && <Button type="button" variant="outline"
+              onClick={()=>setDynamicRunning(false)}>
+              Parar acompanhamento no painel
+            </Button>}
+          </div>}
+          <p className="text-xs text-muted-foreground">
+            O acompanhamento automático funciona enquanto esta tela estiver
+            aberta. Fechá-la não interrompe um contêiner já iniciado no provedor.
+            Se a resposta for incerta, o sistema bloqueia novas tentativas.
+          </p>
+        </div>}
+        {dynamicOutcome && <p role="status" className="text-sm">
+          {dynamicOutcome.status === 'queued'
+            ? 'Uma coleta foi iniciada para @' + dynamicOutcome.reference + '.'
+            : dynamicOutcome.status === 'in-progress'
+            ? 'Aguardando finalização da coleta em andamento.'
+            : dynamicOutcome.status === 'finished'
+            ? 'Coleta finalizada. Verificação de importação ainda necessária.'
+            : dynamicOutcome.status === 'queue-complete'
+            ? 'Fila concluída. Consulte os resultados e o índice.'
+            : dynamicOutcome.status === 'provider-busy'
+            ? 'Coletor ocupado; aguardando disponibilidade.'
+            : 'A execução requer revisão: ' + dynamicOutcome.status}
+        </p>}
+      </div>
       <div className="rounded-md border p-3 space-y-2">
         <h3 className="text-sm font-medium">Capacidade da sua workspace PhantomBuster</h3>
         <p className="text-xs text-muted-foreground">

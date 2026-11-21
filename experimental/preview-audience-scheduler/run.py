@@ -8,6 +8,7 @@ No provider credentials, database access or customer identifiers exist here.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import os
 import sys
 from urllib.error import HTTPError, URLError
@@ -130,10 +131,14 @@ def run_simulation_once(env: dict[str, str], opener=None) -> tuple[int, str]:
     return 0, "ok: advanced=" + str(value["advanced"])
 
 
-def run_reconciliation_once(env: dict[str, str], opener=None) -> tuple[int, str]:
+def run_reconciliation_once(env: dict[str, str], opener=None, now=None) -> tuple[int, str]:
     """Reconcile a previously launched exact container; NEVER start a new job."""
     if env.get("PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED") != "yes":
         return 0, "disabled"
+    now = now or datetime.now(timezone.utc)
+    # Half-hour read-only cadence, independent of the five-minute simulation.
+    if not 0 <= now.minute % 30 < 5:
+        return 0, "interval-not-due"
     if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
             or len(env.get("PREVIEW_CRON_SECRET", "")) < 32
             or len(env.get("PREVIEW_PROTECTION_BYPASS", "")) != 32

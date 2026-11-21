@@ -21,13 +21,14 @@ import {
 import {indexSavedAudienceCandidates} from '@/lib/server/dynamic-reference-candidate-index';
 import {inspectDynamicFailureOutput} from
   '@/lib/providers/phantombuster-failure-diagnostic';
-import {inspectFailedRetryPreflight} from
-  '@/lib/providers/phantombuster-failed-run-retry';
+import {
+  inspectFailedRetryPreflight,inspectUnverifiedRecoveryPreflight,
+} from '@/lib/providers/phantombuster-failed-run-retry';
 import {
   DYNAMIC_COLLECTION_ACTION,MAX_DYNAMIC_COLLECTION_LOGS,
   makeDynamicJobEvent,parseDynamicJobEvent,planDynamicReferenceQueue,
-  planFailedDynamicReferenceRetry,withinDynamicResultGracePeriod,
-  type DynamicJobEvent,
+  planFailedDynamicReferenceRetry,planOneShotUnverifiedRecovery,
+  withinDynamicResultGracePeriod,type DynamicJobEvent,
 } from '@/lib/reference-dynamic-collection';
 
 const HEADERS={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'};
@@ -224,6 +225,21 @@ export async function GET(){
   const canRetryFailed=Boolean(enabled&&retryTarget&&
     activeProof?.reason==='failed-run'&&
     !blockedFailureDiagnostics.has(failureDiagnostic??''));
+  const recoveryTarget=planOneShotUnverifiedRecovery(
+    data.references,data.jobs,accountId,agentId);
+  let canRetestUnverified=false;
+  if(enabled&&process.env.PREVIEW_ONE_SHOT_UNVERIFIED_RECOVERY_ENABLED==='yes'&&
+     recoveryTarget&&data.plan.attributionUnverified===1&&
+     !data.plan.unresolved&&current?.containerId&&
+     data.rows[0]&&Date.now()-data.rows[0].createdAt.getTime()>=4*60*60*1000&&
+     activeProof?.status!=='running'&&activeProof?.status!=='unavailable'){
+    const proof=await inspectUnverifiedRecoveryPreflight(
+      key!,agentId,current.containerId);
+    if(proof==='ready'){
+      const confirmed=await agent(key!);
+      canRetestUnverified=confirmed.agentId===agentId;
+    }
+  }
   // A rate-limit diagnosis belongs to the precise persisted container,
   // not to the agent-wide historical results. Manual read-only review
   // remains possible; do not initiate a new collection from this status.
@@ -266,6 +282,8 @@ export async function GET(){
     activeContainerStatus:activeProof?.status??null,
     activeContainerReason:activeProof?.reason??null,
     failureDiagnostic,collectionLimited,canAdvance,canRetryFailed,
+    canRetestUnverified,
+    retestReference:canRetestUnverified?recoveryTarget?.username:null,
     retryReference:canRetryFailed?retryTarget?.username:null,
     blocker,providerStatus:progress,
     noManualUrlChanges:true,followersExecuted:0,unfollowsExecuted:0,
@@ -285,10 +303,16 @@ export async function POST(request:Request){
   const raw=await request.text().catch(()=>'');
   if(!raw||raw.length>150)return bad('Parâmetros inválidos',400);
   let input:unknown;try{input=JSON.parse(raw) as unknown;}catch{input=null;}
-  if(!input||typeof input!=='object'||Array.isArray(input)||
-    Object.keys(input).length!==2)return bad('Parâmetros inválidos',400);
+  if(!input||typeof input!=='object'||Array.isArray(input))
+    return bad('Parâmetros inválidos',400);
   const body=input as Record<string,unknown>;
-  if(!['advance','retry-failed','reconcile-only','collect-next'].includes(String(body.operation))||
+  const retest=body.operation==='retest-unverified-once';
+  if(Object.keys(body).length!==(retest?3:2)||
+     (retest&&body.confirmLimitedAccessRisk!==true)||
+     (!retest&&'confirmLimitedAccessRisk' in body))
+    return bad('Parâmetros inválidos',400);
+  if(!['advance','retry-failed','reconcile-only','collect-next',
+         'retest-unverified-once'].includes(String(body.operation))||
      body.confirmDynamicCollection!==true)
     return bad('Operação inválida',400);
   const reconcileOnly=body.operation==='reconcile-only';
@@ -310,6 +334,77 @@ export async function POST(request:Request){
     current.jobs[0]?.accountId!==accountId))
     return NextResponse.json({status:'no-pending-run',noAutomaticLaunch:true,
       instagramActionsExecuted:0,launchesExecuted:0},{headers:HEADERS});
+  if(retest){
+    // Separate operator-authorized diagnostic, NEVER a scheduled retry.
+    if(serverCron||process.env.PREVIEW_ONE_SHOT_UNVERIFIED_RECOVERY_ENABLED!=='yes')
+      return bad('Teste único não autorizado neste Preview',403);
+    const original=current.jobs[0],receipt=current.rows[0];
+    const target=planOneShotUnverifiedRecovery(
+      current.references,current.jobs,accountId,agentId);
+    if(!original||!receipt||!target||!original.containerId||
+       current.plan.unresolved||current.plan.attributionUnverified!==1)
+      return bad('Histórico não permite uma recuperação única',409);
+    if(Date.now()-receipt.createdAt.getTime()<4*60*60*1000)
+      return bad('A última execução ainda é recente. Nenhum novo teste foi iniciado.',409);
+    const exact=await inspectDynamicRunProofDetailed(key!,agentId,
+      original.containerId,original.referenceUsername,original.claimId);
+    if(exact.status!=='finished-unverified'&&exact.status!=='verified-finished')
+      return bad('Último contêiner não está confirmado como finalizado',409);
+    if(await inspectUnverifiedRecoveryPreflight(
+      key!,agentId,original.containerId)!=='ready')
+      return bad('O contêiner mudou ou não está ocioso no PhantomBuster',409);
+    const configured=await agent(key!);
+    if(configured.agentId!==agentId)
+      return bad('Coletor ou sessão não conferem com a workspace',409);
+    const oldReason=await inspectDynamicFailureOutput(key!,original.containerId);
+    if(['session-invalid','credentials-missing','login-challenge','terms-update',
+        'workspace-limit'].includes(oldReason))
+      return bad('Sessão ou conta requer revisão antes de outro teste',409);
+    // A historical platform-limited indication is NOT proof of a current
+    // restriction being lifted. The UI requires explicit risk acknowledgment.
+    let claim:ReservedCollectorClaim|null=null;
+    try{
+      claim=await prisma.$transaction(async tx=>{
+        const lock=await tx.$queryRaw<Array<{acquired:boolean}>>`
+          SELECT pg_try_advisory_xact_lock(
+            hashtext('decolainsta_dynamic_reference_v1'),hashtext(${agentId})
+          ) AS acquired
+        `;
+        if(lock.length!==1||lock[0].acquired!==true)return null;
+        const rows=await tx.activityLog.findMany({
+          where:{action:DYNAMIC_COLLECTION_ACTION,targetUsername:agentId},
+          select:{id:true,instagramAccountId:true,targetUsername:true,details:true},
+          orderBy:[{createdAt:'desc'},{id:'desc'}],
+          take:MAX_DYNAMIC_COLLECTION_LOGS+1,
+        });
+        if(rows.length>MAX_DYNAMIC_COLLECTION_LOGS||!rows.length||
+           rows[0].id!==receipt.id||rows[0].details!==receipt.details)return null;
+        const events=rows.map(row=>parseDynamicJobEvent(row.details));
+        if(events.some((e,i)=>!e||e.accountId!==rows[i].instagramAccountId||
+           e.agentId!==rows[i].targetUsername))return null;
+        const valid=planOneShotUnverifiedRecovery(current.references,
+          events.filter((x):x is DynamicJobEvent=>x!==null),accountId,agentId);
+        if(!valid||valid.id!==target.id||valid.username!==target.username)return null;
+        const reference=await tx.targetAccount.findFirst({
+          where:{id:valid.id,username:valid.username,instagramAccountId:accountId},
+          select:{id:true},
+        });
+        if(!reference)return null;
+        const event=makeDynamicJobEvent({
+          state:'claimed',accountId,agentId,referenceId:valid.id,
+          referenceUsername:valid.username,claimId:randomUUID(),containerId:null,
+        });
+        if(!event)return null;
+        const record=await tx.activityLog.create({data:{
+          instagramAccountId:accountId,targetUsername:agentId,
+          action:DYNAMIC_COLLECTION_ACTION,details:JSON.stringify(event),success:false,
+        },select:{id:true}});
+        return {id:record.id,event};
+      },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+    }catch{return bad('Não foi possível reservar o teste único no Neon',503);}
+    if(!claim)return bad('Teste já reservado ou histórico alterado',409);
+    return launchReservedCollector(key!,agentId,claim);
+  }
   if(body.operation==='retry-failed'){
     // Explicit button only. Never initiate this operation on page load,
     // from polling, or using a reference typed by the browser.
@@ -516,8 +611,11 @@ export async function POST(request:Request){
         return {snapshots:fresh.length,indexed:indexed.indexed};
       },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
       if(stored===null)return bad('Limite ou conflito de histórico ou índice',409);
+      const oneShotRecovery=current.jobs.some(e=>
+        e.referenceId===event.referenceId&&e.claimId!==event.claimId&&
+        e.state==='finished-unverified');
       return NextResponse.json({
-        status:'finished',reference:event.referenceUsername,
+        status:'finished',reference:event.referenceUsername,oneShotRecovery,
         observedNames:result.usernames.length,snapshotBatchesStored:stored.snapshots,
         candidatesIndexed:stored.indexed,
         newFollowersConfirmed:0,followExecuted:false,

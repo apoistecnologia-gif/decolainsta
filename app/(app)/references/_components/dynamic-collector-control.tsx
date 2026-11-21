@@ -13,6 +13,7 @@ type Queue={
   enabled:boolean;accountId:string;total:number;attempted:number;
   completed:number;unverified:number;nextReference:string|null;
   unresolved:boolean;currentState:string;
+  canAdvance:boolean;blocker:string|null;providerStatus:string|null;
 };
 type Advance={status:string;reference?:string;observedNames?:number};
 export function DynamicCollectorControl({accountId,onIndexed}:{
@@ -74,7 +75,19 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({operation:'advance',confirmDynamicCollection:true}),
       });
-      if(!response.ok)throw new Error('Execução não autorizada');
+      if(!response.ok){
+        // The server deliberately sends an allowlisted Portuguese reason,
+        // not provider logs, credentials, cookies or raw API output.
+        const failure=await response.json().catch(()=>null) as {error?:unknown}|null;
+        const reason=typeof failure?.error==='string'&&failure.error.length<230
+          ?failure.error:'Não foi possível confirmar a solicitação no servidor.';
+        setRunning(false);
+        setMessage(reason+' (HTTP '+response.status+').');
+        const current=await read();
+        setQueue(current.value);
+        setDiagnostic(current.diagnostic);
+        return;
+      }
       const info=await response.json() as Advance;
       if(info.status==='queued')
         setMessage('Coleta iniciada para @'+(info.reference??'referência')+'.');
@@ -126,8 +139,11 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       {queue.nextReference&&<p className="text-xs text-muted-foreground">
         Próxima: @{queue.nextReference}
       </p>}
+      {queue.blocker&&<p role="status" className="text-sm text-muted-foreground">
+        {queue.blocker}
+      </p>}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={running||(!queue.nextReference&&!queue.unresolved)}
+        <Button type="button" disabled={running||!queue.canAdvance}
           onClick={()=>{setRunning(true);void advance();}}>
           {running?'Coletando...':'Iniciar coletas'}
         </Button>

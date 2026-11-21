@@ -1,6 +1,8 @@
 import { phantomBusterRequestHeaders } from './phantombuster-request-headers';
 import { configuredFollowerCollectorReference } from './phantombuster-collector-discovery';
-import { inspectDynamicCollectorTemplate } from './phantombuster-dynamic-reference';
+import {
+  inspectDynamicCollectorTemplate,validateDynamicCollectorTemplateRecord,
+} from './phantombuster-dynamic-reference';
 
 type Fetcher = (url:string,init?:RequestInit)=>Promise<Response>;
 type RecordValue=Record<string,unknown>;
@@ -106,6 +108,23 @@ export async function resolvePilotCollectorInWorkspace(
     if(choice.status==='not-found')return answer('workspace-mismatch');
     if(choice.status==='ambiguous')return answer('ambiguous-match');
     const id=choice.id!;
+    // /agents/fetch-all returns a workspace-owned agent and can contain its
+    // complete configuration. Reuse it when all identity, script, single-source
+    // and cookie checks pass, instead of relying on a second call that some
+    // workspaces reject with 404. Partial data NEVER authorizes a launch.
+    const root=obj(data);
+    const listed=Array.isArray(data)?data:
+      Array.isArray(root?.data)?root.data:
+      Array.isArray(root?.agents)?root.agents:[];
+    const selected=listed.filter(item=>{
+      const entry=obj(item);
+      return entry&&String(entry.id??entry._id??'')===id;
+    });
+    if(selected.length===1 &&
+      validateDynamicCollectorTemplateRecord(selected[0],id,templateReference)==='ready')
+      return answer('ready',id);
+    // The inventory omitted some details, so request the individual agent.
+    // A 404 here cannot prove access: keep the operation disabled.
     const confirmed=await inspectDynamicCollectorTemplate(
       apiKey,id,fetcher,templateReference);
     if(confirmed==='ready')return answer('ready',id);

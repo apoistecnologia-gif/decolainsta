@@ -83,6 +83,31 @@ export async function launchExistingCollectorForReference(
       ?answer('queued',String(id)):answer('unconfirmed');
   }catch{return answer('unconfirmed');}
 }
+/**
+ * Verify a complete agent record from EITHER authenticated /agents/fetch-all
+ * or /agents/fetch. No request may launch an agent or expose cookie contents.
+ * An incomplete inventory record never counts as a valid connection.
+ */
+export function validateDynamicCollectorTemplateRecord(
+  value:unknown,agentId:string,expectedReference?:string,
+):'ready'|'missing-cookie'|'mismatch'|'invalid-response'{
+  const agent=rec(value);
+  if(!agent)return 'invalid-response';
+  if(String(agent.id??'')!==agentId||
+    agent.script!=='Instagram Follower Collector.js')return 'mismatch';
+  let argument:unknown=agent.argument;
+  if(typeof argument==='string'){
+    try{argument=JSON.parse(argument) as unknown;}catch{return 'mismatch';}
+  }
+  const saved=rec(argument);
+  const source=saved&&configuredFollowerCollectorReference(saved);
+  if(!saved||typeof saved.spreadsheetUrl!=='string'||!source||
+     (expectedReference!==undefined&&source!==expectedReference))
+    return 'mismatch';
+  return typeof saved.sessionCookie==='string'&&saved.sessionCookie.length>=12
+    ?'ready':'missing-cookie';
+}
+
 /** Read one trusted existing agent and ensure it is a *Follower Collector*
  * configured with a single direct Instagram source and the saved session.
  * The username is just a template source, NOT a target that will be processed.
@@ -109,21 +134,9 @@ export async function inspectDynamicCollectorTemplate(
     if(!response.ok)return 'unavailable';
     const raw=rec(await boundedJson(response));
     const agent=rec(raw?.data)??raw;
-    if(!agent)return 'invalid-response';
-    if(String(agent.id??'')!==agentId||
-      agent.script!=='Instagram Follower Collector.js')return 'mismatch';
-    let argument:unknown=agent.argument;
-    if(typeof argument==='string'){
-      try{argument=JSON.parse(argument) as unknown;}catch{return 'mismatch';}
-    }
-    const saved=rec(argument);
-    const source=saved&&configuredFollowerCollectorReference(saved);
-    if(!saved||typeof saved.spreadsheetUrl!=='string'||!source||
-       (expectedReference!==undefined&&source!==expectedReference))
-      return 'mismatch';
     // Never return, log or write the value of the session cookie.
-    return typeof saved.sessionCookie==='string'&&saved.sessionCookie.length>=12
-      ?'ready':'missing-cookie';
+    return validateDynamicCollectorTemplateRecord(
+      agent,agentId,expectedReference);
   }catch{return 'unavailable';}
 }
 

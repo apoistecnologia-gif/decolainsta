@@ -84,6 +84,7 @@ export async function GET(){
   if(!data)return bad('Fila requer revisão',503);
   return NextResponse.json({
     enabled:process.env.PHANTOMBUSTER_DYNAMIC_COLLECTION_ENABLED==='yes',
+    accountId,
     total:data.plan.total,attempted:data.plan.attempted,
     completed:data.plan.completed,unverified:data.plan.attributionUnverified,
     nextReference:data.plan.next?.username??null,

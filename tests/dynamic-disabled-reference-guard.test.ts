@@ -61,3 +61,18 @@ test('server-only collection requires independent opt-in and cannot impersonate 
   assert.match(route,/if\(!serverCron&&!isSameOriginDynamicCollectionRequest/);
   assert.match(route,/if\(current\.plan\.unresolved\|\|current\.plan\.attributionUnverified>0\)/);
 });
+
+test('server blocks partial imports whenever exact container log shows Instagram restriction',()=>{
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  const severe=route.indexOf('const severe=await inspectDynamicFailureOutput(key!,event.containerId)');
+  const importResult=route.indexOf('const result=await readDynamicContainerResults(',severe);
+  assert.ok(severe>0&&importResult>severe);
+  const guard=route.slice(severe,importResult);
+  assert.match(guard,/platform-limited/);
+  assert.match(guard,/session-invalid/);
+  assert.match(guard,/login-challenge/);
+  assert.match(guard,/state:'finished-unverified'/);
+  assert.match(guard,/candidatesImported:0/);
+  assert.match(route,/if\(event\?\.state==='finished-unverified'\)/);
+  assert.match(route,/current\.state==='launched'&&/);
+});

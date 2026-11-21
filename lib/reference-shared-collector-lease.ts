@@ -22,6 +22,7 @@ import {
  * separate, reviewed release flow. No external requests are made here.
  */
 export const SHARED_COLLECTOR_LEASE_ACTION = 'reference_shared_collector_lease_v1';
+export const MAX_SHARED_COLLECTOR_LEASE_LOGS = 5000;
 export type SharedCollectorLeaseEvent = Readonly<{
   version: 1;
   state: 'reserved';
@@ -55,6 +56,30 @@ export function parseSharedCollectorLease(raw: string | null): SharedCollectorLe
     !localId(event.referenceId) || !agentIdValid(event.collectorAgentId))
     return null;
   return event as SharedCollectorLeaseEvent;
+}
+
+/**
+ * Registry-wide lease fence for all legacy collector binding routes.
+ * Any malformed reservation blocks ALL associations instead of silently
+ * admitting a previously reserved agent. Do not filter by tenant first.
+ *
+ * Rows must come from the global reservation action inside the same
+ * SERIALIZABLE transaction as the eventual binding write.
+ */
+export function reservedSharedCollectorAgents(rows: ReadonlyArray<{
+  targetUsername: string | null;
+  instagramAccountId: string;
+  details: string | null;
+}>): { agents: ReadonlySet<string>; valid: boolean } {
+  const agents = new Set<string>();
+  for (const row of rows) {
+    const event = parseSharedCollectorLease(row.details);
+    if (!event || row.targetUsername !== event.collectorAgentId ||
+        row.instagramAccountId !== event.accountId)
+      return { agents: new Set<string>(), valid: false };
+    agents.add(event.collectorAgentId);
+  }
+  return { agents, valid: true };
 }
 
 export function makeSharedCollectorLease(input: {

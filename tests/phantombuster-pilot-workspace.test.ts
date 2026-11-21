@@ -29,11 +29,13 @@ test('autodiscovers exact collector name from the workspace and verifies its arg
           argument:JSON.stringify({spreadsheetUrl:'https://www.instagram.com/uber/'})}),
         collector(),
       ]);
-      if(url.includes('/agents/fetch'))return response(collector());
+      // A complete agent record from the workspace must make a redundant
+      // /agents/fetch unnecessary (it can return 404 for this workspace).
+      if(url.includes('/agents/fetch'))throw Error('redundant fetch should not happen');
       throw Error('Unexpected endpoint');
     });
   assert.deepEqual(result,{status:'ready',agentId:id});
-  assert.equal(requests.length,2);
+  assert.equal(requests.length,1);
   assert.doesNotMatch(JSON.stringify(result),/SECRET|sessionCookie/);
 });
 test('ambiguity and mismatched workspace do not choose a random agent',()=>{
@@ -103,4 +105,40 @@ test('route has operator and preview gate and does not trust an invented agent I
   assert.match(code,/workspace-mismatch/);
   assert.doesNotMatch(code,/PHANTOMBUSTER_DYNAMIC_COLLECTOR_AGENT_ID/);
   assert.doesNotMatch(code,/agents\/save|user_follow|user_unfollow/);
+});
+
+test('listing a complete agent is sufficient even if the individual endpoint would return 404',async()=>{
+  let fetchCalls=0;
+  const got=await resolvePilotCollectorInWorkspace('key','mameto_lueji',name,
+    async(url)=>{
+      if(url.includes('fetch-all'))return response([collector()]);
+      fetchCalls++;
+      return new Response(null,{status:404});
+    });
+  assert.equal(fetchCalls,0);
+  assert.deepEqual(got,{status:'ready',agentId:id});
+});
+test('an incomplete agent inventory never bypasses individual 404 or missing session',async()=>{
+  let fetchCalls=0;
+  const got=await resolvePilotCollectorInWorkspace('key','mameto_lueji',name,
+    async(url)=>{
+      if(url.includes('fetch-all'))return response([{
+        id,name,script:'Instagram Follower Collector.js',
+      }]);
+      fetchCalls++;
+      return new Response(null,{status:404});
+    });
+  assert.equal(fetchCalls,1);
+  assert.deepEqual(got,{status:'collector-not-found',agentId:null});
+});
+test('inventory agent that lacks a cookie never authorizes launch even with a matching name',async()=>{
+  const got=await resolvePilotCollectorInWorkspace('key','mameto_lueji',name,
+    async(url)=>{
+      if(url.includes('fetch-all'))return response([{
+        id,name,script:'Instagram Follower Collector.js',
+        argument:JSON.stringify({spreadsheetUrl:'https://www.instagram.com/mameto_lueji/'}),
+      }]);
+      return new Response(null,{status:404});
+    });
+  assert.deepEqual(got,{status:'collector-not-found',agentId:null});
 });

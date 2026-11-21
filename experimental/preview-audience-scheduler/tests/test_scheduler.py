@@ -125,6 +125,44 @@ class TestPreviewScheduler(unittest.TestCase):
                 self.assertNotEqual(code, 0)
                 self.assertNotIn("sensitive", msg)
 
+    def test_reconciliation_is_disabled_without_explicit_opt_in(self):
+        result = module.run_reconciliation_once(
+            self.env, lambda *_args, **_kwargs: self.fail("unexpected network"))
+        self.assertEqual(result, (0, "disabled"))
+
+    def test_reconciliation_only_posts_one_fixed_operation_to_preview(self):
+        env = {**self.env, "PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED": "yes"}
+        requests = []
+        def fake_open(request, timeout):
+            requests.append((request, timeout))
+            return FakeResponse(
+                b'{"status":"no-pending-run","noAutomaticLaunch":true,'
+                b'"launchesExecuted":0,"instagramActionsExecuted":0}')
+        self.assertEqual(module.run_reconciliation_once(env, fake_open),
+                         (0, "ok: status=no-pending-run"))
+        self.assertEqual(len(requests), 1)
+        request, timeout = requests[0]
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.full_url, "https://" + module.PREVIEW_HOST
+                         + module.DYNAMIC_RECONCILE_PATH)
+        self.assertEqual(request.data, b'{"operation":"reconcile-only","confirmDynamicCollection":true}')
+        self.assertEqual(timeout, 25)
+        self.assertEqual(request.get_header("Authorization"), "Bearer " + "a" * 48)
+
+    def test_reconciliation_rejects_unsafe_or_unknown_responses(self):
+        env = {**self.env, "PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED": "yes"}
+        for payload in [
+            b'{"status":"started"}',
+            b'{"status":"no-pending-run","noAutomaticLaunch":true,"launchesExecuted":1,"instagramActionsExecuted":0}',
+            b'{"status":"no-pending-run","noAutomaticLaunch":true,"launchesExecuted":0,"instagramActionsExecuted":1}',
+            b'sensitive-private-output',
+        ]:
+            with self.subTest(payload=payload[:24]):
+                code, message = module.run_reconciliation_once(
+                    env, lambda *_args, **_kwargs: FakeResponse(payload))
+                self.assertNotEqual(code, 0)
+                self.assertNotIn("sensitive", message)
+
     def test_refuses_short_auth_and_missing_bypass(self):
         for name, value in [("PREVIEW_CRON_SECRET", "tiny"),("PREVIEW_PROTECTION_BYPASS", "")]:
             env = {**self.env, name: value}

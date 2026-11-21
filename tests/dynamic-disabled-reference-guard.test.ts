@@ -24,13 +24,13 @@ test('reference collection planning does not initiate Instagram actions',()=>{
 test('background reconciliation accepts only a secret-authenticated pre-existing launch',()=>{
   const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
   assert.match(route,/previewReconcileCronAuthorized\(request\)/);
-  assert.match(route,/process\.env\.PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED!=='yes'/);
+  assert.match(route,/process\.env\.PREVIEW_DYNAMIC_RECONCILIATION_CRON_ENABLED==='yes'/);
   assert.match(route,/given\.length===expected\.length&&timingSafeEqual\(given,expected\)/);
-  assert.match(route,/cronAuthorized!==\(body\.operation==='reconcile-only'\)/);
+  assert.match(route,/\(reconcileOnly&&!cronAuthorized\)/);
   assert.match(route,/current\.jobs\[0\]\?\.state!=='launched'/);
-  assert.match(route,/if\(cronAuthorized\)return NextResponse\.json/);
+  assert.match(route,/if\(reconcileOnly\)return NextResponse\.json/);
   assert.match(route,/if\(current\.plan\.unresolved\|\|current\.plan\.attributionUnverified>0\)/);
-  const guarded=route.indexOf('if(cronAuthorized)return NextResponse.json');
+  const guarded=route.indexOf('if(reconcileOnly)return NextResponse.json');
   const launcher=route.indexOf('return launchReservedCollector(key!,agentId,claim);',guarded);
   assert.ok(guarded>0 && launcher>guarded);
 });
@@ -49,4 +49,15 @@ test('finished container without importable proof is quarantined after grace',()
   assert.match(route,/const quarantined=await prisma\.activityLog\.updateMany\(/);
   assert.match(route,/if\(quarantined\.count!==1\)return bad\('Revisão concorrente da coleta',409\)/);
   assert.match(route,/!collectionLimited&&activeProof\?\.reason!=='failed-run'/);
+});
+
+test('server-only collection requires independent opt-in and cannot impersonate browser',()=>{
+  const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  assert.match(route,/process\.env\.PREVIEW_DYNAMIC_COLLECTION_CRON_ENABLED==='yes'/);
+  assert.match(route,/previewCronTokenAuthorized\(request\)/);
+  assert.match(route,/const collectCronAuthorized=previewCollectCronAuthorized\(request\)/);
+  assert.match(route,/\(collectNext&&!collectCronAuthorized\)/);
+  assert.match(route,/\(!reconcileOnly&&!collectNext&&serverCron\)/);
+  assert.match(route,/if\(!serverCron&&!isSameOriginDynamicCollectionRequest/);
+  assert.match(route,/if\(current\.plan\.unresolved\|\|current\.plan\.attributionUnverified>0\)/);
 });

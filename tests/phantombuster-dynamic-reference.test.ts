@@ -107,7 +107,8 @@ test('verified dynamic container finalizes snapshots AND candidate index atomica
   assert.match(src,/candidatesIndexed:stored\.indexed/);
   assert.match(src,/Prisma\.TransactionIsolationLevel\.Serializable/);
   assert.doesNotMatch(ui,/operation:'sync-saved-history'/);
-  assert.match(ui,/queue\.currentState==='launched'&&queue\.canAdvance/);
+  assert.match(ui,/queue\.currentState==='launched'/);
+  assert.match(ui,/queue\.currentState==='finished-unverified'/);
   assert.match(ui,/resumedExisting\.current=true/);
 });
 

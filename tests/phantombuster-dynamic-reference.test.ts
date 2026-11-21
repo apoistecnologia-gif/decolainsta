@@ -279,14 +279,14 @@ test('failed receipt offers one explicit retry of SAME reference only, never aut
 test('failed-run retry is preview-only and reserved with serializable advisory lock',()=>{
   const route=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
   const panel=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
-  assert.match(route,/body\\.operation==='retry-failed'/);
+  assert.match(route,/body\.operation==='retry-failed'/);
   assert.match(route,/inspectFailedRetryPreflight/);
   assert.match(route,/planFailedDynamicReferenceRetry/);
-  assert.match(route,/const configured=await agent\\(key!\\)/);
-  assert.match(route,/rows\\[0\\]\\.details!==receipt\\.details/);
+  assert.match(route,/const configured=await agent\(key!\)/);
+  assert.match(route,/rows\[0\]\.details!==receipt\.details/);
   assert.match(route,/pg_try_advisory_xact_lock/);
-  assert.match(route,/Prisma\\.TransactionIsolationLevel\\.Serializable/);
-  assert.match(panel,/advance\\('retry-failed'\\)/);
-  assert.match(panel,/disabled=\\{running\\}/);
-  assert.doesNotMatch(route,/followSingle|unfollowSingle|InstagramFollowersAutoFollow|agents\\/save/);
+  assert.match(route,/Prisma\.TransactionIsolationLevel\.Serializable/);
+  assert.match(panel,/advance\('retry-failed'\)/);
+  assert.match(panel,/disabled=\{running\}/);
+  assert.doesNotMatch(route,/followSingle|unfollowSingle|InstagramFollowersAutoFollow|agents\/save/);
 });

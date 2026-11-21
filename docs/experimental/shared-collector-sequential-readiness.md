@@ -54,7 +54,28 @@ execução, mudança de argumentos ou importação; não chamar essa função at
 o reconciliador de finalização e testes de concorrência com PostgreSQL
 estejam prontos.
 
-O leitor legado não foi alterado. Ainda faltam verificação de entrada por
-contêiner, orquestração segura de reutilização e importação de resultados
-atribuídos. As três referências permanecem pendentes. Nenhum segredo é exposto,
-nenhuma conta Instagram foi acionada e nenhum agente externo foi criado.
+A leitura e importação do leitor legado não foram alteradas.
+**Proteção adicional:** todas as rotas legadas que criam vínculos de coletores
+(`match-all-customers`, `match-collectors`, `reconcile-prepared` e
+`collector-bindings`) consultam o registro global de reservas na mesma
+transação `SERIALIZABLE`. Uma reserva de outro cliente impede nova associação;
+registros de reserva malformados ou limites excedidos bloqueiam a escrita.
+A própria reserva também consulta todo o registro global, sem filtrar por
+cliente. Isso reduz o risco de concorrência entre o fluxo antigo e o novo.
+
+`lib/providers/phantombuster-container-inspection.ts` prepara uma consulta
+**somente leitura** ao `/containers/fetch?id=...`, validando a identidade do
+agente e contêiner, conclusão e, caso exista, o argumento daquele contêiner.
+Não usa a configuração editável de `/agents/fetch`, arquivo de resultado
+acumulado ou execução de Phantom. O resultado é apenas diagnóstico:
+`immutableInputProven: false` e `releaseAuthorized: false` sempre.
+
+A documentação pública do provedor não garante o significado ou a existência
+do campo `argument` por execução. Sem prova consistente de entrada, estado
+finalizado de contêiner e ausência de outras execuções ativas, **NÃO existe
+liberação automática da reserva**. Também faltam a integração entre reserva e
+lançamento, a verificação de um contêiner real, a importação isolada e testes
+de concorrência com PostgreSQL real. Não configurar as flags de ativação.
+
+As três referências permanecem pendentes. Nenhum segredo é exposto, nenhuma
+conta Instagram foi acionada e nenhum agente externo foi criado.

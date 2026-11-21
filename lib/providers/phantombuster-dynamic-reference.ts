@@ -97,3 +97,91 @@ export async function inspectDynamicCollectorTemplate(
       ?'ready':'missing-cookie';
   }catch{return 'unavailable';}
 }
+
+
+/** A particular container's immutable identity and caller-issued claim.
+ * Does not use the current agent configuration or its latest result file.
+ */
+export async function inspectDynamicRunProof(
+  apiKey:string,agentId:string,containerId:string,reference:string,
+  claimId:string,fetcher:Fetcher=fetch,
+):Promise<'verified-finished'|'finished-unverified'|'running'|'unavailable'>{
+  if(!apiKey||!safeId(agentId)||!safeId(containerId)||
+     !safeUser(reference)||!safeClaim(claimId))return 'unavailable';
+  try{
+    const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch');
+    url.searchParams.set('id',containerId);
+    const res=await fetcher(url.toString(),{
+      method:'GET',headers:phantomBusterRequestHeaders(apiKey),
+      cache:'no-store',credentials:'omit',redirect:'error',signal:AbortSignal.timeout(8000),
+    });
+    if(!res.ok)return 'unavailable';
+    const outer=rec(await boundedJson(res));
+    const data=rec(outer?.data)??outer;
+    if(!data||String(data.id??'')!==containerId||
+       String(data.agentId??'')!==agentId)return 'unavailable';
+    if(!['finalized','completed','finished','success'].includes(String(data.status)))
+      return 'running';
+    if(!data.endedAt||!Number.isFinite(Date.parse(String(data.endedAt)))||
+       (typeof data.exitCode==='number'&&data.exitCode!==0))
+      return 'finished-unverified';
+    const metadata=rec(data.userCustomMetadata);
+    if(metadata?.decolainstaClaimId!==claimId)return 'finished-unverified';
+    if(data.argument!==undefined&&data.argument!==null){
+      if(configuredFollowerCollectorReference(data.argument)!==reference)
+        return 'finished-unverified';
+    }
+    return 'verified-finished';
+  }catch{return 'unavailable';}
+}
+export type DynamicContainerResults=Readonly<{
+  status:'found'|'empty'|'unsupported'|'unavailable';
+  usernames:string[];
+}>;
+/** Read ONLY the exact completed container resultObject, never a mutable
+ * result.json file or historical agent-wide output. 250-name hard limit.
+ */
+export async function readDynamicContainerResults(
+  apiKey:string,containerId:string,reference:string,fetcher:Fetcher=fetch,
+):Promise<DynamicContainerResults>{
+  const answer=(status:DynamicContainerResults['status'],usernames:string[]=[])=>({status,usernames});
+  if(!apiKey||!safeId(containerId)||!safeUser(reference))return answer('unsupported');
+  try{
+    const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch-result-object');
+    url.searchParams.set('id',containerId);
+    const response=await fetcher(url.toString(),{
+      method:'GET',headers:phantomBusterRequestHeaders(apiKey),cache:'no-store',
+      credentials:'omit',redirect:'error',signal:AbortSignal.timeout(8000),
+    });
+    if(!response.ok)return answer('unavailable');
+    const wrapper=rec(await boundedJson(response,4_000_000));
+    const source=rec(wrapper?.data)??wrapper;
+    if(!source||!Object.prototype.hasOwnProperty.call(source,'resultObject'))
+      return answer('unsupported');
+    let data:unknown=source.resultObject;
+    if(typeof data==='string'){
+      try{data=JSON.parse(data) as unknown;}catch{return answer('unsupported');}
+    }
+    if(data===null||data===undefined||data==='')return answer('empty');
+    const items=Array.isArray(data)?data:rec(data)?.results;
+    if(!Array.isArray(items))return answer('unsupported');
+    const usernames=new Set<string>();
+    for(const v of items.slice(0,1000)){
+      const row=rec(v);
+      if(!row)continue;
+      let username=row.username??row.profileName;
+      if(typeof username!=='string'&&typeof row.profileUrl==='string'){
+        try{
+          const u=new URL(row.profileUrl);
+          if(u.protocol==='https:'&&['instagram.com','www.instagram.com'].includes(u.hostname))
+            username=u.pathname.replace(/^\/|\/$/g,'');
+        }catch{continue;}
+      }
+      if(typeof username!=='string')continue;
+      const name=username.trim().replace(/^@/,'').toLowerCase();
+      if(safeUser(name)&&name!==reference)usernames.add(name);
+      if(usernames.size>=250)break;
+    }
+    return answer(usernames.size?'found':'empty',[...usernames].sort());
+  }catch{return answer('unavailable');}
+}

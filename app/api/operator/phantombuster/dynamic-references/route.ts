@@ -229,16 +229,19 @@ export async function GET(){
   // remains possible; do not initiate a new collection from this status.
   const collectionLimited=Boolean(ownLaunched&&
     failureDiagnostic==='platform-limited');
+  const accessBlocked=Boolean(ownLaunched&&
+    blockedFailureDiagnostics.has(failureDiagnostic??''));
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
   const canAdvance=Boolean(enabled&&(
     (ownLaunched&&current.state==='launched'&&
-      !collectionLimited&&activeProof?.reason!=='failed-run')||
+      !accessBlocked&&activeProof?.reason!=='failed-run')||
     (!data.plan.unresolved&&data.plan.attributionUnverified===0&&
       !ownLaunched&&data.plan.next&&
       (progress==='finished'||progress==='no-run'))));
   const blocker=!enabled?'O piloto está desativado neste Preview.'
     :collectionLimited?'Importação não confirmada: limite do Instagram indicado no log do contêiner. O acompanhamento automático foi pausado; não inicie nova coleta.'
+    :accessBlocked?'Importação bloqueada por sessão, credenciais ou falha de acesso. Não inicie nova coleta até revisão.'
     :ownLaunched&&current.state==='finished-unverified'
       ?'Coleta suspensa para revisão. Nenhuma nova coleta será iniciada.'
     :ownLaunched&&activeProof?.status==='running'?'O contêiner existente continua em execução no PhantomBuster.'

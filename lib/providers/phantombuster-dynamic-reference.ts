@@ -1,5 +1,6 @@
 import { phantomBusterRequestHeaders } from './phantombuster-request-headers';
 import { configuredFollowerCollectorReference } from './phantombuster-collector-discovery';
+import { collectorRunCompletedAt } from './phantombuster-audience';
 
 type Fetcher=(url:string,init?:RequestInit)=>Promise<Response>;
 type Rec=Record<string,unknown>;
@@ -122,7 +123,7 @@ export async function inspectDynamicRunProof(
        String(data.agentId??'')!==agentId)return 'unavailable';
     if(!['finalized','completed','finished','success'].includes(String(data.status)))
       return 'running';
-    if(!data.endedAt||!Number.isFinite(Date.parse(String(data.endedAt)))||
+    if(!collectorRunCompletedAt(data.endedAt)||
        (typeof data.exitCode==='number'&&data.exitCode!==0))
       return 'finished-unverified';
     const metadata=rec(data.userCustomMetadata);

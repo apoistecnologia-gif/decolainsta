@@ -50,6 +50,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       profile,
       media: media.data || [],
       source: 'meta_official_api',
+      syncedAt: syncedAt.toISOString(),
       followersMeasurement: measurement,
     });
   } catch (error) { return instagramErrorResponse(error); }

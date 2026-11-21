@@ -217,7 +217,8 @@ export async function GET(){
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
   const canAdvance=Boolean(enabled&&(
     (ownLaunched&&activeProof?.reason!=='failed-run')||
-    (!data.plan.unresolved&&!ownLaunched&&data.plan.next&&
+    (!data.plan.unresolved&&data.plan.attributionUnverified===0&&
+      !ownLaunched&&data.plan.next&&
       (progress==='finished'||progress==='no-run'))));
   const blocker=!enabled?'O piloto está desativado neste Preview.'
     :collectionLimited?'Importação não confirmada: limite do Instagram indicado no log do contêiner. O acompanhamento automático foi pausado; não inicie nova coleta.'
@@ -227,6 +228,8 @@ export async function GET(){
     :ownLaunched?'Contêiner concluído; verificando a importação.'
     :data.plan.unresolved
       ?'Há uma execução anterior ainda sem confirmação. Nenhuma nova coleta será iniciada.'
+    :data.plan.attributionUnverified>0
+      ?'Uma coleta anterior não pôde ser verificada. Nenhuma nova coleta será iniciada até revisão.'
     :!data.plan.next?'Todas as referências elegíveis já foram processadas.'
     :canAdvance?null:progressBlocker(progress??'unavailable');
   return NextResponse.json({
@@ -470,7 +473,8 @@ export async function POST(request:Request){
     status:'no-pending-run',noAutomaticLaunch:true,
     instagramActionsExecuted:0,launchesExecuted:0,
   },{headers:HEADERS});
-  if(current.plan.unresolved)return NextResponse.json({
+  if(current.plan.unresolved||current.plan.attributionUnverified>0)
+    return NextResponse.json({
     status:'review-required',reason:'existing-run-unconfirmed',
     noAutomaticRetry:true,
   },{headers:HEADERS});

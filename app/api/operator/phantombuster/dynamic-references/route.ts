@@ -262,10 +262,17 @@ export async function POST(request:Request){
   let claim:{id:string;event:DynamicJobEvent}|null=null;
   try{
     claim=await prisma.$transaction(async tx=>{
-      await tx.$queryRawUnsafe(
-        "SELECT pg_advisory_xact_lock(hashtext('decolainsta_dynamic_reference_v1'),hashtext($1))",
-        agentId,
-      );
+      // PostgreSQL pg_advisory_xact_lock returns void, which Prisma's
+      // $queryRaw driver may reject when deserializing the result column.
+      // The "try" variant returns a supported boolean and does not wait,
+      // preserving one active claim per collector across concurrent requests.
+      const lockRows=await tx.$queryRaw<Array<{acquired:boolean}>>`
+        SELECT pg_try_advisory_xact_lock(
+          hashtext('decolainsta_dynamic_reference_v1'),
+          hashtext(${agentId})
+        ) AS acquired
+      `;
+      if(lockRows.length!==1||lockRows[0].acquired!==true)return null;
       const rows=await tx.activityLog.findMany({
         where:{action:DYNAMIC_COLLECTION_ACTION,targetUsername:agentId},
         select:{id:true,instagramAccountId:true,targetUsername:true,details:true},

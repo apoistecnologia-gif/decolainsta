@@ -3,6 +3,17 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
+type SessionDiagnostic = {
+  status: 'session-error-observed' | 'verification-required-observed' |
+    'no-session-error-observed' | 'no-output' | 'invalid-key' | 'rate-limited' |
+    'unavailable' | 'invalid-agent' | 'not-configured';
+  evidence: 'previous_agent_output_only' | 'none';
+  accountAliasMatched: boolean;
+  officialMetaConnectionRecorded: boolean;
+  instagramSessionVerifiedNow: false;
+  passwordChangeImpactConfirmed: false;
+  providerActionsExecuted: 0;
+};
 type WorkspaceCapacity = {
   status: 'ok' | 'invalid-key' | 'rate-limited' | 'unavailable' | 'unexpected-response';
   agents: number | null;
@@ -59,12 +70,27 @@ type Result = {
 export function OperatorCollectorIntakePanel() {
   const [busy, setBusy] = useState(false);
   const [capacity, setCapacity] = useState<WorkspaceCapacity | null>(null);
+  const [sessionCheck, setSessionCheck] = useState<SessionDiagnostic | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [queue, setQueue] = useState<ProvisioningPlan | null>(null);
   const [draftOutcome, setDraftOutcome] = useState<DraftOutcome | null>(null);
   const [reconciled, setReconciled] = useState<Reconciled | null>(null);
   const [reconciliationOffset, setReconciliationOffset] = useState(0);
   const [error, setError] = useState('');
+  async function checkExistingSessionLogs() {
+    if (busy) return;
+    setBusy(true); setError(''); setSessionCheck(null);
+    try {
+      const response = await fetch('/api/operator/phantombuster-session-diagnostic', {
+        method:'GET', credentials:'same-origin', cache:'no-store', redirect:'error',
+      });
+      if (!response.ok) throw new Error('Consulta do histórico de sessão não autorizada.');
+      setSessionCheck(await response.json() as SessionDiagnostic);
+    } catch {
+      setError('Não foi possível consultar o histórico do PhantomBuster.');
+    } finally { setBusy(false); }
+  }
+
   async function checkCapacity() {
     if (busy) return;
     setBusy(true); setError(''); setCapacity(null);
@@ -190,6 +216,38 @@ export function OperatorCollectorIntakePanel() {
           {capacity.status === 'ok' && capacity.slotMetrics.length === 0 &&
             <p>O provedor não informou números de vagas em formato reconhecido.
               Não é possível afirmar quantas vagas restam.</p>}
+        </div>}
+      </div>
+      <div className="rounded-md border p-3 space-y-2">
+        <h3 className="text-sm font-medium">Sessão Instagram no PhantomBuster</h3>
+        <p className="text-xs text-muted-foreground">
+          Consulta apenas o registro da última execução do agente existente.
+          Não abre o Instagram, não testa a sessão atual e não executa ações.
+        </p>
+        <Button type="button" variant="outline" disabled={busy}
+          onClick={() => void checkExistingSessionLogs()}>
+          {busy ? 'Consultando...' : 'Verificar erros da sessão (somente leitura)'}
+        </Button>
+        {sessionCheck && <div role="status" className="text-sm space-y-1">
+          <p>{sessionCheck.status === 'session-error-observed'
+            ? 'O último registro contém erro de sessão. Reconecte o Instagram no próprio PhantomBuster.'
+            : sessionCheck.status === 'verification-required-observed'
+            ? 'O registro indica verificação ou desafio do Instagram. Resolva na conta oficial antes de qualquer nova execução.'
+            : sessionCheck.status === 'no-session-error-observed'
+            ? 'Nenhum erro de sessão foi identificado no registro disponível. Isso NÃO comprova que a sessão continua válida após a troca de senha.'
+            : sessionCheck.status === 'no-output'
+            ? 'Não há registro de execução disponível para verificar a sessão.'
+            : sessionCheck.status === 'not-configured'
+            ? 'Agente de teste não configurado no servidor.'
+            : 'A consulta não confirmou o estado da sessão: ' + sessionCheck.status} </p>
+          {!sessionCheck.accountAliasMatched && <p className="text-xs text-muted-foreground">
+            O nome de conta configurado no teste antigo não corresponde ao cadastro atual.
+            A identidade da sessão do PhantomBuster não foi comprovada.
+          </p>}
+          <p className="text-xs text-muted-foreground">
+            Histórico anterior apenas. Sessão atual: não verificada.
+            Nenhuma coleta, follow ou unfollow foi iniciada.
+          </p>
         </div>}
       </div>
       <Button type="button" variant="outline" disabled={busy}

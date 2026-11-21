@@ -20,6 +20,7 @@ import {
   type AudienceRefreshSource,
 } from '@/lib/reference-audience-refresh';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
+import { DYNAMIC_COLLECTION_ACTION } from '@/lib/reference-dynamic-collection';
 import { lastReadStatusFromDetails } from '@/lib/reference-audience-last-read';
 import { loadActiveAudienceSources } from '@/lib/server/reference-audience-source-store';
 import { AUDIENCE_SOURCE_BINDING_ACTION, parseAudienceSourceBinding }
@@ -81,6 +82,14 @@ async function refreshSource(
     select: { id: true, username: true },
   });
   if (!reference) return { status: 'skipped', newNames: 0, indexed: 0 };
+  // An agent used for per-run bonusArgument input must never feed the legacy
+  // importer, whose attribution assumes a fixed current agent URL.
+  const dynamicUse = await prisma.activityLog.findFirst({
+    where: { action: DYNAMIC_COLLECTION_ACTION,
+      targetUsername: source.collectorAgentId },
+    select: { id: true },
+  });
+  if (dynamicUse) return { status: 'skipped', newNames: 0, indexed: 0 };
   const claimId = await claim(source, manualRetry);
   if (!claimId) return { status: 'skipped', newNames: 0, indexed: 0 };
   try {

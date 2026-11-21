@@ -27,8 +27,9 @@ export type FailedRetryPreflight='ready'|'other-run'|'active'|'unavailable';
  * provider's latest container for this agent and there is no active launch.
  * No provider writes; never use mutable agent-wide result files.
  */
-export async function inspectFailedRetryPreflight(
-  apiKey:string,agentId:string,oldContainerId:string,fetcher:Fetcher=fetch,
+async function inspectRecoveryPreflight(
+  apiKey:string,agentId:string,oldContainerId:string,
+  mode:'failed'|'unverified',fetcher:Fetcher,
 ):Promise<FailedRetryPreflight>{
   if(!apiKey||apiKey.length>512||!idOk(agentId)||!idOk(oldContainerId))
     return 'unavailable';
@@ -75,6 +76,28 @@ export async function inspectFailedRetryPreflight(
     const failedExit=(typeof exitCode==='number'||typeof exitCode==='string')&&
       String(exitCode).trim()!==''&&Number.isFinite(Number(exitCode))&&
       Number(exitCode)!==0;
+    // Historical finalized-but-unverified launches need a separate, explicit
+    // operator-only recovery. This check NEVER authorizes an automatic retry.
+    if(mode==='unverified')
+      return finalized&&!failedExit&&
+        (exitCode===undefined||exitCode===null||
+          ((typeof exitCode==='number'||typeof exitCode==='string')&&
+           String(exitCode).trim()!==''&&Number(exitCode)===0))
+        ?'ready':'unavailable';
     return visiblyFailed||(finalized&&failedExit)?'ready':'unavailable';
   }catch{return 'unavailable';}
+}
+
+/** Existing failed-run retry path, unchanged and fail closed. */
+export function inspectFailedRetryPreflight(
+  apiKey:string,agentId:string,oldContainerId:string,fetcher:Fetcher=fetch,
+):Promise<FailedRetryPreflight>{
+  return inspectRecoveryPreflight(apiKey,agentId,oldContainerId,'failed',fetcher);
+}
+
+/** One-shot operator recovery from a completed but unverified container. */
+export function inspectUnverifiedRecoveryPreflight(
+  apiKey:string,agentId:string,oldContainerId:string,fetcher:Fetcher=fetch,
+):Promise<FailedRetryPreflight>{
+  return inspectRecoveryPreflight(apiKey,agentId,oldContainerId,'unverified',fetcher);
 }

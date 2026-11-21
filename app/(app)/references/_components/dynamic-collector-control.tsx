@@ -111,6 +111,9 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
   },[read]);
   const advance=useCallback(async(operation:'advance'|'retry-failed'='advance')=>{
     if(lock.current)return;
+    // Latch the limiting status before the import changes the GET state.
+    // A successful late import must not auto-launch the next reference.
+    const limitedAtStart=queue?.collectionLimited===true;
     lock.current=true;
     try{
       const response=await fetch('/api/operator/phantombuster/dynamic-references',{
@@ -170,7 +173,7 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       setDiagnostic(updated.diagnostic);
       // Async provider response, not a synchronous React effect update:
       // the limit indicator pauses subsequent timer calls immediately.
-      if(updated.value?.collectionLimited){
+      if(limitedAtStart||updated.value?.collectionLimited){
         setRunning(false);
         if(info.status==='queued'||info.status==='in-progress'||
            info.status==='provider-busy')
@@ -180,7 +183,7 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       setRunning(false);
       setMessage('A execução não pôde ser confirmada; não será repetida automaticamente.');
     }finally{lock.current=false;}
-  },[accountId,onIndexed,read]);
+  },[accountId,onIndexed,read,queue?.collectionLimited]);
   useEffect(()=>{
     // Only resume a previously launched container; never auto-launch the
     // next reference on a fresh visit without a prior operator initiation.

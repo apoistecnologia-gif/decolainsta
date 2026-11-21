@@ -316,7 +316,8 @@ test('rate limiting pauses browser polling, not the manual same-container query'
   assert.match(route,/collectionLimited=Boolean\(ownLaunched&&/);
   assert.match(route,/failureDiagnostic==='platform-limited'/);
   assert.match(route,/failureDiagnostic,collectionLimited,canAdvance/);
-  assert.match(panel,/if\(updated\.value\?\.collectionLimited\)/);
+  assert.match(panel,/if\(limitedAtStart\|\|updated\.value\?\.collectionLimited\)/);
+  assert.match(panel,/const limitedAtStart=queue\?\.collectionLimited===true/);
   assert.match(panel,/!queue.collectionLimited&&/);
   assert.match(panel,/Consultar resultado existente/);
   assert.doesNotMatch(panel,/followSingle|unfollowSingle|agents\/launch/);

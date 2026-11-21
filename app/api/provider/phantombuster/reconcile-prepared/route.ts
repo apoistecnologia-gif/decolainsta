@@ -11,6 +11,10 @@ import {
 import { inspectConfiguredFollowerCollector } from '@/lib/providers/phantombuster-collector-discovery';
 import { isConfiguredPhantomBusterKey } from '@/lib/reference-audience-readiness';
 import { planPreparedDraftReconciliation } from '@/lib/reference-prepared-draft-reconciliation';
+import {
+  SHARED_COLLECTOR_LEASE_ACTION, MAX_SHARED_COLLECTOR_LEASE_LOGS,
+  reservedSharedCollectorAgents,
+} from '@/lib/reference-shared-collector-lease';
 import type {
   PreparedReference, PreparedDraft, PreparedPair,
 } from '@/lib/reference-prepared-draft-reconciliation';
@@ -74,7 +78,7 @@ export async function POST(request: Request) {
   // Global registry is essential: an agent associated elsewhere must never
   // become visible to a second customer just by filtering by account first.
   const load = async (client: typeof prisma) => {
-    const [references, drafts, bindings] = await Promise.all([
+    const [references, drafts, bindings, leases] = await Promise.all([
       client.targetAccount.findMany({
         select: { id: true, instagramAccountId: true, username: true, createdAt: true },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 1001,
@@ -95,9 +99,17 @@ export async function POST(request: Request) {
         }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: MAX_SOURCE_BINDING_LOGS + 1,
       }),
+      client.activityLog.findMany({
+        where: { action: SHARED_COLLECTOR_LEASE_ACTION },
+        select: { instagramAccountId: true, targetUsername: true, details: true },
+        take: MAX_SHARED_COLLECTOR_LEASE_LOGS + 1,
+      }),
     ]);
     if (references.length > 1000 || drafts.length > COLLECTOR_DRAFT_MAX_LOGS ||
-        bindings.length > MAX_SOURCE_BINDING_LOGS) return null;
+        bindings.length > MAX_SOURCE_BINDING_LOGS ||
+        leases.length > MAX_SHARED_COLLECTOR_LEASE_LOGS) return null;
+    const shared = reservedSharedCollectorAgents(leases);
+    if (!shared.valid) return null;
     const refs: PreparedReference[] = references.map(r=>({
       id:r.id, accountId:r.instagramAccountId, username:r.username, createdAt:r.createdAt,
     }));
@@ -105,9 +117,12 @@ export async function POST(request: Request) {
       accountId:d.instagramAccountId, referenceId:d.targetUsername,
       details:d.details, createdAt:d.createdAt,
     }));
-    return planPreparedDraftReconciliation(refs, events,
+    const plan = planPreparedDraftReconciliation(refs, events,
       resolveLatestAudienceBindings(bindings),
       disabledAudienceReferenceKeys(bindings), 3, scanOffset);
+    const eligible = plan.candidates.filter(p => !shared.agents.has(p.agentId));
+    return { ...plan, candidates: eligible,
+      ambiguous: plan.ambiguous + plan.candidates.length - eligible.length };
   };
 
   const planned = await load(prisma).catch(()=>null);

@@ -112,7 +112,7 @@ export function AccountsList({ initialAccounts, outcome }: { initialAccounts: an
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-5 w-5" /> IA · Referências</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">Analise informações públicas de perfis de referência, sem acessar listas de seguidores nem executar ações.</p>
+            <p className="text-sm text-muted-foreground">Este recurso não exige conectar sua conta Instagram à Meta. Analise informações públicas de perfis de referência, sem acessar listas de seguidores nem executar ações.</p>
             <Link href="/reference-ai"><Button variant="outline"><Sparkles className="h-4 w-4 mr-2" /> Abrir IA · Referências</Button></Link>
           </CardContent>
         </Card>

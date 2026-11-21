@@ -130,7 +130,9 @@ test('operator endpoint is privileged, origin checked, transactionally scoped an
   assert.match(oneCustomer,/action: COLLECTOR_DRAFT_ACTION/);
   assert.match(oneCustomer,/reservedCollectorDraftAgents\(drafts\)/);
   assert.match(oneCustomer,/Prisma\.TransactionIsolationLevel\.Serializable/);
-  assert.match(oneCustomer,/const \[rows, currentRefs, drafts, allRefs\]/);
+  assert.match(oneCustomer,/const \[rows, currentRefs, drafts, allRefs, leases\]/);
+  assert.match(oneCustomer,/reservedSharedCollectorAgents\(leases\)/);
+  assert.match(route,/reservedSharedCollectorAgents\(leases\)/);
   assert.match(oneCustomer,/allRefs\.length > 1000/);
   assert.match(oneCustomer,/owners\.get\(ref\.username\.toLowerCase\(\)\)/);
   assert.match(oneCustomer,/uniqueToCustomer, discovered\.collectors/);

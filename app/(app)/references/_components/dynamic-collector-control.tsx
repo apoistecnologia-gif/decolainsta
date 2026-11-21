@@ -21,17 +21,42 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
   const [queue,setQueue]=useState<Queue|null>(null);
   const [running,setRunning]=useState(false);
   const [message,setMessage]=useState('');
+  const [diagnostic,setDiagnostic]=useState('Verificando disponibilidade da coleta...');
   const lock=useRef(false);
   const read=useCallback(async()=>{
     try{
       const response=await fetch('/api/operator/phantombuster/dynamic-references',{
         credentials:'same-origin',cache:'no-store',
       });
-      if(!response.ok)return null;
+      if(!response.ok){
+        const detail:Record<number,string>={
+          401:'A sessão do DECOLA INSTA expirou. Entre novamente no painel.',
+          403:'A coleta experimental está restrita ao operador do Preview.',
+          409:'O servidor não identificou o coletor do PhantomBuster. A configuração precisa ser revisada.',
+          503:'A fila de referências está indisponível ou exige revisão.',
+        };
+        setDiagnostic(detail[response.status]??'Não foi possível consultar a coleta automática.');
+        setQueue(null);
+        return null;
+      }
       const value=await response.json() as Queue;
-      if(value.accountId!==accountId||!value.enabled)return null;
+      if(value.accountId!==accountId){
+        setDiagnostic('Esta conta não corresponde à conta autorizada para o coletor piloto.');
+        setQueue(null);
+        return null;
+      }
+      if(!value.enabled){
+        setDiagnostic('A coleta está desativada na configuração deste Preview.');
+        setQueue(null);
+        return null;
+      }
+      setDiagnostic('');
       return value;
-    }catch{return null;}
+    }catch{
+      setDiagnostic('Não foi possível consultar a integração com o PhantomBuster.');
+      setQueue(null);
+      return null;
+    }
   },[accountId]);
   useEffect(()=>{
     let cancelled=false;
@@ -83,29 +108,32 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
     const timer=setInterval(()=>{void advance();},20000);
     return ()=>clearInterval(timer);
   },[advance,running]);
-  if(!queue)return null;
   return <div className="rounded-lg border bg-card p-4 space-y-2">
     <p className="text-sm font-semibold">Coleta automática de referências</p>
     <p className="text-xs text-muted-foreground">
       Um coletor existente recebe cada referência cadastrada diretamente do
       DECOLA INSTA. Nenhuma URL precisa ser alterada no PhantomBuster.
     </p>
-    <p className="text-sm">
-      Referências: {queue.total}. Iniciadas: {queue.attempted}.
-      Finalizadas: {queue.completed}.
-      {queue.unverified>0&&' Sem origem confirmada: '+queue.unverified+'.'}
+    {queue ? <>
+      <p className="text-sm">
+        Referências: {queue.total}. Iniciadas: {queue.attempted}.
+        Finalizadas: {queue.completed}.
+        {queue.unverified>0&&' Sem origem confirmada: '+queue.unverified+'.'}
+      </p>
+      {queue.nextReference&&<p className="text-xs text-muted-foreground">
+        Próxima: @{queue.nextReference}
+      </p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" disabled={running||(!queue.nextReference&&!queue.unresolved)}
+          onClick={()=>{setRunning(true);void advance();}}>
+          {running?'Coletando...':'Iniciar coletas'}
+        </Button>
+        {running&&<Button type="button" variant="outline"
+          onClick={()=>setRunning(false)}>Parar acompanhamento</Button>}
+      </div>
+    </> : <p role="status" className="text-sm text-muted-foreground">
+      {diagnostic}
     </p>
-    {queue.nextReference&&<p className="text-xs text-muted-foreground">
-      Próxima: @{queue.nextReference}
-    </p>}
-    <div className="flex flex-wrap gap-2">
-      <Button type="button" disabled={running||(!queue.nextReference&&!queue.unresolved)}
-        onClick={()=>{setRunning(true);void advance();}}>
-        {running?'Coletando...':'Iniciar coletas'}
-      </Button>
-      {running&&<Button type="button" variant="outline"
-        onClick={()=>setRunning(false)}>Parar acompanhamento</Button>}
-    </div>
     {message&&<p role="status" aria-live="polite" className="text-sm">{message}</p>}
     <p className="text-xs text-muted-foreground">
       As próximas execuções são solicitadas enquanto esta página estiver aberta.

@@ -14,8 +14,9 @@ type Queue={
   completed:number;unverified:number;nextReference:string|null;
   unresolved:boolean;currentState:string;
   canAdvance:boolean;blocker:string|null;providerStatus:string|null;
+  activeContainerStatus?:string|null;
 };
-type Advance={status:string;reference?:string;observedNames?:number};
+type Advance={status:string;reference?:string;observedNames?:number;providerStatus?:string};
 export function DynamicCollectorControl({accountId,onIndexed}:{
   accountId:string;onIndexed?:()=>void;
 }){
@@ -93,7 +94,9 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       if(info.status==='queued')
         setMessage('Coleta iniciada para @'+(info.reference??'referência')+'.');
       else if(info.status==='in-progress'||info.status==='provider-busy')
-        setMessage('Aguardando a conclusão da coleta atual.');
+        setMessage(info.providerStatus==='unavailable'
+          ?'Consulta do contêiner indisponível no PhantomBuster; nenhuma nova coleta será iniciada.'
+          :'O contêiner existente continua em execução.');
       else if(info.status==='finished'){
         setMessage('Coleta de @'+(info.reference??'referência')+
           ' finalizada. Nomes observados: '+(info.observedNames??0)+'.');

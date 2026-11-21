@@ -155,26 +155,55 @@ export async function inspectDynamicRunProof(
   try{
     const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch');
     url.searchParams.set('id',containerId);
-    const res=await fetcher(url.toString(),{
+    const init:RequestInit={
       method:'GET',headers:phantomBusterRequestHeaders(apiKey),
-      cache:'no-store',credentials:'omit',redirect:'error',signal:AbortSignal.timeout(8000),
-    });
+      cache:'no-store',credentials:'omit',redirect:'error',
+      signal:AbortSignal.timeout(8000),
+    };
+    const res=await fetcher(url.toString(),init);
     if(!res.ok)return 'unavailable';
     const outer=rec(await boundedJson(res));
-    const data=rec(outer?.data)??outer;
-    if(!data||String(data.id??'')!==containerId||
-       String(data.agentId??'')!==agentId)return 'unavailable';
-    if(!['finalized','completed','finished','success'].includes(String(data.status)))
+    if(!outer||outer.status==='error')return 'unavailable';
+    const data=rec(outer.data)??outer;
+    if(String(data.id??'')!==containerId)return 'unavailable';
+
+    // /containers/fetch does not guarantee an agentId field. When omitted,
+    // verify the persisted agent's container inventory, NOT the editable
+    // agent template or global latest-result.json.
+    if(data.agentId!==undefined&&data.agentId!==null){
+      if(String(data.agentId)!==agentId)return 'unavailable';
+    }else{
+      const historyUrl=new URL('https://api.phantombuster.com/api/v2/containers/fetch-all');
+      historyUrl.searchParams.set('agentId',agentId);
+      historyUrl.searchParams.set('mode','all');
+      historyUrl.searchParams.set('limit','100');
+      const history=await fetcher(historyUrl.toString(),{
+        ...init,signal:AbortSignal.timeout(8000),
+      });
+      if(!history.ok)return 'unavailable';
+      const listing=rec(await boundedJson(history,100000));
+      if(!listing||listing.status==='error')return 'unavailable';
+      const body=rec(listing.data)??listing;
+      const items=body.containers;
+      if(!Array.isArray(items)||
+        !items.some(v=>String(rec(v)?.id??'')===containerId))
+        return 'unavailable';
+    }
+    const status=String(data.status??'').toLowerCase();
+    if(['running','starting','pending','queued','launching','scheduled'].includes(status))
       return 'running';
-    if(!collectorRunCompletedAt(data.endedAt)||
-       (typeof data.exitCode==='number'&&data.exitCode!==0))
+    const final=['finalized','completed','finished','success'].includes(status);
+    const ended=['failed','error','aborted','timeout','stopped','cancelled','canceled'].includes(status);
+    if(!final&&!ended)return 'unavailable';
+    if(!final||!collectorRunCompletedAt(data.endedAt)||
+       (data.exitCode!==undefined&&data.exitCode!==null&&
+         Number(data.exitCode)!==0))
       return 'finished-unverified';
     const metadata=rec(data.userCustomMetadata);
     if(metadata?.decolainstaClaimId!==claimId)return 'finished-unverified';
-    if(data.argument!==undefined&&data.argument!==null){
-      if(configuredFollowerCollectorReference(data.argument)!==reference)
-        return 'finished-unverified';
-    }
+    if(data.argument!==undefined&&data.argument!==null&&
+       configuredFollowerCollectorReference(data.argument)!==reference)
+      return 'finished-unverified';
     return 'verified-finished';
   }catch{return 'unavailable';}
 }

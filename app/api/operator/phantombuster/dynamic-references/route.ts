@@ -62,6 +62,26 @@ async function agent(key:string){
   const template=process.env.PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE?.toLowerCase()??'';
   return resolvePilotCollectorInWorkspace(key,template);
 }
+/**
+ * A launched receipt is sufficient to READ its existing provider container.
+ * The discovery of mutable workspace settings is only needed for NEW launches.
+ */
+async function existingLaunchedAgent(accountId:string):Promise<string|null>{
+  const row=await prisma.activityLog.findFirst({
+    where:{instagramAccountId:accountId,action:DYNAMIC_COLLECTION_ACTION},
+    select:{instagramAccountId:true,targetUsername:true,details:true},
+    orderBy:[{createdAt:'desc'},{id:'desc'}],
+  });
+  if(!row)return null;
+  const event=parseDynamicJobEvent(row.details);
+  return event?.state==='launched'&&event.containerId&&
+    event.accountId===accountId&&event.agentId===row.targetUsername
+    ?event.agentId:null;
+}
+async function agentForReconciliation(key:string,accountId:string){
+  const existing=await existingLaunchedAgent(accountId);
+  return existing?{agentId:existing,status:'ready' as const}:agent(key);
+}
 const collectorIssue=(status:string)=>{
   const messages:Record<string,string>={
     'not-configured':'A referência-base ou chave API do coletor não está configurada.',
@@ -108,7 +128,7 @@ export async function GET(){
   if(!accountId)return bad('Somente operador no Preview',403);
   const key=process.env.PHANTOMBUSTER_API_KEY;
   if(!isConfiguredPhantomBusterKey(key))return bad('Provedor indisponível',409);
-  const selected=await agent(key!);
+  const selected=await agentForReconciliation(key!,accountId);
   if(!selected.agentId)return bad(collectorIssue(selected.status),409);
   const agentId=selected.agentId;
   const data=await queue(accountId,agentId);
@@ -118,13 +138,20 @@ export async function GET(){
   const ownLaunched=current?.accountId===accountId&&current.state==='launched';
   // Read-only preflight. A previous uncertain launch is not retried and a
   // provider state with no proof of idle does not enable a new launch.
+  const activeProof=enabled&&current?.accountId===accountId&&
+    current.state==='launched'&&current.containerId
+    ?await inspectDynamicRunProof(key!,agentId,current.containerId,
+      current.referenceUsername,current.claimId):null;
   const progress=enabled&&!ownLaunched&&!data.plan.unresolved&&data.plan.next
     ?await inspectPinnedCollectorProgress(key!,agentId):null;
   const canAdvance=Boolean(enabled&&(ownLaunched||
     (!data.plan.unresolved&&data.plan.next&&
       (progress==='finished'||progress==='no-run'))));
   const blocker=!enabled?'O piloto está desativado neste Preview.'
-    :ownLaunched?null
+    :ownLaunched&&activeProof==='running'?'O contêiner existente continua em execução no PhantomBuster.'
+    :ownLaunched&&activeProof==='unavailable'?'Não foi possível confirmar o contêiner no PhantomBuster. Nenhuma coleta será repetida.'
+    :ownLaunched&&activeProof==='finished-unverified'?'O contêiner encerrou sem prova da referência. Importação bloqueada.'
+    :ownLaunched?'Contêiner concluído; verificando a importação.'
     :data.plan.unresolved
       ?'Há uma execução anterior ainda sem confirmação. Nenhuma nova coleta será iniciada.'
     :!data.plan.next?'Todas as referências elegíveis já foram processadas.'
@@ -136,6 +163,7 @@ export async function GET(){
     nextReference:data.plan.next?.username??null,
     unresolved:data.plan.unresolved,
     currentState:current?.state??'none',
+    activeContainerStatus:activeProof,
     canAdvance,blocker,providerStatus:progress,
     noManualUrlChanges:true,followersExecuted:0,unfollowsExecuted:0,
   },{headers:HEADERS});
@@ -160,7 +188,7 @@ export async function POST(request:Request){
     return bad('Execução desativada no Preview',403);
   const key=process.env.PHANTOMBUSTER_API_KEY;
   if(!isConfiguredPhantomBusterKey(key))return bad('Provedor indisponível',409);
-  const selected=await agent(key!);
+  const selected=await agentForReconciliation(key!,accountId);
   if(!selected.agentId)return bad(collectorIssue(selected.status),409);
   const agentId=selected.agentId;
   const current=await queue(accountId,agentId);
@@ -176,7 +204,7 @@ export async function POST(request:Request){
     if(proof==='running'||proof==='unavailable')
       return NextResponse.json({
         status:'in-progress',reference:event.referenceUsername,
-        noDuplicateLaunch:true,
+        providerStatus:proof,noDuplicateLaunch:true,
       },{headers:HEADERS});
     if(proof!=='verified-finished'){
       const changed=makeDynamicJobEvent({...event,state:'finished-unverified'});

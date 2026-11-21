@@ -156,3 +156,51 @@ test('dynamic completed snapshots are indexed once, in the owning tenant, withou
   assert.deepEqual(await indexSavedAudienceCandidates(tx,accountId),{indexed:0});
   assert.equal(created.length,1);
 });
+
+test('missing agentId in container detail reconciles against agent history with GET only',async()=>{
+  const {inspectDynamicRunProof}=await import('../lib/providers/phantombuster-dynamic-reference');
+  const urls:string[]=[];
+  const fake=async(url:string,init?:RequestInit)=>{
+    urls.push(url); assert.equal(init?.method,'GET');
+    if(url.includes('/containers/fetch-all')){
+      assert.equal(new URL(url).searchParams.get('agentId'),id);
+      return Response.json({containers:[{id:'2222222222222222'}]});
+    }
+    assert.equal(new URL(url).searchParams.get('id'),'2222222222222222');
+    return Response.json({id:'2222222222222222',status:'finished',
+      endedAt:'2026-11-21T13:00:00Z',exitCode:0,
+      userCustomMetadata:{decolainstaClaimId:claimId},
+      argument:JSON.stringify({spreadsheetUrl:'https://www.instagram.com/uber/'})});
+  };
+  assert.equal(await inspectDynamicRunProof('key',id,'2222222222222222','uber',claimId,fake),
+    'verified-finished');
+  assert.equal(urls.length,2);
+  assert.ok(urls.every(x=>x.startsWith('https://api.phantombuster.com/api/v2/containers/')));
+});
+
+test('no metadata, failed run or missing agent membership cannot release an import',async()=>{
+  const {inspectDynamicRunProof}=await import('../lib/providers/phantombuster-dynamic-reference');
+  const base=async(url:string)=>url.includes('fetch-all')
+    ?Response.json({containers:[{id:'2222222222222222'}]})
+    :Response.json({id:'2222222222222222',status:'finished',
+      endedAt:'2026-11-21T13:00:00Z',exitCode:0});
+  assert.equal(await inspectDynamicRunProof('key',id,'2222222222222222','uber',claimId,base),
+    'finished-unverified');
+  const mismatch=async(url:string)=>url.includes('fetch-all')
+    ?Response.json({containers:[{id:'3333333333333333'}]})
+    :Response.json({id:'2222222222222222',status:'finished',
+      endedAt:'2026-11-21T13:00:00Z',exitCode:0});
+  assert.equal(await inspectDynamicRunProof('key',id,'2222222222222222','uber',claimId,mismatch),
+    'unavailable');
+  const fail=async()=>Response.json({id:'2222222222222222',agentId:id,
+    status:'failed',exitCode:1,endedAt:'2026-11-21T13:00:00Z'});
+  assert.equal(await inspectDynamicRunProof('key',id,'2222222222222222','uber',claimId,fail),
+    'finished-unverified');
+});
+test('the persisted launched receipt bypasses mutable template discovery for progress only',()=>{
+  const src=readFileSync('app/api/operator/phantombuster/dynamic-references/route.ts','utf8');
+  assert.match(src,/existingLaunchedAgent\(accountId\)/);
+  assert.match(src,/agentForReconciliation\(key!,accountId\)/);
+  assert.match(src,/activeContainerStatus:activeProof/);
+  assert.match(src,/providerStatus:proof,noDuplicateLaunch:true/);
+});

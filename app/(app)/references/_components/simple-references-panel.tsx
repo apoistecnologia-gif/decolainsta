@@ -16,7 +16,7 @@ type SyncResult = { status: 'synced' | 'capacity-reached'; synced?: number; tota
 type CollectionStatus = {
   statuses: { referenceId: string; state: 'source-linked' | 'awaiting-collector' |
     'awaiting-provider-setup' | 'awaiting-provider-capacity' |
-    'needs-operator-review' }[];
+    'collection-completed' | 'collection-started' | 'needs-operator-review' }[];
   linked: number;
   awaiting: number;
 };
@@ -441,7 +441,7 @@ export function SimpleReferencesPanel() {
             <div className="space-y-2">
               {collection && collection.awaiting > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  {collection.awaiting} referência(s) aguardando preparação da coleta.
+                  {collection.awaiting} referência(s) sem coleta confirmada.
                 </p>
               )}
               {references.map(reference => (
@@ -453,14 +453,18 @@ export function SimpleReferencesPanel() {
                     </a>
                     {readinessByReference.has(reference.id) && (
                       <p className="text-xs text-muted-foreground">
-                        {readinessByReference.get(reference.id) === 'source-linked'
+                        {readinessByReference.get(reference.id) === 'collection-completed'
+                          ? 'Coleta concluída'
+                          : readinessByReference.get(reference.id) === 'collection-started'
+                            ? 'Coleta iniciada; aguardando confirmação'
+                          : readinessByReference.get(reference.id) === 'source-linked'
                           ? 'Fonte de dados vinculada'
                           : readinessByReference.get(reference.id) === 'awaiting-provider-setup'
                             ? 'Aguardando configuração da fonte'
                           : readinessByReference.get(reference.id) === 'awaiting-provider-capacity'
                             ? 'Preparação pendente: capacidade do provedor'
                           : readinessByReference.get(reference.id) === 'needs-operator-review'
-                            ? 'Preparação pendente de revisão'
+                            ? 'Coleta ou configuração exige revisão'
                           : 'Aguardando preparação'}
                       </p>
                     )}

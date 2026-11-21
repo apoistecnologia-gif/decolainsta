@@ -88,7 +88,7 @@ class TestPreviewScheduler(unittest.TestCase):
     def test_disabled_importer_is_successful_noop(self):
         payload = b'{"enabled":false,"examined":0,"instagramActionsExecuted":0}'
         self.assertEqual(module.run_once(
-            self.env, lambda *_args: FakeResponse(payload)),
+            self.env, lambda *_args, **_kwargs: FakeResponse(payload)),
             (0, "importer-disabled"))
 
     def test_simulation_cron_is_opt_in_and_never_targets_production(self):
@@ -121,7 +121,7 @@ class TestPreviewScheduler(unittest.TestCase):
         for payload in cases:
             with self.subTest(payload=payload[:20]):
                 code, msg = module.run_simulation_once(
-                    env, lambda *_args: FakeResponse(payload))
+                    env, lambda *_args, **_kwargs: FakeResponse(payload))
                 self.assertNotEqual(code, 0)
                 self.assertNotIn("sensitive", msg)
 

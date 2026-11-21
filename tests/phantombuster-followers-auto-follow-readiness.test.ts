@@ -420,3 +420,15 @@ test('only admin readiness emits sanitized profile and leaves launch guard intac
   const runner=readFileSync('app/api/operator/followers-auto-follow-run/route.ts','utf8');
   assert.match(runner,/privateExclusion!=='enabled'/);
 });
+
+
+test('pilot shows the current account name and keeps the original name as evidence',()=>{
+  const ui=readFileSync('app/(app)/references/_components/social-pilot-panel.tsx','utf8');
+  const readiness=readFileSync('app/api/operator/followers-auto-follow-readiness/route.ts','utf8');
+  assert.match(ui,/Conta cadastrada: \{trial\?\.accountName/);
+  assert.match(ui,/No teste original:/);
+  assert.match(ui,/Confirmo que a sessão ativa é de @\{trial\.accountName\}/);
+  assert.doesNotMatch(ui,/Confirmo que a sessão ativa é de @contateste6699/);
+  assert.match(readiness,/Nome atual cadastrado:/);
+  assert.match(readiness,/accountUsername/);
+});

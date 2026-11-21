@@ -74,6 +74,6 @@ export async function GET() {
     sessionAccountVerifiedByProvider:false,
     agentLaunchEnabled:false,
     instagramActionsExecuted:0,
-    note:'A sessão @contateste6699 foi informada pelo titular; a API do provedor não comprovou sua identidade.',
+    note:`No teste original, o titular informou a sessão @contateste6699. Nome atual cadastrado: @${accountUsername}. A API do provedor não comprovou a identidade.`,
   }, { headers:HEADERS });
 }

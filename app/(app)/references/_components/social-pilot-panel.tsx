@@ -153,7 +153,9 @@ export function SocialPilotPanel(){
   return <section className="rounded-lg border p-4 space-y-3">
     <h2 className="text-sm font-semibold">Teste real isolado — Followers Auto Follow</h2>
     <p className="text-xs text-muted-foreground">
-      Conta de teste: @contateste6699. Referência: @mameto_lueji.
+      Conta cadastrada: {trial?.accountName
+        ? '@'+trial.accountName:'a verificar'}. No teste original:
+      @contateste6699. Referência: @mameto_lueji.
       Um único lançamento, sem agendamento e sem unfollow automático.
       O PhantomBuster escolhe o seguidor: não podemos verificar a lista de exclusões
       antecipadamente. O resultado do contêiner não comprova um follow.
@@ -194,15 +196,16 @@ export function SocialPilotPanel(){
           ?'disponível somente mediante autorização manual'
           :'bloqueado até validar os requisitos'}.
         Tentativa anterior: {trial.attempt?.stage??'nenhuma'}.</p>
-      <p>A sessão foi informada como @contateste6699 pelo titular,
-        mas sua identidade não é comprovada pela API do PhantomBuster.</p>
+      <p>No teste original, a sessão foi informada como @contateste6699
+        pelo titular. O nome atual cadastrado é @{trial.accountName},
+        mas a API do PhantomBuster não comprova a identidade da sessão.</p>
       {trial.enabled&&!trial.attempted&&inspection.providerCheck==='matched'&&
         inspection.privateExclusionVerified&&
         <div className="border-t pt-2 space-y-2">
           <label className="flex gap-2 items-start">
             <input type="checkbox" checked={approved} disabled={busy}
               onChange={e=>setApproved(e.target.checked)} />
-            <span>Confirmo que a sessão ativa é de @contateste6699.
+            <span>Confirmo que a sessão ativa é de @{trial.accountName}.
               Autorizo apenas um lançamento real que pode seguir um seguidor
               escolhido pelo PhantomBuster.</span>
           </label>

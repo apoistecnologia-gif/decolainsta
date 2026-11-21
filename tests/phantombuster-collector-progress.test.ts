@@ -94,15 +94,15 @@ test('latest container is selected by timestamp rather than array order',()=>{
 });
 test('operator monitor has no agent writes and does not expose provider credentials',()=>{
   const route=readFileSync('app/api/operator/phantombuster-collector-progress/route.ts','utf8');
-  const module=readFileSync('lib/providers/phantombuster-collector-progress.ts','utf8');
+  const providerModule=readFileSync('lib/providers/phantombuster-collector-progress.ts','utf8');
   const panel=readFileSync('app/(app)/references/_components/operator-collector-intake-panel.tsx','utf8');
   assert.match(route,/VERCEL_ENV!=='preview'/);
   assert.match(route,/operator\?\.role!=='admin'/);
   assert.match(route,/PHANTOMBUSTER_SOCIAL_PILOT_REFERENCE/);
   assert.match(route,/inspectExistingReferenceCollector/);
-  assert.match(module,/mode','all'/);
-  assert.match(module,/withRuntimeEvents','false'/);
+  assert.match(providerModule,/mode','all'/);
+  assert.match(providerModule,/withRuntimeEvents','false'/);
   assert.match(panel,/Consultar execução existente \(somente leitura\)/);
-  assert.doesNotMatch(route+module,/https:\/\/api\.phantombuster\.com\/api\/v2\/agents\/(?:launch|save)|user_follow|user_unfollow/);
+  assert.doesNotMatch(route+providerModule,/https:\/\/api\.phantombuster\.com\/api\/v2\/agents\/(?:launch|save)|user_follow|user_unfollow/);
   assert.doesNotMatch(route,/\.create\(|\.update\(|\.delete\(/);
 });

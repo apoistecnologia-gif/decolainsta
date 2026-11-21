@@ -88,6 +88,10 @@ test('dynamic controller is preview gated, operator only, idempotent and account
   assert.match(src,/\$queryRaw<Array<\{acquired:boolean\}>>/);
   assert.match(src,/lockRows\[0\]\.acquired!==true/);
   assert.doesNotMatch(src,/\$queryRawUnsafe\(/);
+  assert.match(src,/P2010/);
+  assert.match(src,/P2034/);
+  assert.match(src,/P2028/);
+  assert.doesNotMatch(src,/return bad\('Conflito na reserva',503\)/);
   assert.match(src,/Prisma\.TransactionIsolationLevel\.Serializable/);
   assert.match(src,/event&&event.accountId!==accountId/);
   assert.match(src,/state:'claimed'/);

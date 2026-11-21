@@ -86,6 +86,6 @@ test('new collector-specific reasons are inert allowlisted codes, never raw logs
     assert.doesNotMatch(code,/sensitive|instagram\.com|sessionCookie|SECRET/);
   }
   const src=readFileSync('app/(app)/references/_components/dynamic-collector-control.tsx','utf8');
-  assert.match(src,/failureExplanations\\[queue\\.failureDiagnostic\\]/);
+  assert.match(src,/failureExplanations\[queue\.failureDiagnostic\]/);
   assert.match(src,/Indício no log da execução/);
 });

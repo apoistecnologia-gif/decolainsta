@@ -45,6 +45,11 @@ async function agent(key:string){
   const scan=await discoverFollowerCollectors(key);
   if(scan.status!=='ok')return null;
   const matches=scan.collectors.filter(x=>x.referenceUsername===reference);
+  // Prefer the already configured read-only pilot collector when it matches
+  // the verified template; never confuse it with the Follow Agent ID.
+  const preferred=process.env.PHANTOMBUSTER_PILOT_AGENT_ID;
+  if(preferred&&matches.some(x=>x.collectorAgentId===preferred))
+    return preferred;
   return matches.length===1?matches[0].collectorAgentId:null;
 }
 async function queue(accountId:string,agentId:string){

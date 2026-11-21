@@ -297,6 +297,17 @@ def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> 
             or value.get("status") != "read-only-diagnostic"
             or value.get("metaRead") not in ("ok", "not-connected", "unavailable")
             or value.get("previousContainerCategory") not in categories
+            or value.get("collectorConfiguration") not in (
+                "ready", "not-configured", "invalid-key", "rate-limited",
+                "workspace-mismatch", "ambiguous-match", "invalid-inventory",
+                "collector-not-found", "missing-cookie", "mismatch",
+                "unavailable")
+            or value.get("collectorProgress") not in (
+                "not-checked", "running", "finished", "failed", "pending",
+                "unverified", "no-run", "invalid-key", "rate-limited", "unavailable")
+            or type(value.get("collectionHistoryRequiresReview")) is not bool
+            or value.get("newCollectionPermitted") is not False
+            or value.get("currentSessionOwnerVerifiedByProvider") is not False
             or value.get("previousContainerOnly") is not True
             or value.get("currentPhantomSessionVerified") is not False
             or value.get("instagramRestrictionCleared") is not None
@@ -306,7 +317,10 @@ def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> 
         return 1, "unsafe-readiness-response"
     # Safe allowlisted status, never raw logs, usernames, tokens or cookies.
     return 0, ("ok: meta=" + value["metaRead"] +
-               " old-container=" + (value["previousContainerCategory"] or "none"))
+               " old-container=" + (value["previousContainerCategory"] or "none") +
+               " collector=" + value["collectorConfiguration"] +
+               " progress=" + value["collectorProgress"] +
+               " history-review=" + str(value["collectionHistoryRequiresReview"]).lower())
 
 def main() -> int:
     refresh_status, refresh_message = run_once(os.environ)

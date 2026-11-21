@@ -3,6 +3,17 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
+type CollectorProgress = {
+  status: 'running'|'finished'|'failed'|'pending'|'unverified'|'no-run'|
+    'no-matching-collector'|'ambiguous-collector'|'invalid-key'|
+    'rate-limited'|'unavailable'|'invalid-reference'|'not-configured';
+  reference:string|null;
+  latestRunSeen:boolean;
+  instagramSessionVerifiedByProvider:false;
+  resultsAttributedToSavedReference:false;
+  newFollowersOnOwnAccount:0;
+  followsExecutedByDiagnostic:0;
+};
 type SessionDiagnostic = {
   status: 'session-error-observed' | 'verification-required-observed' |
     'no-session-error-observed' | 'no-output' | 'invalid-key' | 'rate-limited' |
@@ -71,12 +82,27 @@ export function OperatorCollectorIntakePanel() {
   const [busy, setBusy] = useState(false);
   const [capacity, setCapacity] = useState<WorkspaceCapacity | null>(null);
   const [sessionCheck, setSessionCheck] = useState<SessionDiagnostic | null>(null);
+  const [collectorProgress, setCollectorProgress] = useState<CollectorProgress | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [queue, setQueue] = useState<ProvisioningPlan | null>(null);
   const [draftOutcome, setDraftOutcome] = useState<DraftOutcome | null>(null);
   const [reconciled, setReconciled] = useState<Reconciled | null>(null);
   const [reconciliationOffset, setReconciliationOffset] = useState(0);
   const [error, setError] = useState('');
+  async function checkCollectorProgress() {
+    if(busy) return;
+    setBusy(true); setError(''); setCollectorProgress(null);
+    try {
+      const response=await fetch('/api/operator/phantombuster-collector-progress',{
+        method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
+      });
+      if(!response.ok) throw new Error('Consulta do coletor recusada');
+      setCollectorProgress(await response.json() as CollectorProgress);
+    } catch {
+      setError('Não foi possível consultar a execução do coletor existente.');
+    } finally {setBusy(false);}
+  }
+
   async function checkExistingSessionLogs() {
     if (busy) return;
     setBusy(true); setError(''); setSessionCheck(null);
@@ -216,6 +242,34 @@ export function OperatorCollectorIntakePanel() {
           {capacity.status === 'ok' && capacity.slotMetrics.length === 0 &&
             <p>O provedor não informou números de vagas em formato reconhecido.
               Não é possível afirmar quantas vagas restam.</p>}
+        </div>}
+      </div>
+      <div className="rounded-md border p-3 space-y-2">
+        <h3 className="text-sm font-medium">Coleta em andamento no PhantomBuster</h3>
+        <p className="text-xs text-muted-foreground">
+          Consulta a última execução do coletor atualmente configurado para o
+          teste antigo. Não inicia outras coletas nem cadastra novos seguidores.
+        </p>
+        <Button type="button" variant="outline" disabled={busy}
+          onClick={() => void checkCollectorProgress()}>
+          {busy ? 'Consultando...' : 'Consultar execução existente (somente leitura)'}
+        </Button>
+        {collectorProgress && <div role="status" className="space-y-1 text-sm">
+          <p>Referência configurada: {collectorProgress.reference
+            ? '@' + collectorProgress.reference : 'não identificada'}.</p>
+          <p>{collectorProgress.status === 'running' ? 'Execução em andamento.' :
+              collectorProgress.status === 'finished' ? 'Contêiner finalizado; resultados e origem ainda precisam ser verificados.' :
+              collectorProgress.status === 'failed' ? 'A execução anterior terminou com erro.' :
+              collectorProgress.status === 'pending' ? 'Execução na fila.' :
+              collectorProgress.status === 'no-matching-collector' ? 'Nenhum coletor único encontrado para essa referência.' :
+              collectorProgress.status === 'ambiguous-collector' ? 'Existem coletores duplicados; precisa de revisão.' :
+              collectorProgress.status === 'no-run' ? 'Nenhuma execução registrada.' :
+              'Estado não comprovado: ' + collectorProgress.status} </p>
+          <p className="text-xs text-muted-foreground">
+            Esta consulta não confirma novos seguidores na sua conta.
+            As referências novas só serão processadas por execuções próprias,
+            com identificação da origem de cada resultado.
+          </p>
         </div>}
       </div>
       <div className="rounded-md border p-3 space-y-2">

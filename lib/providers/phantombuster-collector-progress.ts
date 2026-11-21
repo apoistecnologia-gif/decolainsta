@@ -126,3 +126,30 @@ export async function inspectExistingReferenceCollector(
     return answer(result.status,result.latestRunSeen);
   }catch{return answer('unavailable');}
 }
+
+/**
+ * Read-only progress check for a PRECISE approved collector agent.
+ * Unlike legacy reference discovery, this does not depend on the agent's
+ * old template reference URL. It never launches, updates, or scrapes.
+ */
+export async function inspectPinnedCollectorProgress(
+  apiKey:string, agentId:string, fetcher:Fetcher=fetch,
+):Promise<ProgressStatus>{
+  if(!apiKey||!/^[0-9]{10,25}$/.test(agentId))return 'unavailable';
+  try{
+    const url=new URL('https://api.phantombuster.com/api/v2/containers/fetch-all');
+    url.searchParams.set('agentId',agentId);
+    url.searchParams.set('mode','all');
+    url.searchParams.set('limit','5');
+    url.searchParams.set('withRuntimeEvents','false');
+    const response=await fetcher(url.toString(),{
+      method:'GET',headers:phantomBusterRequestHeaders(apiKey),
+      redirect:'error',credentials:'omit',cache:'no-store',
+      signal:AbortSignal.timeout(8000),
+    });
+    if(response.status===401||response.status===403)return 'invalid-key';
+    if(response.status===429)return 'rate-limited';
+    if(!response.ok)return 'unavailable';
+    return classifyCollectorContainers(await boundedJson(response),agentId).status;
+  }catch{return 'unavailable';}
+}

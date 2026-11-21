@@ -303,7 +303,25 @@ export async function POST(request:Request){
       },select:{id:true}});
       return {id:row.id,event};
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
-  }catch{return bad('Conflito na reserva',503);}
+  }catch(error){
+    // Only disclose an allowlisted Prisma error code. Never expose SQL text,
+    // credentials or driver metadata to the customer-facing panel.
+    const rawCode=error&&typeof error==='object'&&'code' in error
+      ?(error as {code?:unknown}).code:null;
+    const code=typeof rawCode==='string'&&
+      ['P2010','P2028','P2034','P1001','P1002'].includes(rawCode)
+      ?rawCode:null;
+    const explanation=code==='P2034'
+      ?'Conflito simultâneo na reserva do coletor (P2034). Nenhuma nova execução foi iniciada.'
+      :code==='P2010'
+        ?'Falha na consulta de reserva do PostgreSQL (P2010). Nenhuma nova execução foi iniciada.'
+        :code==='P2028'
+          ?'A transação de reserva expirou (P2028). Nenhuma nova execução foi iniciada.'
+          :code==='P1001'||code==='P1002'
+            ?'O banco Neon não respondeu à reserva ('+code+'). Nenhuma nova execução foi iniciada.'
+            :'Não foi possível registrar a reserva no banco. Nenhuma nova execução foi iniciada.';
+    return bad(explanation,503);
+  }
   if(!claim)return bad('Agente reservado ou referência já processada',409);
   const launched=await launchExistingCollectorForReference(
     key!,agentId,claim.event.referenceUsername,claim.event.claimId);

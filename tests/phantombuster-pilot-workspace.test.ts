@@ -142,3 +142,36 @@ test('inventory agent that lacks a cookie never authorizes launch even with a ma
     });
   assert.deepEqual(got,{status:'collector-not-found',agentId:null});
 });
+
+test('filtered fetch-all resolves a partial inventory even when individual fetch would 404',async()=>{
+  const calls:string[]=[];
+  const got=await resolvePilotCollectorInWorkspace('key','mameto_lueji',name,
+    async(url)=>{
+      const u=new URL(url);calls.push(u.pathname+(u.searchParams.has('agentIds')?':filtered':''));
+      if(u.pathname==='/api/v2/agents/fetch-all'){
+        return response(u.searchParams.has('agentIds')?[collector()]:[{
+          id,name,script:'Instagram Follower Collector.js',
+        }]);
+      }
+      throw Error('Individual endpoint must not be called');
+    });
+  assert.deepEqual(got,{status:'ready',agentId:id});
+  assert.deepEqual(calls,[
+    '/api/v2/agents/fetch-all','/api/v2/agents/fetch-all:filtered',
+  ]);
+});
+test('filtered inventory with mismatching ID or missing cookie never authorizes collection',async()=>{
+  let fetches=0;
+  const got=await resolvePilotCollectorInWorkspace('key','mameto_lueji',name,
+    async(url)=>{
+      const u=new URL(url);
+      if(u.pathname.endsWith('/fetch-all')){
+        if(u.searchParams.has('agentIds'))return response([collector(other)]);
+        return response([{id,name,script:'Instagram Follower Collector.js'}]);
+      }
+      fetches++;
+      return new Response(null,{status:404});
+    });
+  assert.equal(fetches,1);
+  assert.deepEqual(got,{status:'collector-not-found',agentId:null});
+});

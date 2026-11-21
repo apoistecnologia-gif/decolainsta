@@ -166,3 +166,15 @@ test('publication refuses failed container; never calls media_publish', async ()
   } finally { global.fetch = originalFetch; }
 });
 
+test('official Instagram profile requests reject a mismatched account ID', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => Response.json({ id: '999', username: 'outra_conta' });
+  try {
+    await assert.rejects(
+      getProfile('test-token', '123'),
+      /perfil diferente da conta Instagram autorizada/,
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

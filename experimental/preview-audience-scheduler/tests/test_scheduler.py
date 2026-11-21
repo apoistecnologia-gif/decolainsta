@@ -173,6 +173,53 @@ class TestPreviewScheduler(unittest.TestCase):
                 self.assertNotEqual(code, 0)
                 self.assertNotIn("sensitive", message)
 
+    def test_collection_never_starts_without_distinct_opt_in(self):
+        self.assertEqual(module.run_collection_once(
+            self.env, lambda *_args, **_kwargs: self.fail("unexpected network")),
+            (0, "disabled"))
+
+    def test_collection_is_not_due_outside_six_hour_window(self):
+        env = {**self.env, "PREVIEW_DYNAMIC_COLLECTION_CRON_ENABLED": "yes"}
+        not_due = datetime(2026, 11, 21, 21, 30, tzinfo=timezone.utc)
+        self.assertEqual(module.run_collection_once(
+            env, lambda *_args, **_kwargs: self.fail("too soon"), now=not_due),
+            (0, "interval-not-due"))
+
+    def test_collection_sends_only_server_authorized_reference_request(self):
+        env = {**self.env, "PREVIEW_DYNAMIC_COLLECTION_CRON_ENABLED": "yes"}
+        due = datetime(2026, 11, 22, 0, 5, tzinfo=timezone.utc)
+        requests = []
+        def fake_open(request, timeout):
+            requests.append((request, timeout))
+            return FakeResponse(b'{"status":"queued","savedPhantomSettingsChanged":false,'
+                                b'"followsExecuted":0,"unfollowsExecuted":0}')
+        self.assertEqual(module.run_collection_once(env, fake_open, now=due),
+                         (0, "ok: status=queued"))
+        self.assertEqual(len(requests), 1)
+        request, timeout = requests[0]
+        self.assertEqual(request.full_url, "https://" + module.PREVIEW_HOST
+                         + module.DYNAMIC_RECONCILE_PATH)
+        self.assertEqual(request.data,
+                         b'{"operation":"collect-next","confirmDynamicCollection":true}')
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(timeout, 25)
+
+    def test_collection_rejects_unsafe_and_unexpected_provider_responses(self):
+        env = {**self.env, "PREVIEW_DYNAMIC_COLLECTION_CRON_ENABLED": "yes"}
+        due = datetime(2026, 11, 22, 0, 5, tzinfo=timezone.utc)
+        for payload in [
+            b'{"status":"queued","savedPhantomSettingsChanged":false,"followsExecuted":1,"unfollowsExecuted":0}',
+            b'{"status":"queued","savedPhantomSettingsChanged":true,"followsExecuted":0,"unfollowsExecuted":0}',
+            b'{"status":"unknown"}',
+            b'{"status":"reconcile-only"}',
+            b'secret provider error',
+        ]:
+            with self.subTest(payload=payload[:24]):
+                code, message = module.run_collection_once(
+                    env, lambda *_args, **_kwargs: FakeResponse(payload), now=due)
+                self.assertNotEqual(code, 0)
+                self.assertNotIn("secret", message)
+
     def test_refuses_short_auth_and_missing_bypass(self):
         for name, value in [("PREVIEW_CRON_SECRET", "tiny"),("PREVIEW_PROTECTION_BYPASS", "")]:
             env = {**self.env, name: value}

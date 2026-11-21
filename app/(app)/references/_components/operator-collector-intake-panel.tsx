@@ -19,6 +19,16 @@ type ProvisioningPlan = {
   eligible: number;
   next: boolean;
   draftCreationEnabled: boolean;
+  sharedCollector?: {
+    mode: 'one_reference_per_execution';
+    pendingReferences: number;
+    mayShareOneAgentSequentially: boolean;
+    collectorAssigned: false;
+    providerRunInputVerified: false;
+    exclusiveAgentLeaseImplemented: false;
+    importsEnabled: false;
+    actionsEnabled: false;
+  };
 };
 type DraftOutcome = {
   state: 'created' | 'existing-draft' | 'capacity-reached' |
@@ -225,6 +235,12 @@ export function OperatorCollectorIntakePanel() {
             Rascunhos já criados aguardando configuração: {queue.pendingSetup}.</p>
           <p>Exigem revisão: {queue.previousAttemptNeedsReview}.
             Revogadas: {queue.explicitlyRevoked}.</p>
+          {queue.sharedCollector && <p className="rounded-md border p-2 text-xs text-muted-foreground">
+            Reutilização sequencial: {queue.sharedCollector.pendingReferences} referência(s)
+            aguardam preparação. O mesmo agente poderá ser reaproveitado apenas
+            em execuções separadas, depois de validar a sessão, a reserva exclusiva
+            e a origem do resultado de cada referência. Nenhuma coleta ou ação está habilitada.
+          </p>}
           {queue.next && queue.draftCreationEnabled && (
             <Button type="button" variant="outline" disabled={busy}
               onClick={() => void runProvisioning('create-next-draft')}>

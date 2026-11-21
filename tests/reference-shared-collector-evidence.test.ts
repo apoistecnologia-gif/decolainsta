@@ -74,6 +74,7 @@ test('preview readiness is descriptive, not permission to import or launch', () 
     mode:'one_reference_per_execution', pendingReferences:3,
     mayShareOneAgentSequentially:true, collectorAssigned:false,
     providerRunInputVerified:false, exclusiveAgentLeaseImplemented:false,
+    exclusiveAgentClaimPrepared:true, exclusiveAgentLeaseEnabled:false,
     importsEnabled:false, actionsEnabled:false,
   });
   const route = readFileSync('app/api/provider/phantombuster/provision-all-customers/route.ts','utf8');

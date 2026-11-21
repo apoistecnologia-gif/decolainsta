@@ -168,19 +168,19 @@ export function DynamicCollectorControl({accountId,onIndexed}:{
       const updated=await read();
       setQueue(updated.value);
       setDiagnostic(updated.diagnostic);
+      // Async provider response, not a synchronous React effect update:
+      // the limit indicator pauses subsequent timer calls immediately.
+      if(updated.value?.collectionLimited){
+        setRunning(false);
+        if(info.status==='queued'||info.status==='in-progress'||
+           info.status==='provider-busy')
+          setMessage('Acompanhamento pausado por limite do Instagram. Nenhuma nova coleta será iniciada.');
+      }
     }catch{
       setRunning(false);
       setMessage('A execução não pôde ser confirmada; não será repetida automaticamente.');
     }finally{lock.current=false;}
   },[accountId,onIndexed,read]);
-  useEffect(()=>{
-    // Stop the 20-second polling loop if the provider has explicitly
-    // limited Instagram access. This must NOT silently launch a new run.
-    if(running&&queue?.collectionLimited){
-      setRunning(false);
-      setMessage('Acompanhamento pausado por limite do Instagram. Nenhuma nova coleta será iniciada.');
-    }
-  },[running,queue?.collectionLimited]);
   useEffect(()=>{
     // Only resume a previously launched container; never auto-launch the
     // next reference on a fresh visit without a prior operator initiation.

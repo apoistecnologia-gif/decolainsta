@@ -220,10 +220,10 @@ export function OperatorCollectorIntakePanel() {
           {busy ? 'Verificando...' : 'Consultar fila de preparação'}
         </Button>
         {queue && <div className="text-sm space-y-1">
-          <p>Referências: {queue.total}. Fontes vinculadas: {queue.linked}.
-            Aguardando configuração: {queue.pendingSetup}.</p>
-          <p>Pendentes elegíveis: {queue.eligible}.
-            Exigem revisão: {queue.previousAttemptNeedsReview}.
+          <p>Referências: {queue.total}. Fontes vinculadas: {queue.linked}.</p>
+          <p>Referências prontas para preparar: {queue.eligible}.
+            Rascunhos já criados aguardando configuração: {queue.pendingSetup}.</p>
+          <p>Exigem revisão: {queue.previousAttemptNeedsReview}.
             Revogadas: {queue.explicitlyRevoked}.</p>
           {queue.next && queue.draftCreationEnabled && (
             <Button type="button" variant="outline" disabled={busy}

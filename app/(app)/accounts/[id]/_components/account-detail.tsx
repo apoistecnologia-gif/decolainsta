@@ -227,7 +227,9 @@ export function AccountDetail({ account }: { account: any }) {
         </Link>
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight">@{account?.username ?? '?'}</h1>
-          <p className="text-sm text-muted-foreground">Perfil oficial e laboratório de simulação</p>
+          <p className="text-sm text-muted-foreground">{account.connected
+            ? 'Conta Instagram conectada · Contas de referência'
+            : 'Conta demonstrativa · Recursos de teste'}</p>
         </div>
       </div>
 

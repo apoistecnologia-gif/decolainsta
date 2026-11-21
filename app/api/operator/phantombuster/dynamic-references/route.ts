@@ -14,7 +14,7 @@ import {
 } from '@/lib/providers/phantombuster-dynamic-reference';
 import {
   AUDIENCE_HISTORY_ACTION,MAX_HISTORY_BATCHES,
-  makeAudienceSnapshot,parseAudienceSnapshot,
+  makeAudienceSnapshot,parseAudienceSnapshot,type AudienceSnapshot,
 } from '@/lib/reference-audience-history';
 import {
   DYNAMIC_COLLECTION_ACTION,MAX_DYNAMIC_COLLECTION_LOGS,
@@ -149,7 +149,7 @@ export async function POST(request:Request){
         status:'import-unavailable',reference:event.referenceUsername,
         noAutomaticRetry:true,
       },{headers:HEADERS});
-    const batches=[];
+    const batches: AudienceSnapshot[]=[];
     for(let i=0;i<result.usernames.length;i+=10){
       const snapshot=makeAudienceSnapshot(
         event.referenceId,event.referenceUsername,agentId,

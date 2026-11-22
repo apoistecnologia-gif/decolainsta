@@ -4,7 +4,9 @@ import {useCallback,useEffect,useState} from 'react';
 import {Button} from '@/components/ui/button';
 
 type Readiness={
-  status:string;account:'apoistecnologia';target:'contateste6699';
+  status:string;account:string;target:null;
+  invalidLegacyTarget:boolean;legacyTargetUsername:string|null;
+  legacyConfigurationError:string|null;
   configured:boolean;cookieConfigured:boolean;accountReady:boolean;
   canLaunch:boolean;canInspect:boolean;
   providerReportedFollow:boolean;followIndependentlyVerified:false;
@@ -14,10 +16,10 @@ type Readiness={
 const messages:Record<string,string>={
   'not-started':'Nenhuma ação real da Apify foi solicitada.',
   reserved:'Tentativa reservada. Não repetir a solicitação.',
-  launched:'Execução iniciada. Consulte o resultado antes de prosseguir.',
+  launched:'Execução original enviada. Consulte o resultado; o alvo corresponde ao antigo usuário da própria conta.',
   unconfirmed:'Lançamento incerto. Não repetir automaticamente.',
   rejected:'A Apify recusou o lançamento. Nenhuma nova tentativa será feita.',
-  'provider-reported':'O Actor informou follow realizado. Ainda precisa de conferência no Instagram.',
+  'provider-reported':'O Actor informou sucesso para a própria conta. Isso NÃO é considerado follow válido.',
   'provider-rejected':'O Actor informou que não realizou o follow.',
   'provider-blocked':'O Actor informou bloqueio ou problema de autenticação. Não repetir.',
   failed:'A execução falhou. Não repetir automaticamente.',
@@ -26,7 +28,6 @@ const messages:Record<string,string>={
   unavailable:'Consulta temporariamente indisponível. Não iniciar outra ação.',
   'launch-request-accepted':'Pedido de execução aceito. Verifique o resultado depois.',
 };
-const approved='CONFIRMO UM FOLLOW REAL NO INSTAGRAM';
 export function ApifyOneFollowTest(){
   const [state,setState]=useState<Readiness|null>(null);
   const [busy,setBusy]=useState(false);
@@ -63,25 +64,18 @@ export function ApifyOneFollowTest(){
     });
     return()=>controller.abort();
   },[]);
-  const act=async(operation:'launch-one'|'inspect')=>{
+  const inspect=async()=>{
     if(busy)return;
-    if(operation==='launch-one'&&
-       !window.confirm(
-        'Autoriza compartilhar apenas os cookies de sessão necessários de @apoistecnologia com o Actor dead00 na Apify para tentar seguir @contateste6699 UMA VEZ?\n\nA conta pode sofrer restrição. Não haverá follow automático posterior nem unfollow agendado.'
-       ))return;
     setBusy(true);setMessage('');setError('');
     try{
-      const payload=operation==='launch-one'
-        ?{operation,accountConfirmation:'apoistecnologia',approval:approved}
-        :{operation};
       const response=await fetch('/api/operator/apify/one-follow',{
         method:'POST',credentials:'same-origin',cache:'no-store',
         redirect:'error',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(payload),
+        body:JSON.stringify({operation:'inspect'}),
       });
       const result=await response.json() as {status?:string;error?:string};
-      if(!response.ok)throw Error(result.error??'Operação não autorizada');
-      setMessage(messages[result.status??'']??'Solicitação registrada.');
+      if(!response.ok)throw Error(result.error??'Consulta não autorizada');
+      setMessage(messages[result.status??'']??'Consulta registrada.');
       await read();
     }catch(err){
       setError(err instanceof Error?err.message:'Falha de comunicação');
@@ -90,14 +84,19 @@ export function ApifyOneFollowTest(){
   };
   return <section className="rounded-lg border p-3 space-y-3">
     <h3 className="text-sm font-semibold">
-      Teste real de seguir — Apify (somente uma ação)
+      Auditoria do teste Apify — nenhum novo follow
     </h3>
     <p className="text-xs text-muted-foreground">
-      Conta: @apoistecnologia · Destino de teste: @contateste6699.
-      Nenhum unfollow será executado ou agendado automaticamente.
+      Conta atual: @{state?.account??'apoistecnologia'}.
+      @contateste6699 é o nome anterior da MESMA conta, não um destino válido.
+      Novos follows e unfollows permanecem desativados.
     </p>
     {state&&<div className="space-y-1 text-xs">
-      <p>Execução: {messages[state.status]??state.status}</p>
+      <p>Execução original: {messages[state.status]??state.status}</p>
+      {state.invalidLegacyTarget&&<p role="alert" className="font-medium text-destructive">
+        Erro de configuração registrado: tentativa apontou para a própria conta.
+        Nenhum sucesso do Actor será contado como follow válido.
+      </p>}
       <p>Chave de sessão: {state.cookieConfigured?'Configurada':'Não configurada'}.
         Limite: {state.maxActionsPerRun} follow · Teto Apify:
         US$ {state.maxTotalChargeUsd.toFixed(2)}.
@@ -106,16 +105,15 @@ export function ApifyOneFollowTest(){
         Custo informado: US$ {state.costUsd.toFixed(4)}.
       </p>}
       {state.providerReportedFollow&&<p className="font-medium">
-        O Actor informou sucesso, mas o Instagram ainda não foi verificado.
+        Resultado informado pelo Actor é inválido para crescimento: destino é a própria conta.
       </p>}
     </div>}
     <div className="flex flex-wrap gap-2">
-      <Button size="sm" disabled={!state?.canLaunch||busy}
-        type="button" onClick={()=>void act('launch-one')}>
-        {busy?'Processando...':'Testar 1 follow real'}
+      <Button size="sm" disabled type="button">
+        Novo follow bloqueado
       </Button>
       <Button size="sm" variant="outline" disabled={!state?.canInspect||busy}
-        type="button" onClick={()=>void act('inspect')}>
+        type="button" onClick={()=>void inspect()}>
         Consultar resultado
       </Button>
       <Button size="sm" variant="outline" disabled={busy} type="button"

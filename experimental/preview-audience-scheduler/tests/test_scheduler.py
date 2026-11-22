@@ -436,5 +436,67 @@ class TestPreviewScheduler(unittest.TestCase):
                 self.assertNotIn("sensitive",msg)
 
 
+    def test_apify_social_readiness_only_calls_preview_get_and_never_posts(self):
+        self.assertEqual(module.run_apify_social_readiness_once(
+            self.env, lambda *_args, **_kw:self.fail("network")), (0,"disabled"))
+        env={**self.env,
+             "PREVIEW_APIFY_SOCIAL_READINESS_CRON_ENABLED":"yes",
+             "PREVIEW_APIFY_SOCIAL_READINESS_ONE_SHOT_UTC":"2026-11-22T16:00Z"}
+        now=datetime(2026,11,22,16,1,tzinfo=timezone.utc)
+        calls=[]
+        def mock_open(req,timeout):
+            calls.append(req)
+            return FakeResponse(
+                b'{"combined":{"status":"listed","permissions":"limited",'
+                b'"requiresInstagramCookie":true,"realActionVerified":false},'
+                b'"follow":{"status":"listed","permissions":"limited",'
+                b'"requiresInstagramCookie":true,"realActionVerified":false},'
+                b'"unfollow":{"status":"listed","permissions":"full",'
+                b'"requiresInstagramCookie":true,"realActionVerified":false},'
+                b'"verifiedFollows":0,"verifiedUnfollows":0,"actorRunsExecuted":0,'
+                b'"instagramActionsExecuted":0,"liveActionsEnabled":false}')
+        outcome=module.run_apify_social_readiness_once(env,mock_open,now=now)
+        self.assertEqual(outcome,(0,"ok: combined=listed follow=listed "
+                              "unfollow=listed unfollow-permissions=full"))
+        self.assertEqual(len(calls),1)
+        self.assertEqual(calls[0].get_method(),"GET")
+        self.assertEqual(calls[0].full_url,"https://"+module.PREVIEW_HOST+
+                         module.APIFY_SOCIAL_READINESS_PATH)
+        self.assertIsNone(calls[0].data)
+        self.assertEqual(calls[0].get_header("Authorization"),"Bearer "+"a"*48)
+        self.assertEqual(module.run_apify_social_readiness_once(
+            env,lambda *_args, **_kw:self.fail("out of window"),
+            now=datetime(2026,11,22,16,8,tzinfo=timezone.utc)),(0,"outside-window"))
+
+    def test_social_readiness_rejects_fabricated_actions_and_untrusted_status(self):
+        env={**self.env,
+             "PREVIEW_APIFY_SOCIAL_READINESS_CRON_ENABLED":"yes",
+             "PREVIEW_APIFY_SOCIAL_READINESS_ONE_SHOT_UTC":"2026-11-22T16:00Z"}
+        now=datetime(2026,11,22,16,1,tzinfo=timezone.utc)
+        safe=(b'{"combined":{"status":"listed","permissions":"limited",'
+                b'"requiresInstagramCookie":true,"realActionVerified":false},'
+                b'"follow":{"status":"listed","permissions":"limited",'
+                b'"requiresInstagramCookie":true,"realActionVerified":false},'
+                b'"unfollow":{"status":"listed","permissions":"full",'
+                b'"requiresInstagramCookie":true,"realActionVerified":false},'
+                b'"verifiedFollows":0,"verifiedUnfollows":0,"actorRunsExecuted":0,'
+                b'"instagramActionsExecuted":0,"liveActionsEnabled":false}')
+        bad=[
+          safe.replace(b'"actorRunsExecuted":0',b'"actorRunsExecuted":1'),
+          safe.replace(b'"realActionVerified":false',b'"realActionVerified":true'),
+          safe.replace(b'"requiresInstagramCookie":true',b'"requiresInstagramCookie":false'),
+          safe.replace(b'"liveActionsEnabled":false',b'"liveActionsEnabled":true'),
+          safe.replace(b'"permissions":"full"',b'"permissions":"admin"'),
+          b'cookie_or_secret',
+        ]
+        for payload in bad:
+            with self.subTest(payload=payload[:24]):
+                code, msg=module.run_apify_social_readiness_once(
+                    env,lambda *_args,**_kw:FakeResponse(payload),now=now)
+                self.assertNotEqual(code,0)
+                self.assertNotIn("secret",msg)
+
+
+
 if __name__ == "__main__":
     unittest.main()

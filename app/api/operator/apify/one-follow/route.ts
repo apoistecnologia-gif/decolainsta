@@ -1,20 +1,20 @@
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 
-import {Prisma} from '@prisma/client';
 import {NextResponse} from 'next/server';
 import {auth} from '@/auth';
 import {prisma} from '@/lib/db';
 import {
  APIFY_ONE_FOLLOW_ACTOR,APIFY_ONE_FOLLOW_ACTION,APIFY_ONE_FOLLOW_MAX_USD,
- parseMinimalInstagramCookies,startOneFollow,inspectOneFollow,
+ parseMinimalInstagramCookies,inspectOneFollow,
 } from '@/lib/providers/apify-one-follow';
-import {inspectApifySocialActors} from '@/lib/providers/apify-social-actors-readiness';
 
 const headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'};
-const TARGET='contateste6699';
+// Historical username: this is the SAME Instagram identity as @apoistecnologia.
+ // Only the pre-existing run may be inspected; never use it as a new target.
+const LEGACY_TARGET='contateste6699';
 const ACCOUNT='apoistecnologia';
-const CONFIRM='CONFIRMO UM FOLLOW REAL NO INSTAGRAM';
+const ACCOUNT_INSTAGRAM_USER_ID='17841411544892772';
 const denied=(status:number,message:string)=>NextResponse.json({
   status:'blocked',error:message,instagramActionsConfirmed:0,
 },{status,headers});
@@ -24,7 +24,7 @@ type Attempt={
     'provider-reported'|'provider-rejected'|'provider-blocked'|
     'failed'|'ambiguous';
   actor:typeof APIFY_ONE_FOLLOW_ACTOR;accountId:string;
-  accountUsername:typeof ACCOUNT;targetUsername:typeof TARGET;
+  accountUsername:typeof ACCOUNT;targetUsername:typeof LEGACY_TARGET;
   runId:string|null;maxActionsPerRun:1;maxTotalChargeUsd:0.25;
   costUsd:number|null;providerReportedFollow:boolean;
   independentlyVerified:false;automatedUnfollowEnabled:false;
@@ -41,7 +41,7 @@ function parseAttempt(raw:unknown):Attempt|null{
        'failed','ambiguous'].includes(String(a.state))||
      a.actor!==APIFY_ONE_FOLLOW_ACTOR||
      typeof a.accountId!=='string'||a.accountId.length>100||
-     a.accountUsername!==ACCOUNT||a.targetUsername!==TARGET||
+     a.accountUsername!==ACCOUNT||a.targetUsername!==LEGACY_TARGET||
      (a.runId!==null&&(typeof a.runId!=='string'||
        !/^[A-Za-z0-9]{17,24}$/.test(a.runId)))||
      a.maxActionsPerRun!==1||a.maxTotalChargeUsd!==APIFY_ONE_FOLLOW_MAX_USD||
@@ -61,7 +61,7 @@ async function scope(){
   });
   if(user?.role!=='admin')return null;
   const accounts=await prisma.instagramAccount.findMany({
-    where:{userId:uid,username:ACCOUNT},
+    where:{userId:uid,instagramUserId:ACCOUNT_INSTAGRAM_USER_ID},
     select:{id:true,username:true,instagramUserId:true,
       status:true,cooldownUntil:true},take:2,
   });
@@ -91,9 +91,13 @@ export async function GET(){
   const accountReady=allowedAccount(account);
   return NextResponse.json({
     status:attempt?.state??'not-started',
-    account:ACCOUNT,target:TARGET,configured:!disabled,
+    account:account.username,target:null,
+    invalidLegacyTarget:!!row,
+    legacyTargetUsername:attempt?.targetUsername??null,
+    legacyConfigurationError:row?'self-follow-to-previous-username':null,
+    configured:!disabled,
     cookieConfigured:cookieReady,accountReady,
-    canLaunch:!disabled&&cookieReady&&accountReady&&!row,
+    canLaunch:false,
     canInspect:!!attempt?.runId&&attempt.state==='launched',
     providerReportedFollow:attempt?.providerReportedFollow??false,
     followIndependentlyVerified:false,
@@ -105,8 +109,13 @@ export async function GET(){
   },{headers});
 }
 
+/** Existing-run reconciliation ONLY. Launch is suspended after a self-target
+ * configuration mistake. This preserves the original immutable audit receipt,
+ * including unknown remote execution outcomes and nonzero possible costs.
+ */
 export async function POST(req:Request){
-  if(!oneShotEnabled())return denied(403,'Teste real não habilitado no Preview');
+  if(process.env.VERCEL_ENV!=='preview')
+    return denied(403,'Somente Preview');
   if(req.headers.get('origin')!==new URL(req.url).origin)
     return denied(403,'Origem inválida');
   if(!req.headers.get('content-type')?.startsWith('application/json'))
@@ -118,98 +127,21 @@ export async function POST(req:Request){
   if(!body||typeof body!=='object'||Array.isArray(body))
     return denied(400,'Dados inválidos');
   const value=body as Record<string,unknown>;
-  const operation=value.operation;
-  const launch=operation==='launch-one';
-  if((!launch&&operation!=='inspect')||
-     Object.keys(value).length!==(launch?3:1)||
-     (launch&&(value.accountConfirmation!==ACCOUNT||
-        value.approval!==CONFIRM)))
-    return denied(400,'Operação ou confirmação inválida');
+  if(value.operation==='launch-one')
+    return denied(409,'Teste bloqueado: o destino anterior é a própria conta. Nenhum novo follow será iniciado.');
+  if(value.operation!=='inspect'||Object.keys(value).length!==1)
+    return denied(400,'Operação inválida');
+
   const account=await scope();
-  if(!account||!allowedAccount(account))
-    return denied(409,'Conta sem elegibilidade para teste controlado');
+  // A disabled/inactive Instagram connection must not prevent read-only
+  // reconciliation of a previously launched Apify run.
+  if(!account)return denied(403,'Operador ou conta não autorizado');
   const token=process.env.APIFY_API_TOKEN;
   if(!token)return denied(409,'Apify não configurada');
   const row=await prisma.activityLog.findFirst({
     where:{instagramAccountId:account.id,action:APIFY_ONE_FOLLOW_ACTION},
     select:{id:true,details:true},orderBy:{createdAt:'desc'},
   });
-
-  if(launch){
-    if(!hasValidCookies())return denied(409,
-      'Cookie de sessão não cadastrado em segredo na Vercel');
-    if(row)return denied(409,'Uma tentativa já foi registrada; sem repetição');
-    const [protectedProfile,previousReal]=await Promise.all([
-      prisma.whitelist.findUnique({
-        where:{instagramAccountId_username:{
-          instagramAccountId:account.id,username:TARGET,
-        }},select:{id:true},
-      }),
-      prisma.followAction.count({
-        where:{instagramAccountId:account.id,targetUsername:TARGET,isDryRun:false},
-      }),
-    ]);
-    if(protectedProfile||previousReal>0)
-      return denied(409,'Destino protegido ou com ação anterior');
-    // Verify the exact Actor remains public and limited-permission before
-    // transmitting the operator's session to a third-party executor.
-    const inspected=await inspectApifySocialActors(token);
-    if(inspected.combined.status!=='listed'||
-       inspected.combined.permissions!=='limited')
-      return denied(409,'Actor não corresponde à configuração de segurança');
-    let reservation:{id:string;receipt:Attempt}|null=null;
-    try{
-      reservation=await prisma.$transaction(async tx=>{
-        const lock=await tx.$queryRaw<Array<{acquired:boolean}>>`
-          SELECT pg_try_advisory_xact_lock(
-            hashtext('apify_one_social_action_v1'),
-            hashtext(${account.id})
-          ) AS acquired
-        `;
-        if(lock.length!==1||lock[0].acquired!==true)return null;
-        const prior=await tx.activityLog.findFirst({
-          where:{instagramAccountId:account.id,
-            action:APIFY_ONE_FOLLOW_ACTION},select:{id:true},
-        });
-        if(prior)return null;
-        const receipt:Attempt={
-          version:1,state:'reserved',actor:APIFY_ONE_FOLLOW_ACTOR,
-          accountId:account.id,accountUsername:ACCOUNT,
-          targetUsername:TARGET,runId:null,maxActionsPerRun:1,
-          maxTotalChargeUsd:APIFY_ONE_FOLLOW_MAX_USD,costUsd:null,
-          providerReportedFollow:false,independentlyVerified:false,
-          automatedUnfollowEnabled:false,
-        };
-        const created=await tx.activityLog.create({data:{
-          instagramAccountId:account.id,action:APIFY_ONE_FOLLOW_ACTION,
-          targetUsername:TARGET,success:false,
-          details:JSON.stringify(receipt),
-        },select:{id:true}});
-        return {id:created.id,receipt};
-      },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
-    }catch{return denied(503,'Não foi possível reservar tentativa');}
-    if(!reservation)return denied(409,'Tentativa já registrada ou em andamento');
-    // One and only one possible remote write. Ambiguous result never retried.
-    const started=await startOneFollow(token,
-      process.env.APIFY_INSTAGRAM_COOKIES_JSON,TARGET);
-    const updated:Attempt={
-      ...reservation.receipt,
-      state:started.status==='queued'?'launched':started.status==='refused'?
-        'rejected':'unconfirmed',runId:started.runId,
-    };
-    await prisma.activityLog.updateMany({where:{
-      id:reservation.id,instagramAccountId:account.id,
-      action:APIFY_ONE_FOLLOW_ACTION,
-      details:JSON.stringify(reservation.receipt),
-    },data:{details:JSON.stringify(updated)}}).catch(()=>undefined);
-    return NextResponse.json({
-      status:started.status==='queued'?'launch-request-accepted':updated.state,
-      actorRunId:started.runId,
-      followConfirmed:false,mayRetryAutomatically:false,
-      unfollowScheduled:false,oneFollowMax:true,
-    },{status:started.status==='queued'?202:503,headers});
-  }
-
   const previous=parseAttempt(row?.details);
   if(!row||!previous||previous.accountId!==account.id)
     return denied(409,'Nenhuma tentativa rastreável');
@@ -220,7 +152,7 @@ export async function POST(req:Request){
       followIndependentlyVerified:false,unfollowEnabled:false,
       costUsd:previous.costUsd,
     },{headers});
-  const outcome=await inspectOneFollow(token,previous.runId,TARGET);
+  const outcome=await inspectOneFollow(token,previous.runId,previous.targetUsername);
   if(outcome.status==='running'||outcome.status==='unavailable')
     return NextResponse.json({
       status:outcome.status,providerReportedFollow:false,

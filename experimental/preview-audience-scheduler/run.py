@@ -22,6 +22,7 @@ FOLLOW_PREVIEW_PATH = "/api/cron/preview-follow-simulation"
 DYNAMIC_RECONCILE_PATH = "/api/operator/phantombuster/dynamic-references"
 INSTAGRAM_READINESS_PATH = "/api/cron/preview-instagram-readiness"
 APIFY_PILOT_PATH = "/api/cron/preview-apify-pilot"
+APIFY_INDEX_PATH = "/api/cron/preview-apify-candidate-index"
 MAX_RESULT_BYTES = 8192
 
 class NoRedirects(HTTPRedirectHandler):
@@ -407,6 +408,69 @@ def run_apify_trial_once(env: dict[str, str], opener=None, now=None) -> tuple[in
     return 0, "ok: status=" + value["status"]
 
 
+def run_apify_index_once(env: dict[str, str], opener=None, now=None) -> tuple[int, str]:
+    """Index only saved, complete Apify trial results into inert candidate rows.
+
+    The endpoint cannot launch Actors, follow or unfollow Instagram accounts.
+    One explicit time window and a database serializable transaction ensure
+    repeat calls remain idempotent.
+    """
+    if env.get("PREVIEW_APIFY_INDEX_CRON_ENABLED") != "yes":
+        return 0, "disabled"
+    now = now or datetime.now(timezone.utc)
+    scheduled = env.get("PREVIEW_APIFY_INDEX_ONE_SHOT_UTC", "")
+    if len(scheduled) != 17 or not scheduled.endswith("Z"):
+        return 2, "invalid-one-shot-time"
+    try:
+        due = datetime.strptime(scheduled, "%Y-%m-%dT%H:%MZ").replace(
+            tzinfo=timezone.utc)
+    except ValueError:
+        return 2, "invalid-one-shot-time"
+    if not 0 <= (now - due).total_seconds() < 300:
+        return 0, "outside-window"
+    if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
+            or len(env.get("PREVIEW_CRON_SECRET", "")) < 32
+            or len(env.get("PREVIEW_PROTECTION_BYPASS", "")) != 32
+            or not env["PREVIEW_PROTECTION_BYPASS"].isalnum()):
+        return 2, "invalid-configuration"
+    request = Request("https://" + PREVIEW_HOST + APIFY_INDEX_PATH,
+        method="POST", data=b'{"operation":"index-existing"}', headers={
+            "Authorization": "Bearer " + env["PREVIEW_CRON_SECRET"],
+            "X-Vercel-Protection-Bypass": env["PREVIEW_PROTECTION_BYPASS"],
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        })
+    if opener is None:
+        opener = build_opener(NoRedirects()).open
+    try:
+        with opener(request, timeout=25) as response:
+            if response.status != 200:
+                return 1, "preview-not-ready"
+            raw = response.read(MAX_RESULT_BYTES + 1)
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError):
+        return 1, "preview-request-failed"
+    if len(raw) > MAX_RESULT_BYTES:
+        return 1, "response-too-large"
+    try:
+        result = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return 1, "invalid-response"
+    if (not isinstance(result, dict)
+            or result.get("status") not in ("indexed", "invalid-source", "capacity-reached")
+            or result.get("providerRunsExecuted") != 0
+            or result.get("instagramActionsExecuted") != 0
+            or result.get("actionsEnabled") is not False
+            or type(result.get("indexed")) is not int
+            or not 0 <= result["indexed"] <= 25
+            or type(result.get("alreadyPresent")) is not int
+            or not 0 <= result["alreadyPresent"] <= 25
+            or type(result.get("sourceCount")) is not int
+            or not 0 <= result["sourceCount"] <= 25
+            or (result["indexed"] + result["alreadyPresent"] > result["sourceCount"])):
+        return 1, "unsafe-index-response"
+    return 0, "ok: status=" + result["status"] + " indexed=" + str(result["indexed"])
+
+
 def main() -> int:
     refresh_status, refresh_message = run_once(os.environ)
     print("preview-readonly-refresh:", refresh_message, flush=True)
@@ -420,8 +484,10 @@ def main() -> int:
     print("preview-instagram-readiness:", readiness_message, flush=True)
     apify_status, apify_message = run_apify_trial_once(os.environ)
     print("preview-apify-trial:", apify_message, flush=True)
+    index_status, index_message = run_apify_index_once(os.environ)
+    print("preview-apify-index:", index_message, flush=True)
     return max(refresh_status, sim_status, reconciliation_status, collection_status,
-               readiness_status, apify_status)
+               readiness_status, apify_status, index_status)
 
 if __name__ == "__main__":
     sys.exit(main())

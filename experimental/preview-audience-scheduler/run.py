@@ -23,6 +23,7 @@ DYNAMIC_RECONCILE_PATH = "/api/operator/phantombuster/dynamic-references"
 INSTAGRAM_READINESS_PATH = "/api/cron/preview-instagram-readiness"
 APIFY_PILOT_PATH = "/api/cron/preview-apify-pilot"
 APIFY_INDEX_PATH = "/api/cron/preview-apify-candidate-index"
+APIFY_SOCIAL_READINESS_PATH = "/api/cron/preview-apify-social-readiness"
 MAX_RESULT_BYTES = 8192
 
 class NoRedirects(HTTPRedirectHandler):
@@ -471,6 +472,77 @@ def run_apify_index_once(env: dict[str, str], opener=None, now=None) -> tuple[in
     return 0, "ok: status=" + result["status"] + " indexed=" + str(result["indexed"])
 
 
+def run_apify_social_readiness_once(
+    env: dict[str, str], opener=None, now=None
+) -> tuple[int, str]:
+    """Read-only audit of 3 Apify follow/unfollow Actor definitions.
+
+    Never launches an Actor, obtains cookies or triggers social actions.
+    """
+    if env.get("PREVIEW_APIFY_SOCIAL_READINESS_CRON_ENABLED") != "yes":
+        return 0, "disabled"
+    now = now or datetime.now(timezone.utc)
+    scheduled = env.get("PREVIEW_APIFY_SOCIAL_READINESS_ONE_SHOT_UTC", "")
+    if len(scheduled) != 17 or not scheduled.endswith("Z"):
+        return 2, "invalid-one-shot-time"
+    try:
+        due = datetime.strptime(scheduled, "%Y-%m-%dT%H:%MZ").replace(
+            tzinfo=timezone.utc)
+    except ValueError:
+        return 2, "invalid-one-shot-time"
+    if not 0 <= (now - due).total_seconds() < 300:
+        return 0, "outside-window"
+    if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
+            or len(env.get("PREVIEW_CRON_SECRET", "")) < 32
+            or len(env.get("PREVIEW_PROTECTION_BYPASS", "")) != 32
+            or not env["PREVIEW_PROTECTION_BYPASS"].isalnum()):
+        return 2, "invalid-configuration"
+    request = Request("https://" + PREVIEW_HOST + APIFY_SOCIAL_READINESS_PATH,
+        method="GET", headers={
+            "Authorization": "Bearer " + env["PREVIEW_CRON_SECRET"],
+            "X-Vercel-Protection-Bypass": env["PREVIEW_PROTECTION_BYPASS"],
+            "Accept": "application/json",
+        })
+    if opener is None:
+        opener = build_opener(NoRedirects()).open
+    try:
+        with opener(request, timeout=25) as response:
+            if response.status != 200:
+                return 1, "preview-not-ready"
+            raw = response.read(MAX_RESULT_BYTES + 1)
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError):
+        return 1, "preview-request-failed"
+    if len(raw) > MAX_RESULT_BYTES:
+        return 1, "response-too-large"
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return 1, "invalid-response"
+    statuses = {"listed", "not-configured", "not-found", "unauthorized",
+                "rate-limited", "metadata-mismatch", "unavailable"}
+    permissions = {"limited", "full", "unknown"}
+    if (not isinstance(value, dict) or
+            value.get("verifiedFollows") != 0 or
+            value.get("verifiedUnfollows") != 0 or
+            value.get("actorRunsExecuted") != 0 or
+            value.get("instagramActionsExecuted") != 0 or
+            value.get("liveActionsEnabled") is not False):
+        return 1, "unsafe-social-readiness"
+    for key in ("combined", "follow", "unfollow"):
+        actor = value.get(key)
+        if (not isinstance(actor, dict) or
+                actor.get("status") not in statuses or
+                actor.get("permissions") not in permissions or
+                actor.get("requiresInstagramCookie") is not True or
+                actor.get("realActionVerified") is not False):
+            return 1, "unsafe-social-readiness"
+    # Safe allowlisted output; never show actor input, tokens or session data.
+    return 0, ("ok: combined=" + value["combined"]["status"] +
+               " follow=" + value["follow"]["status"] +
+               " unfollow=" + value["unfollow"]["status"] +
+               " unfollow-permissions=" + value["unfollow"]["permissions"])
+
+
 def main() -> int:
     refresh_status, refresh_message = run_once(os.environ)
     print("preview-readonly-refresh:", refresh_message, flush=True)
@@ -486,8 +558,10 @@ def main() -> int:
     print("preview-apify-trial:", apify_message, flush=True)
     index_status, index_message = run_apify_index_once(os.environ)
     print("preview-apify-index:", index_message, flush=True)
+    social_status, social_message = run_apify_social_readiness_once(os.environ)
+    print("preview-apify-social-readiness:", social_message, flush=True)
     return max(refresh_status, sim_status, reconciliation_status, collection_status,
-               readiness_status, apify_status, index_status)
+               readiness_status, apify_status, index_status, social_status)
 
 if __name__ == "__main__":
     sys.exit(main())

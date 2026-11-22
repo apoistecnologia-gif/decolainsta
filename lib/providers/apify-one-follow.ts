@@ -16,6 +16,37 @@ const validRunId=(v:unknown):v is string=>
   typeof v==='string'&&/^[A-Za-z0-9]{17,24}$/.test(v);
 const validToken=(v:unknown):v is string=>
   typeof v==='string'&&v.length>=12&&v.length<=512&&!/[\r\n]/.test(v);
+/** Stable identity, never just a mutable username. Older usernames remain
+ * protected aliases of the SAME Instagram account.
+ */
+export type InstagramExecutorIdentity=Readonly<{
+  instagramUserId:string;username:string;
+  previousUsernames:readonly string[];
+  targetInstagramUserId?:string|null;
+}>;
+const HISTORICAL_PILOT_SELF_ALIASES=['apoistecnologia','contateste6699'] as const;
+const normalizeUsername=(value:string)=>value.trim().replace(/^@/,'').toLowerCase();
+const validIdentity=(identity:InstagramExecutorIdentity|undefined):identity is InstagramExecutorIdentity=>
+  !!identity&&typeof identity.instagramUserId==='string'&&
+  /^\d{4,30}$/.test(identity.instagramUserId)&&
+  typeof identity.username==='string'&&
+  validTarget(normalizeUsername(identity.username))&&
+  Array.isArray(identity.previousUsernames)&&
+  identity.previousUsernames.every(name=>
+    typeof name==='string'&&validTarget(normalizeUsername(name)))&&
+  (identity.targetInstagramUserId==null||
+    /^\d{4,30}$/.test(identity.targetInstagramUserId));
+export function isSelfFollowTarget(
+  target:string,identity:InstagramExecutorIdentity,
+):boolean{
+  const normalized=normalizeUsername(target);
+  return HISTORICAL_PILOT_SELF_ALIASES.includes(
+      normalized as typeof HISTORICAL_PILOT_SELF_ALIASES[number])||
+    [identity.username,...identity.previousUsernames]
+      .some(alias=>normalizeUsername(alias)===normalized)||
+    (identity.targetInstagramUserId!=null&&
+      identity.targetInstagramUserId===identity.instagramUserId);
+}
 type Cookie={name:'sessionid'|'csrftoken';value:string};
 /** Extract only two strictly named Instagram cookies from Vercel secret.
  * Even if user supplies an entire browser export, no other cookies are
@@ -73,10 +104,11 @@ export type SingleFollowStart=
  */
 export async function startOneFollow(
   token:string|undefined,secret:string|undefined,target:string,
-  fetcher:Fetcher=fetch,
+  identity:InstagramExecutorIdentity|undefined,fetcher:Fetcher=fetch,
 ):Promise<SingleFollowStart>{
   const cookies=parseMinimalInstagramCookies(secret);
-  if(!validToken(token)||!cookies||!validTarget(target))
+  if(!validToken(token)||!cookies||!validTarget(target)||
+    !validIdentity(identity)||isSelfFollowTarget(target,identity))
     return {status:'refused',runId:null};
   const url=new URL('https://api.apify.com/v2/acts/'+APIFY_ONE_FOLLOW_ACTOR+'/runs');
   url.searchParams.set('maxTotalChargeUsd',String(APIFY_ONE_FOLLOW_MAX_USD));

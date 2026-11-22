@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DynamicCollectorControl } from './dynamic-collector-control';
+import { ApifyPilotConnection } from './apify-pilot-connection';
 import { FollowPreviewControls } from './follow-preview-controls';
 
 type Account = { id: string; username: string; connected?: boolean; profileFollowersCount?: number | null; lastSyncedAt?: string | null };
@@ -418,6 +419,7 @@ export function SimpleReferencesPanel() {
           }).catch(()=>undefined);
         }}
       />}
+      {selectedAccount?.connected && <ApifyPilotConnection />}
       {selectedAccount?.connected&&<FollowPreviewControls accountId={accountId} />}
       <Card>
         <CardHeader>

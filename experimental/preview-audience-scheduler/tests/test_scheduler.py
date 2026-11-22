@@ -333,5 +333,63 @@ class TestPreviewScheduler(unittest.TestCase):
             self.assertEqual((code, message), (2, "invalid-configuration"))
 
 
+
+    def test_apify_trial_disabled_by_default_and_rejects_unscheduled_requests(self):
+        self.assertEqual(module.run_apify_trial_once(
+            self.env,lambda *_args,**_kwargs:self.fail("network")), (0,"disabled"))
+        env={**self.env,"PREVIEW_APIFY_PILOT_CRON_ENABLED":"yes",
+             "PREVIEW_APIFY_PILOT_ONE_SHOT_UTC":"2026-11-22T02:00Z"}
+        self.assertEqual(module.run_apify_trial_once(
+            env,lambda *_args,**_kwargs:self.fail("too early"),
+            now=datetime(2026,11,22,1,59,tzinfo=timezone.utc)),(0,"outside-window"))
+        self.assertEqual(module.run_apify_trial_once(
+            env,lambda *_args,**_kwargs:self.fail("expired"),
+            now=datetime(2026,11,22,3,30,tzinfo=timezone.utc)),(0,"outside-window"))
+
+    def test_apify_one_shot_only_launches_fixed_capped_trial_then_inspects(self):
+        env={**self.env,"PREVIEW_APIFY_PILOT_CRON_ENABLED":"yes",
+             "PREVIEW_APIFY_PILOT_ONE_SHOT_UTC":"2026-11-22T02:00Z"}
+        sent=[]
+        def open_launch(req,timeout):
+            sent.append(req)
+            return FakeResponse(
+                b'{"status":"queued","maxResults":25,"maxTotalChargeUsd":0.25,'
+                b'"actorRunsLaunched":1,"instagramActionsExecuted":0,"noAutomaticRetry":true}')
+        self.assertEqual(module.run_apify_trial_once(env,open_launch,
+            now=datetime(2026,11,22,2,1,tzinfo=timezone.utc)),(0,"ok: status=queued"))
+        self.assertEqual(sent[0].get_method(),"POST")
+        self.assertEqual(sent[0].full_url,
+            "https://"+module.PREVIEW_HOST+module.APIFY_PILOT_PATH)
+        self.assertEqual(sent[0].data,b'{"operation":"launch"}')
+        self.assertEqual(sent[0].get_header("Authorization"),"Bearer "+"a"*48)
+        self.assertEqual(module.run_apify_trial_once(env,
+            lambda req,timeout: FakeResponse(
+                b'{"status":"finished","actorRunsLaunched":0,'
+                b'"instagramActionsExecuted":0,"noAutomaticRetry":true}'),
+            now=datetime(2026,11,22,2,6,tzinfo=timezone.utc)),
+            (0,"ok: status=finished"))
+
+    def test_apify_trial_rejects_uncapped_or_social_action_responses(self):
+        env={**self.env,"PREVIEW_APIFY_PILOT_CRON_ENABLED":"yes",
+             "PREVIEW_APIFY_PILOT_ONE_SHOT_UTC":"2026-11-22T02:00Z"}
+        due=datetime(2026,11,22,2,1,tzinfo=timezone.utc)
+        for payload in [
+            b'{"status":"queued","maxResults":2500,"maxTotalChargeUsd":0.25,'
+            b'"actorRunsLaunched":1,"instagramActionsExecuted":0,"noAutomaticRetry":true}',
+            b'{"status":"queued","maxResults":25,"maxTotalChargeUsd":20,'
+            b'"actorRunsLaunched":1,"instagramActionsExecuted":0,"noAutomaticRetry":true}',
+            b'{"status":"queued","maxResults":25,"maxTotalChargeUsd":0.25,'
+            b'"actorRunsLaunched":1,"instagramActionsExecuted":1,"noAutomaticRetry":true}',
+            b'{"status":"queued","maxResults":25,"maxTotalChargeUsd":0.25,'
+            b'"actorRunsLaunched":1,"instagramActionsExecuted":0}',
+            b'raw-cookie-or-secret',
+        ]:
+            with self.subTest(payload=payload[:24]):
+                code,msg=module.run_apify_trial_once(
+                    env,lambda *_args,**_kwargs:FakeResponse(payload),now=due)
+                self.assertNotEqual(code,0)
+                self.assertNotIn("secret",msg)
+
+
 if __name__ == "__main__":
     unittest.main()

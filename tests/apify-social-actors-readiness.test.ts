@@ -16,7 +16,7 @@ test('three read-only metadata calls, never starts actor or sends session',async
    assert.equal((init?.headers as Record<string,string>).Authorization,
      'Bearer '+token);
    assert.equal(String(init?.body).includes('sessionid'),false);
-   const id=parsed.pathname.split('/').at(-1)??'';
+   const id=parsed.pathname.split('/').slice(-1)[0]??'';
    const [username,name]=id.split('~');
    return Response.json({data:{username,name,isPublic:true,
      actorPermissionLevel:id===APIFY_SOCIAL_ACTORS.unfollow

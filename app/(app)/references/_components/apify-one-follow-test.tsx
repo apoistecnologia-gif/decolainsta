@@ -45,12 +45,24 @@ export function ApifyOneFollowTest(){
     return data;
   },[]);
   useEffect(()=>{
-    let active=true;
-    void read().catch(err=>{
-      if(active)setError(err instanceof Error?err.message:'Falha ao carregar');
+    const controller=new AbortController();
+    void fetch('/api/operator/apify/one-follow',{
+      credentials:'same-origin',cache:'no-store',signal:controller.signal,
+    }).then(async response=>{
+      if(!response.ok)throw Error('Diagnóstico disponível somente no Preview para operador.');
+      return await response.json() as Readiness;
+    }).then(data=>{
+      if(controller.signal.aborted)return;
+      if(data.maxActionsPerRun!==1||data.unfollowEnabled!==false||
+         data.followIndependentlyVerified!==false)
+        throw Error('Resposta incompatível com o teste de uma ação.');
+      setState(data);
+    }).catch(err=>{
+      if(!controller.signal.aborted)
+        setError(err instanceof Error?err.message:'Falha ao carregar');
     });
-    return()=>{active=false;};
-  },[read]);
+    return()=>controller.abort();
+  },[]);
   const act=async(operation:'launch-one'|'inspect')=>{
     if(busy)return;
     if(operation==='launch-one'&&

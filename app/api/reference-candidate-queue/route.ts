@@ -78,6 +78,7 @@ export async function GET(req: Request) {
       activeRefs.get(evidence.referenceId) === evidence.referenceUsername
       ? [{ id: item.id, username: item.targetUsername, referenceId: evidence.referenceId,
         referenceUsername: evidence.referenceUsername, status: evidence.status,
+        provider: evidence.version === 2 ? 'apify' as const : 'phantombuster' as const,
         createdAt: item.createdAt }] : [];
   });
   const byReference = new Map<string, {
@@ -86,12 +87,14 @@ export async function GET(req: Request) {
   const seen = new Set<string>();
   let lastIndexedAt: string | null = null;
   let duplicateRecords = 0;
+  const providerCounts = { apify: 0, phantombuster: 0 };
   for (const candidate of candidates) {
     if (seen.has(candidate.username.toLowerCase())) {
       duplicateRecords++;
       continue;
     }
     seen.add(candidate.username.toLowerCase());
+    providerCounts[candidate.provider]++;
     const existing = byReference.get(candidate.referenceId);
     if (existing) existing.candidates++;
     else byReference.set(candidate.referenceId, {
@@ -111,11 +114,13 @@ export async function GET(req: Request) {
     persistedCandidates: seen.size,
     referencesRepresented: counts.length,
     byReference: counts,
-    lastIndexedAt, duplicateRecords,
+    lastIndexedAt, duplicateRecords,providerCounts,
     capacity: MAX_CANDIDATES_PER_ACCOUNT,
     candidates: candidates.slice(0, 10),
     status: 'identified_unverified',
-    provenance: 'operator_assigned_collector_result',
+    provenance: providerCounts.apify > 0
+      ? providerCounts.phantombuster > 0 ? 'mixed' : 'apify-public-no-cookie'
+      : 'operator_assigned_collector_result',
     verifiedByMeta: false, followbackVerified: false,
     actionsEnabled: false, instagramActionsExecuted: 0,
   }, { headers: HEADERS });

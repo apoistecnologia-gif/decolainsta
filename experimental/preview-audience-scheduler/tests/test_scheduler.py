@@ -391,5 +391,50 @@ class TestPreviewScheduler(unittest.TestCase):
                 self.assertNotIn("secret",msg)
 
 
+
+    def test_apify_index_is_opt_in_and_accepts_only_exact_preview_endpoint(self):
+        self.assertEqual(module.run_apify_index_once(
+            self.env,lambda *_args,**_kwargs:self.fail("network")), (0,"disabled"))
+        env={**self.env,"PREVIEW_APIFY_INDEX_CRON_ENABLED":"yes",
+             "PREVIEW_APIFY_INDEX_ONE_SHOT_UTC":"2026-11-22T02:30Z"}
+        self.assertEqual(module.run_apify_index_once(
+            env,lambda *_args,**_kwargs:self.fail("not due"),
+            now=datetime(2026,11,22,2,29,tzinfo=timezone.utc)),(0,"outside-window"))
+        calls=[]
+        def fake_open(request,timeout):
+            calls.append(request)
+            return FakeResponse(b'{"status":"indexed","indexed":20,"alreadyPresent":5,'
+                                b'"sourceCount":25,"instagramActionsExecuted":0,'
+                                b'"providerRunsExecuted":0,"actionsEnabled":false}')
+        self.assertEqual(module.run_apify_index_once(env,fake_open,
+            now=datetime(2026,11,22,2,30,tzinfo=timezone.utc)),
+            (0,"ok: status=indexed indexed=20"))
+        self.assertEqual(len(calls),1)
+        self.assertEqual(calls[0].full_url,
+            "https://"+module.PREVIEW_HOST+module.APIFY_INDEX_PATH)
+        self.assertEqual(calls[0].data,b'{"operation":"index-existing"}')
+        self.assertEqual(calls[0].get_method(),"POST")
+        self.assertEqual(calls[0].get_header("Authorization"),"Bearer "+"a"*48)
+
+    def test_apify_index_refuses_unbounded_counts_or_social_actions(self):
+        env={**self.env,"PREVIEW_APIFY_INDEX_CRON_ENABLED":"yes",
+             "PREVIEW_APIFY_INDEX_ONE_SHOT_UTC":"2026-11-22T02:30Z"}
+        now=datetime(2026,11,22,2,31,tzinfo=timezone.utc)
+        responses=[
+            b'{"status":"indexed","indexed":30,"alreadyPresent":0,"sourceCount":25,"providerRunsExecuted":0,"instagramActionsExecuted":0,"actionsEnabled":false}',
+            b'{"status":"indexed","indexed":20,"alreadyPresent":10,"sourceCount":25,"providerRunsExecuted":0,"instagramActionsExecuted":0,"actionsEnabled":false}',
+            b'{"status":"indexed","indexed":20,"alreadyPresent":5,"sourceCount":25,"providerRunsExecuted":1,"instagramActionsExecuted":0,"actionsEnabled":false}',
+            b'{"status":"indexed","indexed":20,"alreadyPresent":5,"sourceCount":25,"providerRunsExecuted":0,"instagramActionsExecuted":1,"actionsEnabled":false}',
+            b'{"status":"indexed","indexed":20,"alreadyPresent":5,"sourceCount":25,"providerRunsExecuted":0,"instagramActionsExecuted":0,"actionsEnabled":true}',
+            b'sensitive token response',
+        ]
+        for response in responses:
+            with self.subTest(response=response[:24]):
+                code,msg=module.run_apify_index_once(env,
+                    lambda *_args,**_kwargs:FakeResponse(response),now=now)
+                self.assertNotEqual(code,0)
+                self.assertNotIn("sensitive",msg)
+
+
 if __name__ == "__main__":
     unittest.main()

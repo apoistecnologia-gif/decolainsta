@@ -57,3 +57,13 @@ test('Apify readiness API is isolated from production and operator-only',()=>{
  assert.doesNotMatch(route,/agents\/launch|actors\/.*runs|run-sync|user_follow|user_unfollow/);
  assert.doesNotMatch(route,/\.create\(|\.update\(|\.delete\(/);
 });
+
+test('Apify pilot appears in references only with a read-only button',()=>{
+ const panel=readFileSync('app/(app)/references/_components/simple-references-panel.tsx','utf8');
+ const ui=readFileSync('app/(app)/references/_components/apify-pilot-connection.tsx','utf8');
+ assert.match(panel,/selectedAccount\?\.connected && <ApifyPilotConnection/);
+ assert.match(ui,/\/api\/operator\/apify\/readiness/);
+ assert.match(ui,/Verificar conexão Apify/);
+ assert.match(ui,/Nenhuma coleta foi iniciada/);
+ assert.doesNotMatch(ui,/localStorage|sessionStorage|sessionCookie|apiToken|agents\/launch|run-sync/);
+});

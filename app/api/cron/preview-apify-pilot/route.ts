@@ -112,7 +112,7 @@ export async function POST(request:Request){
       },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
     }catch{return bad('reservation-unavailable',503);}
     if(!claim)return NextResponse.json({status:'already-reserved',
-      actorRunsLaunched:0,instagramActionsExecuted:0},{headers});
+      actorRunsLaunched:0,instagramActionsExecuted:0,noAutomaticRetry:true},{headers});
     const started=await startCappedApifyPilot(token,selected.referenceUsername);
     const updated:Receipt={...claim.receipt,
       state:started.status==='queued'?'launched':started.status==='refused'?

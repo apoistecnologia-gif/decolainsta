@@ -32,6 +32,7 @@ type Index = {
   persistedCandidates: number;
   byReference: { referenceId: string; referenceUsername: string; candidates: number }[];
   lastIndexedAt: string | null;
+  providerCounts?: {apify:number;phantombuster:number};
   actionsEnabled: false;
 };
 
@@ -400,6 +401,9 @@ export function SimpleReferencesPanel() {
             <p className="mt-2 text-3xl font-semibold tabular-nums">
               {index ? index.persistedCandidates : '—'}
             </p>
+            {!!index?.providerCounts?.apify && <p className="text-xs text-muted-foreground">
+              {index.providerCounts.apify} provenientes da Apify (amostra pública)
+            </p>}
           </CardContent>
         </Card>
       </div>

@@ -295,6 +295,13 @@ def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> 
     }
     if (not isinstance(value, dict)
             or value.get("status") != "read-only-diagnostic"
+            or value.get("apifyStatus") not in (
+                "connected", "not-configured", "invalid-token",
+                "rate-limited", "unavailable")
+            or type(value.get("apifyAuthenticationChecked")) is not bool
+            or value.get("apifyActorRunsExecuted") != 0
+            or value.get("apifyInstagramActionsExecuted") != 0
+            or value.get("apifyCollectionEnabled") is not False
             or value.get("metaRead") not in ("ok", "not-connected", "unavailable")
             or value.get("metaIdentity") not in (
                 "verified", "username-mismatch", "unavailable")
@@ -319,7 +326,8 @@ def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> 
             or value.get("dataMutations") != 0):
         return 1, "unsafe-readiness-response"
     # Safe allowlisted status, never raw logs, usernames, tokens or cookies.
-    return 0, ("ok: meta=" + value["metaRead"] +
+    return 0, ("ok: apify=" + value["apifyStatus"] +
+               " meta=" + value["metaRead"] +
                " identity=" + value["metaIdentity"] +
                " old-container=" + (value["previousContainerCategory"] or "none") +
                " collector=" + value["collectorConfiguration"] +

@@ -14,6 +14,7 @@ import {inspectDynamicFailureOutput,type DynamicFailureCategory} from
   '@/lib/providers/phantombuster-failure-diagnostic';
 import {resolvePilotCollectorInWorkspace} from '@/lib/providers/phantombuster-pilot-workspace';
 import {inspectPinnedCollectorProgress} from '@/lib/providers/phantombuster-collector-progress';
+import {inspectApifyPilotConnection} from '@/lib/providers/apify-pilot-readiness';
 
 const HEADERS={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'};
 function authorized(request:Request):boolean{
@@ -95,8 +96,16 @@ export async function GET(request:Request){
   }
   const collectionHistoryRequiresReview=receipt?.state==='finished-unverified'||
     receipt?.state==='unconfirmed'||receipt?.state==='claimed';
+  // One additional read-only API identity check, never an Actor launch.
+  // The token remains exclusively on the server and no provider body escapes.
+  const apify=await inspectApifyPilotConnection(process.env.APIFY_API_TOKEN);
   return NextResponse.json({
     status:'read-only-diagnostic',
+    apifyStatus:apify.status,
+    apifyAuthenticationChecked:apify.authenticationChecked,
+    apifyActorRunsExecuted:apify.actorRunsExecuted,
+    apifyInstagramActionsExecuted:apify.instagramActionsExecuted,
+    apifyCollectionEnabled:apify.collectionEnabled,
     collectorConfiguration,
     collectorProgress,
     collectionHistoryRequiresReview,

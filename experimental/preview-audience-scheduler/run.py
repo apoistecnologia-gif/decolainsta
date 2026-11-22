@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Railway cron: one authorized GET of the PREVIEW read-only importer only.
+"""Railway Preview scheduler with explicitly gated, single-purpose operations.
 
-Never opens an Instagram URL, launches a Phantom, or collects followers.
-The server enforces six hours between provider result reads and global locking.
-No provider credentials, database access or customer identifiers exist here.
+Only the opt-in Apify trial may request one capped, no-cookie public follower
+collection; all social follow/unfollow actions remain disabled.
+The server owns provider credentials, durable locks and result attribution.
+Railway contains no Instagram session or Apify token.
 """
 from __future__ import annotations
 

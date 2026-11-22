@@ -18,6 +18,23 @@ export type CandidateEvidence = {
   followbackVerified: false;
   actionsEnabled: false;
 };
+/** The existing PhantomBuster evidence stays v1, unchanged.
+ * Apify samples use v2 and a distinct source-run identifier.
+ */
+export type ApifyCandidateEvidence = {
+  version: 2;
+  status: 'identified_unverified';
+  referenceId: string;
+  referenceUsername: string;
+  snapshotId: string;
+  provider: 'apify';
+  sourceRunId: string;
+  provenance: 'apify-public-no-cookie';
+  verifiedByMeta: false;
+  followbackVerified: false;
+  actionsEnabled: false;
+};
+export type ParsedCandidateEvidence = CandidateEvidence | ApifyCandidateEvidence;
 export type CandidateRecord = CandidateEvidence & { username: string };
 export type CandidateSource = {
   id: string;
@@ -47,12 +64,43 @@ export function makeCandidateEvidence(
   };
 }
 
-export function parseCandidateEvidence(details: unknown): CandidateEvidence | null {
+export function makeApifyCandidateEvidence(
+  referenceId: string, referenceUsername: string, sampleId: string,
+  sourceRunId: string,
+): ApifyCandidateEvidence | null {
+  if (!validId(referenceId) || !validId(sampleId) ||
+      !validUsername(referenceUsername) ||
+      !/^[A-Za-z0-9]{17,24}$/.test(sourceRunId)) return null;
+  return {
+    version: 2,
+    status: 'identified_unverified',
+    referenceId, referenceUsername, snapshotId: sampleId,
+    provider: 'apify', sourceRunId,
+    provenance: 'apify-public-no-cookie',
+    verifiedByMeta: false, followbackVerified: false, actionsEnabled: false,
+  };
+}
+
+export function parseCandidateEvidence(details: unknown): ParsedCandidateEvidence | null {
   if (typeof details !== 'string' || details.length > 1200) return null;
   let parsed: unknown;
   try { parsed = JSON.parse(details) as unknown; } catch { return null; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
   const data = parsed as Record<string, unknown>;
+  if (data.version === 2) {
+    const evidence = makeApifyCandidateEvidence(
+      data.referenceId as string, data.referenceUsername as string,
+      data.snapshotId as string, data.sourceRunId as string,
+    );
+    if (!evidence || data.status !== evidence.status ||
+        data.provider !== evidence.provider ||
+        data.provenance !== evidence.provenance ||
+        data.verifiedByMeta !== false || data.followbackVerified !== false ||
+        data.actionsEnabled !== false ||
+        Object.keys(data).length !== Object.keys(evidence).length ||
+        Object.keys(data).some(k => !(k in evidence))) return null;
+    return evidence;
+  }
   const evidence = makeCandidateEvidence(
     data.referenceId as string, data.referenceUsername as string,
     data.snapshotId as string, data.collectorAgentId as string,

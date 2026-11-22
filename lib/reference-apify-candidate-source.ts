@@ -84,7 +84,9 @@ export function planSavedApifyCandidates(
   existing:Iterable<string>,excluded:Iterable<string>,
   remainingCapacity:number,
 ):ApifyCandidatePlan{
-  const invalid={status:'invalid' as const,insert:[] as [],found:0,skippedExisting:0};
+  const invalid:ApifyCandidatePlan={
+    status:'invalid',insert:[],found:0,skippedExisting:0,
+  };
   if(rows.length===0||rows.length>3||!Number.isInteger(remainingCapacity)||
      remainingCapacity<0||receipt.resultCount>25)return invalid;
   const known=new Set([...existing].filter(validCandidateUsername).map(x=>x.toLowerCase()));

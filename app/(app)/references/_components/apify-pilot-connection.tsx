@@ -32,7 +32,7 @@ export function ApifyPilotConnection(){
       }
       const result=await response.json() as Readiness;
       if(result.actorRunsExecuted!==0||result.instagramActionsExecuted!==0||
-        result.collectionEnabled!==false||!Object.hasOwn(labels,result.status)){
+        result.collectionEnabled!==false||!Object.prototype.hasOwnProperty.call(labels,result.status)){
         setMessage('Resposta inesperada. Nenhuma coleta autorizada.');
         return;
       }

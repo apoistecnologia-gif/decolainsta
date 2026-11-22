@@ -20,6 +20,7 @@ PREVIEW_PATH = "/api/cron/refresh-reference-audiences"
 FOLLOW_PREVIEW_PATH = "/api/cron/preview-follow-simulation"
 DYNAMIC_RECONCILE_PATH = "/api/operator/phantombuster/dynamic-references"
 INSTAGRAM_READINESS_PATH = "/api/cron/preview-instagram-readiness"
+APIFY_PILOT_PATH = "/api/cron/preview-apify-pilot"
 MAX_RESULT_BYTES = 8192
 
 class NoRedirects(HTTPRedirectHandler):
@@ -334,6 +335,77 @@ def run_instagram_readiness_once(env: dict[str, str], opener=None, now=None) -> 
                " progress=" + value["collectorProgress"] +
                " history-review=" + str(value["collectionHistoryRequiresReview"]).lower())
 
+def run_apify_trial_once(env: dict[str, str], opener=None, now=None) -> tuple[int, str]:
+    """Single opt-in 25-row Apify trial, then read only its exact recorded run.
+
+    No Apify API token is sent from Railway; Vercel alone holds that secret.
+    A claim in Neon refuses every duplicate launch, including retries after
+    an ambiguous response.
+    """
+    if env.get("PREVIEW_APIFY_PILOT_CRON_ENABLED") != "yes":
+        return 0, "disabled"
+    now = now or datetime.now(timezone.utc)
+    one_shot = env.get("PREVIEW_APIFY_PILOT_ONE_SHOT_UTC", "")
+    try:
+        if len(one_shot) != 17 or not one_shot.endswith("Z"):
+            return 2, "invalid-one-shot-time"
+        due = datetime.strptime(one_shot, "%Y-%m-%dT%H:%MZ").replace(
+            tzinfo=timezone.utc)
+    except ValueError:
+        return 2, "invalid-one-shot-time"
+    age = (now - due).total_seconds()
+    if age < 0 or age >= 5400:
+        return 0, "outside-window"
+    operation = "launch" if age < 300 else "inspect"
+    if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
+            or len(env.get("PREVIEW_CRON_SECRET", "")) < 32
+            or len(env.get("PREVIEW_PROTECTION_BYPASS", "")) != 32
+            or not env["PREVIEW_PROTECTION_BYPASS"].isalnum()):
+        return 2, "invalid-configuration"
+    payload = json.dumps({"operation": operation}, separators=(",", ":")).encode()
+    req = Request("https://" + PREVIEW_HOST + APIFY_PILOT_PATH,
+        method="POST", data=payload, headers={
+            "Authorization": "Bearer " + env["PREVIEW_CRON_SECRET"],
+            "X-Vercel-Protection-Bypass": env["PREVIEW_PROTECTION_BYPASS"],
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        })
+    if opener is None:
+        opener = build_opener(NoRedirects()).open
+    try:
+        with opener(req, timeout=30) as response:
+            if response.status != 200:
+                return 1, "preview-not-ready"
+            raw = response.read(MAX_RESULT_BYTES + 1)
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError):
+        return 1, "preview-request-failed"
+    if len(raw) > MAX_RESULT_BYTES:
+        return 1, "response-too-large"
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return 1, "invalid-response"
+    allowed = {"queued", "refused", "unconfirmed", "already-reserved",
+               "running", "unavailable", "invalid", "failed",
+               "finished", "finished-empty", "finished-unverified",
+               "rejected", "claimed", "launched"}
+    if (not isinstance(value, dict) or value.get("status") not in allowed
+            or value.get("instagramActionsExecuted") != 0
+            or value.get("noAutomaticRetry") is not True
+            or value.get("actorRunsLaunched") not in (0, 1)
+            or type(value.get("actorRunsLaunched")) is not int
+            or (operation == "inspect" and value.get("actorRunsLaunched") != 0)
+            or (operation == "launch" and value.get("status") == "queued"
+                and (value.get("maxResults") != 25
+                     or value.get("maxTotalChargeUsd") != 0.25
+                     or value.get("actorRunsLaunched") != 1))
+            or (operation == "launch" and value.get("status") != "queued"
+                and value.get("actorRunsLaunched") != 0)):
+        return 1, "unsafe-trial-response"
+    # Never log usernames, run ID, API token, cookies or raw output.
+    return 0, "ok: status=" + value["status"]
+
+
 def main() -> int:
     refresh_status, refresh_message = run_once(os.environ)
     print("preview-readonly-refresh:", refresh_message, flush=True)
@@ -345,7 +417,10 @@ def main() -> int:
     print("preview-dynamic-collection:", collection_message, flush=True)
     readiness_status, readiness_message = run_instagram_readiness_once(os.environ)
     print("preview-instagram-readiness:", readiness_message, flush=True)
-    return max(refresh_status, sim_status, reconciliation_status, collection_status, readiness_status)
+    apify_status, apify_message = run_apify_trial_once(os.environ)
+    print("preview-apify-trial:", apify_message, flush=True)
+    return max(refresh_status, sim_status, reconciliation_status, collection_status,
+               readiness_status, apify_status)
 
 if __name__ == "__main__":
     sys.exit(main())

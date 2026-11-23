@@ -101,7 +101,7 @@ export function ApifyOneFollowTest(){
       {state.referenceReadiness&&<>
         <p>Referências cadastradas: {state.referenceReadiness.total};
           ativas: {state.referenceReadiness.enabled}.</p>
-        <p>Candidatos das referências ativas, após exclusões:
+        <p>Candidatos das referências cadastradas, após exclusões:
           {state.referenceReadiness.eligibleCandidates}.</p>
         <p>Conta apta: {state.accountReady?'Sim':'Não'}.
           Simulação: {state.dryMode?'Ligada':'Desligada'}.</p>
@@ -113,7 +113,7 @@ export function ApifyOneFollowTest(){
                 'simulation-mode':'modo simulação ligado',
                 'instagram-cookies-not-configured':'cookies não configurados',
                 'pilot-flag-disabled':'teste real ainda desabilitado',
-                'no-enabled-references':'nenhuma referência ativa',
+                'no-registered-references':'nenhuma referência cadastrada',
                 'no-eligible-candidates':'nenhum candidato elegível de referência ativa',
                 'historical-run-unresolved':'resultado anterior não esclarecido',
                 'queue-capacity-unverified':'fila acima do limite de verificação',

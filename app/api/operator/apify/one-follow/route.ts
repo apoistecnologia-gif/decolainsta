@@ -139,7 +139,7 @@ export async function GET(){
     account.dryMode?'simulation-mode':null,
     !cookieReady?'instagram-cookies-not-configured':null,
     !oneShotEnabled()?'pilot-flag-disabled':null,
-    (plan?.enabledReferences??0)===0?'no-enabled-references':null,
+    (plan?.totalReferences??0)===0?'no-registered-references':null,
     (plan?.eligibleCount??0)===0?'no-eligible-candidates':null,
     attempt?.state==='launched'?'historical-run-unresolved':null,
     !bounded?'queue-capacity-unverified':null,

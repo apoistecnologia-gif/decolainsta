@@ -8,6 +8,11 @@ type Readiness={
   invalidLegacyTarget:boolean;legacyTargetUsername:string|null;
   legacyConfigurationError:string|null;
   configured:boolean;cookieConfigured:boolean;accountReady:boolean;
+  dryMode:boolean;
+  referenceReadiness:{
+    total:number;enabled:number;eligibleCandidates:number;
+    nextCandidateSelected:boolean;bounded:boolean;blockedReasons:string[];
+  };
   canLaunch:boolean;canInspect:boolean;
   providerReportedFollow:boolean;followIndependentlyVerified:false;
   unfollowEnabled:false;unfollowScheduled:false;
@@ -93,6 +98,29 @@ export function ApifyOneFollowTest(){
     </p>
     {state&&<div className="space-y-1 text-xs">
       <p>Execução original: {messages[state.status]??state.status}</p>
+      {state.referenceReadiness&&<>
+        <p>Referências cadastradas: {state.referenceReadiness.total};
+          ativas: {state.referenceReadiness.enabled}.</p>
+        <p>Candidatos das referências ativas, após exclusões:
+          {state.referenceReadiness.eligibleCandidates}.</p>
+        <p>Conta apta: {state.accountReady?'Sim':'Não'}.
+          Simulação: {state.dryMode?'Ligada':'Desligada'}.</p>
+        {state.referenceReadiness.blockedReasons.length>0&&
+          <p role="status" className="font-medium">
+            Validação real pendente: {state.referenceReadiness.blockedReasons
+              .map(reason=>({
+                'instagram-account-inactive':'conta Instagram inativa',
+                'simulation-mode':'modo simulação ligado',
+                'instagram-cookies-not-configured':'cookies não configurados',
+                'pilot-flag-disabled':'teste real ainda desabilitado',
+                'no-enabled-references':'nenhuma referência ativa',
+                'no-eligible-candidates':'nenhum candidato elegível de referência ativa',
+                'historical-run-unresolved':'resultado anterior não esclarecido',
+                'queue-capacity-unverified':'fila acima do limite de verificação',
+              } as Record<string,string>)[reason]??'verificação pendente')
+              .join('; ')}.
+          </p>}
+      </>}
       {state.invalidLegacyTarget&&<p role="alert" className="font-medium text-destructive">
         Erro de configuração registrado: tentativa apontou para a própria conta.
         Nenhum sucesso do Actor será contado como follow válido.

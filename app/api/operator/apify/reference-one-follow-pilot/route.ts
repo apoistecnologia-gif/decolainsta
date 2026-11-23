@@ -41,7 +41,7 @@ function parseReceipt(raw:unknown):Receipt|null{
  try{obj=JSON.parse(raw);}catch{return null;}
  if(!obj||typeof obj!=='object'||Array.isArray(obj))return null;
  const v=obj as Record<string,unknown>;
- if(Object.keys(v).length!==13||v.version!==1||
+ if(Object.keys(v).length!==14||v.version!==1||
     !['reserved','launched','rejected','unconfirmed','provider-reported',
       'provider-rejected','provider-blocked','failed','ambiguous'].includes(String(v.state))||
     v.actor!==APIFY_ONE_FOLLOW_ACTOR||

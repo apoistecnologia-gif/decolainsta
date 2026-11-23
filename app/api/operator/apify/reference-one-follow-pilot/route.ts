@@ -16,6 +16,8 @@ import {
 } from '@/lib/reference-candidate-queue';
 import {planOneFollowFromSavedReferences} from
  '@/lib/providers/apify-pilot-candidate-selection';
+import {APIFY_FOLLOW_OBSERVATION_ACTION,matchOperatorFollowObservation}
+ from '@/lib/providers/apify-pilot-relationship-observation';
 
 const HEADERS={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'};
 const ACCOUNT_ID='17841411544892772';
@@ -102,7 +104,7 @@ const cookiesReady=()=>parseMinimalInstagramCookies(
  process.env.APIFY_INSTAGRAM_COOKIES_JSON)!==null;
 
 async function candidatePlan(account:Account){
- const [references,candidates,protectedRows,priorActions,attempts,legacy]=
+ const [references,candidates,protectedRows,priorActions,attempts,legacy,observations]=
   await Promise.all([
    prisma.targetAccount.findMany({
     where:{instagramAccountId:account.id},
@@ -131,11 +133,15 @@ async function candidatePlan(account:Account){
     where:{instagramAccountId:account.id,action:APIFY_ONE_FOLLOW_ACTION},
     select:{details:true,targetUsername:true},take:2,
    }),
+   prisma.activityLog.findMany({
+    where:{instagramAccountId:account.id,action:APIFY_FOLLOW_OBSERVATION_ACTION},
+    select:{details:true,targetUsername:true},take:2,
+   }),
   ]);
  const bounded=references.length<=100&&
    candidates.length<=MAX_QUEUE_ENTRIES_PER_SYNC&&
    protectedRows.length<=2000&&priorActions.length<=2000&&
-   attempts.length<=1&&legacy.length<=1;
+   attempts.length<=1&&legacy.length<=1&&observations.length<=1;
  const old=legacy[0]?.details;
  let oldStatus:unknown;
  try{oldStatus=old?JSON.parse(old).state:null;}catch{oldStatus=null;}
@@ -153,7 +159,8 @@ async function candidatePlan(account:Account){
    ...legacy.flatMap(x=>x.targetUsername?[x.targetUsername]:[]),
   ],
  }):null;
- return {plan,bounded,oldResolved,existing:attempts[0]??null};
+ return {plan,bounded,oldResolved,existing:attempts[0]??null,
+  observations};
 }
 function eligible(account:Account,ctx:Awaited<ReturnType<typeof candidatePlan>>,
  verified:boolean){
@@ -164,8 +171,17 @@ function eligible(account:Account,ctx:Awaited<ReturnType<typeof candidatePlan>>,
 function publicReadiness(account:Account,ctx:Awaited<ReturnType<typeof candidatePlan>>,
  verified:boolean){
  const receipt=parseReceipt(ctx.existing?.details);
+ const observation=receipt?.state==='provider-reported'?
+   ctx.observations.find(row=>
+     row.targetUsername===receipt.targetUsername&&
+     matchOperatorFollowObservation(row.details,{
+       targetUsername:receipt.targetUsername,runId:receipt.runId,
+     })!==null):undefined;
  return {
   status:receipt?.state??'not-started',
+  operatorObservedRelationship:observation?'requested_pending':'unknown',
+  observationSource:observation?'operator_reported_instagram_ui':null,
+  followAcceptedConfirmed:false,
   account:account.username,
   targetUsername:receipt?.targetUsername??null,
   candidateReference:ctx.plan?.next?.referenceUsername??null,

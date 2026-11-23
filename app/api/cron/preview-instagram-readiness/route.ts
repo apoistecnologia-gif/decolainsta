@@ -38,13 +38,14 @@ export async function GET(request:Request){
   if(process.env.PREVIEW_INSTAGRAM_READINESS_PROBE_ENABLED!=='yes')
     return NextResponse.json({error:'Diagnóstico não habilitado'},{status:403,headers:HEADERS});
 
-  const alias=process.env.PHANTOMBUSTER_SOCIAL_PILOT_ACCOUNT
-    ?.replace(/^@/,'').toLowerCase()??'';
-  if(!/^[a-z0-9._]{1,30}$/.test(alias))
-    return NextResponse.json({error:'Conta piloto não configurada'},{status:409,headers:HEADERS});
+  // A rename must not redirect the pilot probe to a different account.
+  // The initial @contateste6699 was renamed to @apoistecnologia.
+  // Pin the official Meta identity; compare the CURRENT stored username only.
+  const PILOT_INSTAGRAM_ID='17841411544892772';
   const accounts=await prisma.instagramAccount.findMany({
-    where:{username:alias},
-    select:{id:true,userId:true,instagramUserId:true,encryptedAccessToken:true},
+    where:{instagramUserId:PILOT_INSTAGRAM_ID},
+    select:{id:true,userId:true,username:true,instagramUserId:true,
+      encryptedAccessToken:true},
     take:2,
   });
   if(accounts.length!==1)
@@ -60,7 +61,7 @@ export async function GET(request:Request){
         const profile=await getProfile(active.token,account.instagramUserId);
         if(profile.id===account.instagramUserId){
           metaRead='ok';
-          metaIdentity=profile.username.toLowerCase()===alias?'verified':'username-mismatch';
+          metaIdentity=profile.username.toLowerCase()===account.username.toLowerCase()?'verified':'username-mismatch';
         }
       }
     }catch{

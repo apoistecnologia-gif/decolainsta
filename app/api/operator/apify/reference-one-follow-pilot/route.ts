@@ -5,6 +5,8 @@ import {Prisma} from '@prisma/client';
 import {NextResponse} from 'next/server';
 import {auth} from '@/auth';
 import {prisma} from '@/lib/db';
+import {connectedAccount} from '@/lib/instagram/accounts';
+import {getProfile} from '@/lib/instagram/meta';
 import {
  APIFY_ONE_FOLLOW_ACTION,APIFY_ONE_FOLLOW_ACTOR,APIFY_ONE_FOLLOW_MAX_USD,
  parseMinimalInstagramCookies,startOneFollow,inspectOneFollow,
@@ -70,12 +72,26 @@ async function scope(){
  if(user?.role!=='admin')return null;
  const accounts=await prisma.instagramAccount.findMany({
   where:{instagramUserId:ACCOUNT_ID,userId:uid},
-  select:{id:true,username:true,status:true,dryMode:true,
+  select:{id:true,userId:true,username:true,status:true,dryMode:true,
    instagramUserId:true,cooldownUntil:true},take:2,
  });
  return accounts.length===1?accounts[0]:null;
 }
-const accountReady=(account:Account)=>account.status==='active'&&
+/** This is ONLY official Meta OAuth identity, never evidence that Apify
+ * cookies belong to the same account or can perform Instagram actions.
+ */
+async function officialIdentityVerified(account:Account):Promise<boolean>{
+ if(account.instagramUserId!==ACCOUNT_ID)return false;
+ try{
+  const active=await connectedAccount(account.id,account.userId);
+  if(!active)return false;
+  const profile=await getProfile(active.token,ACCOUNT_ID);
+  return profile.id===ACCOUNT_ID&&
+   profile.username.toLowerCase()===account.username.toLowerCase();
+ }catch{return false;}
+}
+const accountReady=(account:Account,verified:boolean)=>verified&&
+ ['active','inactive'].includes(account.status)&&
  !!account.instagramUserId&&
  (!account.cooldownUntil||account.cooldownUntil.getTime()<Date.now());
 const flagEnabled=()=>process.env.VERCEL_ENV==='preview'&&
@@ -139,12 +155,14 @@ async function candidatePlan(account:Account){
  }):null;
  return {plan,bounded,oldResolved,existing:attempts[0]??null};
 }
-function eligible(account:Account,ctx:Awaited<ReturnType<typeof candidatePlan>>){
+function eligible(account:Account,ctx:Awaited<ReturnType<typeof candidatePlan>>,
+ verified:boolean){
  return flagEnabled()&&tokenReady()&&cookiesReady()&&
-   accountReady(account)&&ctx.bounded&&ctx.oldResolved&&
+   accountReady(account,verified)&&ctx.bounded&&ctx.oldResolved&&
    ctx.existing===null&&!!ctx.plan?.next;
 }
-function publicReadiness(account:Account,ctx:Awaited<ReturnType<typeof candidatePlan>>){
+function publicReadiness(account:Account,ctx:Awaited<ReturnType<typeof candidatePlan>>,
+ verified:boolean){
  const receipt=parseReceipt(ctx.existing?.details);
  return {
   status:receipt?.state??'not-started',
@@ -154,11 +172,13 @@ function publicReadiness(account:Account,ctx:Awaited<ReturnType<typeof candidate
   readyCandidates:ctx.plan?.eligibleCount??0,
   registeredReferences:ctx.plan?.totalReferences??0,
   collectorEnabledReferences:ctx.plan?.enabledReferences??0,
-  accountReady:accountReady(account),
+  accountReady:accountReady(account,verified),
+  officialMetaIdentityVerified:verified,
+  cookieSessionOwnerIndependentlyVerified:false,
   cookieConfigured:cookiesReady(),tokenConfigured:tokenReady(),
   historicalRunResolved:ctx.oldResolved,
   globallyInDryMode:account.dryMode,
-  canLaunch:eligible(account,ctx),
+  canLaunch:eligible(account,ctx,verified),
   canInspect:receipt?.state==='launched'&&!!receipt.runId,
   providerReportedFollow:receipt?.providerReportedFollow??false,
   followIndependentlyVerified:false,unfollowEnabled:false,
@@ -172,8 +192,11 @@ export async function GET(){
  if(process.env.VERCEL_ENV!=='preview')return BLOCKED(403,'Somente Preview');
  const account=await scope();
  if(!account)return BLOCKED(403,'Operador não autorizado');
- const plan=await candidatePlan(account);
- return NextResponse.json(publicReadiness(account,plan),{headers:HEADERS});
+ const [plan,verified]=await Promise.all([
+  candidatePlan(account),officialIdentityVerified(account),
+ ]);
+ return NextResponse.json(publicReadiness(account,plan,verified),
+  {headers:HEADERS});
 }
 export async function POST(req:Request){
  if(process.env.VERCEL_ENV!=='preview')return BLOCKED(403,'Somente Preview');
@@ -199,7 +222,9 @@ export async function POST(req:Request){
   if(!row||!previous||previous.accountId!==account.id)
    return BLOCKED(409,'Nenhuma tentativa rastreável');
   if(previous.state!=='launched'||!previous.runId)
-   return NextResponse.json(publicReadiness(account,latest),{headers:HEADERS});
+   return NextResponse.json(publicReadiness(
+    account,latest,await officialIdentityVerified(account)
+   ),{headers:HEADERS});
   const result=await inspectOneFollow(
    process.env.APIFY_API_TOKEN,previous.runId,previous.targetUsername);
   if(result.status==='running'||result.status==='unavailable')
@@ -224,8 +249,10 @@ export async function POST(req:Request){
  }
  // One explicit click, one durable serializable claim and one POST to Apify
  // max. Never retry a failed/unknown/ambiguous launch automatically.
- const readiness=await candidatePlan(account);
- if(!eligible(account,readiness)||!readiness.plan?.next)
+ const [readiness,verified]=await Promise.all([
+  candidatePlan(account),officialIdentityVerified(account),
+ ]);
+ if(!eligible(account,readiness,verified)||!readiness.plan?.next)
   return BLOCKED(409,'Conta ou fila ainda não apta para o teste real');
  const selected=readiness.plan.next;
  const receipt:Receipt={
@@ -245,7 +272,7 @@ export async function POST(req:Request){
     where:{id:account.id},select:{status:true,cooldownUntil:true,
       instagramUserId:true},
    });
-   if(!latest||latest.status!=='active'||
+   if(!latest||!['active','inactive'].includes(latest.status)||
       latest.instagramUserId!==ACCOUNT_ID||
       (latest.cooldownUntil&&latest.cooldownUntil.getTime()>=Date.now()))
     return null;

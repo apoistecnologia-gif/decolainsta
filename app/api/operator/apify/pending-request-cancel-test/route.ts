@@ -201,7 +201,11 @@ export async function POST(req:Request){
   if(['running','unavailable'].includes(result.status))
    return respond(200,{status:result.status,costUsd:result.costUsd,
     providerReportedUnfollow:false});
-  const next:Receipt={...old,state:result.status,
+  const next:Receipt={...old,
+   state:result.status==='provider-reported'?'provider-reported':
+    result.status==='provider-rejected'?'provider-rejected':
+    result.status==='provider-blocked'?'provider-blocked':
+    result.status==='failed'?'failed':'ambiguous',
    costUsd:result.costUsd,providerReportedUnfollow:result.providerReportedUnfollow};
   const updated=await prisma.activityLog.updateMany({
    where:{id:h.attempt!.id,instagramAccountId:account.id,

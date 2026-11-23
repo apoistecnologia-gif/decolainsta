@@ -24,6 +24,7 @@ INSTAGRAM_READINESS_PATH = "/api/cron/preview-instagram-readiness"
 APIFY_PILOT_PATH = "/api/cron/preview-apify-pilot"
 APIFY_INDEX_PATH = "/api/cron/preview-apify-candidate-index"
 APIFY_SOCIAL_READINESS_PATH = "/api/cron/preview-apify-social-readiness"
+APIFY_ONE_FOLLOW_AUDIT_PATH = "/api/cron/preview-apify-one-follow-reconcile"
 MAX_RESULT_BYTES = 8192
 
 class NoRedirects(HTTPRedirectHandler):
@@ -543,6 +544,59 @@ def run_apify_social_readiness_once(
                " unfollow-permissions=" + value["unfollow"]["permissions"])
 
 
+
+def run_apify_one_follow_audit_once(
+    env: dict[str, str], opener=None, now=None
+) -> tuple[int, str]:
+    """Read-only reconciliation of EXACT old Apify run, never launches Actor."""
+    if env.get("PREVIEW_APIFY_ONE_FOLLOW_AUDIT_CRON_ENABLED") != "yes":
+        return 0, "disabled"
+    now = now or datetime.now(timezone.utc)
+    if not 0 <= now.minute % 30 < 5:
+        return 0, "interval-not-due"
+    if (not validate_target(env.get("PREVIEW_REFRESH_URL", ""))
+            or len(env.get("PREVIEW_CRON_SECRET", "")) < 32
+            or len(env.get("PREVIEW_PROTECTION_BYPASS", "")) != 32
+            or not env["PREVIEW_PROTECTION_BYPASS"].isalnum()):
+        return 2, "invalid-configuration"
+    request = Request("https://" + PREVIEW_HOST + APIFY_ONE_FOLLOW_AUDIT_PATH,
+        method="GET", headers={
+            "Authorization": "Bearer " + env["PREVIEW_CRON_SECRET"],
+            "X-Vercel-Protection-Bypass": env["PREVIEW_PROTECTION_BYPASS"],
+            "Accept": "application/json",
+        })
+    if opener is None:
+        opener = build_opener(NoRedirects()).open
+    try:
+        with opener(request, timeout=25) as response:
+            if response.status != 200:
+                return 1, "preview-not-ready"
+            raw = response.read(MAX_RESULT_BYTES + 1)
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError):
+        return 1, "preview-request-failed"
+    if len(raw) > MAX_RESULT_BYTES:
+        return 1, "response-too-large"
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return 1, "invalid-response"
+    valid_statuses = {
+        "no-pending-run", "running", "unavailable", "concurrent",
+        "history-invalid", "failed", "ambiguous",
+        "provider-reported", "provider-rejected", "provider-blocked",
+    }
+    if (not isinstance(value, dict)
+            or value.get("status") not in valid_statuses
+            or value.get("actorRunsLaunched") != 0
+            or value.get("instagramActionsExecuted") != 0
+            or value.get("independentlyVerified") is not False
+            or value.get("unfollowEnabled") is not False
+            or value.get("noAutomaticRetry") is not True):
+        return 1, "unsafe-apify-audit-response"
+    # Never print run ID, target, cookies, token, or unfiltered provider output.
+    return 0, "ok: status=" + value["status"]
+
+
 def main() -> int:
     refresh_status, refresh_message = run_once(os.environ)
     print("preview-readonly-refresh:", refresh_message, flush=True)
@@ -560,8 +614,11 @@ def main() -> int:
     print("preview-apify-index:", index_message, flush=True)
     social_status, social_message = run_apify_social_readiness_once(os.environ)
     print("preview-apify-social-readiness:", social_message, flush=True)
+    follow_audit_status, follow_audit_message = run_apify_one_follow_audit_once(os.environ)
+    print("preview-apify-one-follow-audit:", follow_audit_message, flush=True)
     return max(refresh_status, sim_status, reconciliation_status, collection_status,
-               readiness_status, apify_status, index_status, social_status)
+               readiness_status, apify_status, index_status, social_status,
+               follow_audit_status)
 
 if __name__ == "__main__":
     sys.exit(main())

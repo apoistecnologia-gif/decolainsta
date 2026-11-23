@@ -72,8 +72,23 @@ export async function GET(request:Request){
   });
  // Exactly ONE read-only remote inspection, with no Instagram credentials.
  const outcome=await inspectOneFollow(token,ORIGINAL_RUN_ID,OLD_USERNAME);
- if(outcome.status==='running'||outcome.status==='unavailable')
+ if(outcome.status==='running'||outcome.status==='unavailable'){
+  // A cost from Apify's authenticated run metadata is useful even if
+  // the dataset is inaccessible. Preserve it; never infer Instagram success.
+  if(outcome.costUsd!==null&&outcome.costUsd!==data.costUsd){
+   try{
+    const result=await prisma.activityLog.updateMany({
+     where:{id:row.id,instagramAccountId:accounts[0].id,
+      action:APIFY_ONE_FOLLOW_ACTION,
+      details:row.details,success:false},
+     data:{details:JSON.stringify({...data,costUsd:outcome.costUsd}),
+      success:false},
+    });
+    if(result.count!==1)return respond('concurrent');
+   }catch{return respond('unavailable');}
+  }
   return respond(outcome.status,{costUsd:outcome.costUsd});
+ }
  const state=outcome.status;
  const next={...data,state,costUsd:outcome.costUsd,
   providerReportedFollow:outcome.providerReportedFollow,

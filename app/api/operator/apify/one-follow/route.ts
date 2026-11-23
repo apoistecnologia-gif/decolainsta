@@ -4,6 +4,8 @@ export const runtime='nodejs';
 import {NextResponse} from 'next/server';
 import {auth} from '@/auth';
 import {prisma} from '@/lib/db';
+import {AUDIENCE_CANDIDATE_ACTION,MAX_QUEUE_ENTRIES_PER_SYNC} from '@/lib/reference-candidate-queue';
+import {planOneFollowFromSavedReferences} from '@/lib/providers/apify-pilot-candidate-selection';
 import {
  APIFY_ONE_FOLLOW_ACTOR,APIFY_ONE_FOLLOW_ACTION,APIFY_ONE_FOLLOW_MAX_USD,
  parseMinimalInstagramCookies,inspectOneFollow,
@@ -63,7 +65,7 @@ async function scope(){
   const accounts=await prisma.instagramAccount.findMany({
     where:{userId:uid,instagramUserId:ACCOUNT_INSTAGRAM_USER_ID},
     select:{id:true,username:true,instagramUserId:true,
-      status:true,cooldownUntil:true},take:2,
+      status:true,cooldownUntil:true,dryMode:true},take:2,
   });
   if(accounts.length!==1)return null;
   return accounts[0];
@@ -91,6 +93,57 @@ export async function GET(){
   const disabled=!oneShotEnabled();
   const cookieReady=hasValidCookies();
   const accountReady=allowedAccount(account);
+  // Reuse the saved candidate index. Disabled references and historical
+  // unverified candidates NEVER authorize a real Instagram action.
+  const [references,candidates,protectedRows,realActions,providerAttempts]=
+    await Promise.all([
+      prisma.targetAccount.findMany({
+        where:{instagramAccountId:account.id},
+        select:{id:true,username:true,enabled:true},take:101,
+      }),
+      prisma.activityLog.findMany({
+        where:{instagramAccountId:account.id,action:AUDIENCE_CANDIDATE_ACTION},
+        select:{id:true,targetUsername:true,details:true},
+        orderBy:[{createdAt:'asc'},{id:'asc'}],
+        take:MAX_QUEUE_ENTRIES_PER_SYNC+1,
+      }),
+      prisma.whitelist.findMany({
+        where:{instagramAccountId:account.id},
+        select:{username:true},take:2001,
+      }),
+      prisma.followAction.findMany({
+        where:{instagramAccountId:account.id,isDryRun:false},
+        select:{targetUsername:true},take:2001,
+      }),
+      prisma.activityLog.findMany({
+        where:{instagramAccountId:account.id,action:APIFY_ONE_FOLLOW_ACTION},
+        select:{targetUsername:true},take:101,
+      }),
+    ]);
+  const bounded=references.length<=100&&
+    candidates.length<=MAX_QUEUE_ENTRIES_PER_SYNC&&
+    protectedRows.length<=2000&&realActions.length<=2000&&
+    providerAttempts.length<=100;
+  const plan=bounded?planOneFollowFromSavedReferences({
+    identity:{instagramUserId:ACCOUNT_INSTAGRAM_USER_ID,
+      username:account.username,previousUsernames:[LEGACY_TARGET]},
+    references,candidates,
+    protectedUsernames:protectedRows.map(item=>item.username),
+    previouslyAttemptedUsernames:[
+      ...realActions.map(item=>item.targetUsername),
+      ...providerAttempts.flatMap(item=>item.targetUsername?[item.targetUsername]:[]),
+    ],
+  }):null;
+  const blockedReasons=[
+    !accountReady?'instagram-account-inactive':null,
+    account.dryMode?'simulation-mode':null,
+    !cookieReady?'instagram-cookies-not-configured':null,
+    !oneShotEnabled()?'pilot-flag-disabled':null,
+    (plan?.enabledReferences??0)===0?'no-enabled-references':null,
+    (plan?.eligibleCount??0)===0?'no-eligible-candidates':null,
+    attempt?.state==='launched'?'historical-run-unresolved':null,
+    !bounded?'queue-capacity-unverified':null,
+  ].filter((reason):reason is string=>reason!==null);
   return NextResponse.json({
     status:attempt?.state??'not-started',
     account:account.username,target:null,
@@ -99,6 +152,16 @@ export async function GET(){
     legacyConfigurationError:row?'self-follow-to-previous-username':null,
     configured:!disabled,
     cookieConfigured:cookieReady,accountReady,
+    dryMode:account.dryMode,
+    referenceReadiness:{
+      total:plan?.totalReferences??0,
+      enabled:plan?.enabledReferences??0,
+      eligibleCandidates:plan?.eligibleCount??0,
+      nextCandidateSelected:!!plan?.next,
+      bounded,
+      blockedReasons,
+      // Names are selected internally; the UI never needs raw leads.
+    },
     canLaunch:false,
     canInspect:!!attempt?.runId&&attempt.state==='launched',
     providerReportedFollow:attempt?.providerReportedFollow??false,

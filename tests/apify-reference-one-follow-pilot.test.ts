@@ -12,7 +12,9 @@ test('one-action pilot requires admin, Preview, same origin and explicit click',
  assert.match(s,/confirmRealInstagramAction!==true/);
  assert.match(s,/data\.operation==='inspect'/);
  assert.match(s,/startOneFollow\(/);
- assert.match(s,/account\.status==='active'/);
+ assert.match(s,/officialIdentityVerified/);
+ assert.match(s,/await getProfile\(active\.token,ACCOUNT_ID\)/);
+ assert.match(s,/\['active','inactive'\]\.includes\(account\.status\)/);
  assert.match(s,/PREVIEW_APIFY_ONE_FOLLOW_ENABLED==='yes'/);
  assert.match(s,/ACCOUNT_ID='17841411544892772'/);
 });
@@ -32,6 +34,7 @@ test('one transaction reserves before an external POST; never auto-retries',()=>
 test('never treats actor report as Instagram confirmation or auto-unfollow',()=>{
  const s=read();
  assert.match(s,/independentlyVerified:false/);
+ assert.match(s,/cookieSessionOwnerIndependentlyVerified:false/);
  assert.match(s,/automatedUnfollowEnabled:false/);
  assert.match(s,/instagramActionsConfirmed:0/);
  assert.match(s,/currentSessionOwnerVerifiedByProvider|accountReady/);

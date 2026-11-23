@@ -27,10 +27,14 @@ export function planOneFollowFromSavedReferences(input:Readonly<{
  protectedUsernames:readonly string[];
  previouslyAttemptedUsernames:readonly string[];
 }>):PilotSelection{
- const enabled=input.references.filter(ref=>ref.enabled&&
+ // A registered source is usable for READ-ONLY planning even when its
+ // collector switch is disabled (new references default to enabled:false).
+ // This DOES NOT grant permission to start scraping or to perform a follow.
+ const registered=input.references.filter(ref=>
   /^[a-zA-Z0-9_-]{1,100}$/.test(ref.id)&&
   validUsername(ref.username.toLowerCase()));
- const names=new Map(enabled.map(ref=>[ref.id,ref.username.toLowerCase()]));
+ const enabled=registered.filter(ref=>ref.enabled);
+ const names=new Map(registered.map(ref=>[ref.id,ref.username.toLowerCase()]));
  const excluded=new Set([
   ...input.references.map(ref=>ref.username),
   ...input.protectedUsernames,...input.previouslyAttemptedUsernames,

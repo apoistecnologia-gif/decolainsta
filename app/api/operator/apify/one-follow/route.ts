@@ -69,7 +69,9 @@ async function scope(){
   return accounts[0];
 }
 const allowedAccount=(a:NonNullable<Awaited<ReturnType<typeof scope>>>):boolean=>
-  !!a.instagramUserId&&!['banned','checkpoint','cooldown'].includes(a.status)&&
+  // Only an explicitly active DB connection is eligible. Inactive/unknown
+  // states must NOT be shown as proof that an Instagram session works.
+  !!a.instagramUserId&&a.status==='active'&&
   (!a.cooldownUntil||a.cooldownUntil.getTime()<Date.now());
 const oneShotEnabled=()=>process.env.VERCEL_ENV==='preview'&&
   process.env.PREVIEW_APIFY_ONE_FOLLOW_ENABLED==='yes';

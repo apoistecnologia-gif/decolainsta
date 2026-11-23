@@ -171,11 +171,16 @@ export async function inspectOneFollow(
     const url=new URL('https://api.apify.com/v2/datasets/'+data.defaultDatasetId+'/items');
     url.searchParams.set('format','json');
     url.searchParams.set('limit','2');
-    const response=await fetcher(url.toString(),{
-      method:'GET',headers:headers(token),cache:'no-store',
-      credentials:'omit',redirect:'error',signal:AbortSignal.timeout(10000),
-    });
-    if(!response.ok)return unavailable;
+    // A finished run can expose a billable amount even when its dataset is
+    // unavailable. Preserve that provider cost without claiming a follow.
+    let response:Response;
+    try{
+      response=await fetcher(url.toString(),{
+        method:'GET',headers:headers(token),cache:'no-store',
+        credentials:'omit',redirect:'error',signal:AbortSignal.timeout(10000),
+      });
+    }catch{return {...unavailable,costUsd:cost};}
+    if(!response.ok)return {...unavailable,costUsd:cost};
     const items=await boundedJson(response);
     if(!Array.isArray(items)||items.length!==1)
       return {status:'ambiguous',costUsd:cost,providerReportedFollow:false};

@@ -12,6 +12,9 @@ type Readiness={
  cookieConfigured:boolean;tokenConfigured:boolean;
  historicalRunResolved:boolean;globallyInDryMode:boolean;
  canLaunch:boolean;canInspect:boolean;providerReportedFollow:boolean;
+ operatorObservedRelationship:'requested_pending'|'unknown';
+ observationSource:'operator_reported_instagram_ui'|null;
+ followAcceptedConfirmed:false;
  followIndependentlyVerified:false;unfollowEnabled:false;
  maxActionsPerRun:1;maxTotalChargeUsd:number;costUsd:number|null;
 };
@@ -102,7 +105,13 @@ export function ApifyReferenceOneFollowPilot(){
      Não alteraremos o status da conta artificialmente.
     </p>}
    {data.providerReportedFollow&&<p>
-     Sucesso informado pelo Actor ainda exige confirmação independente.
+     Sucesso informado pelo Actor exige conferência do estado real no Instagram.
+    </p>}
+   {data.operatorObservedRelationship==='requested_pending'&&
+    <p role="status" className="font-medium">
+     Observação informada pelo titular: aparece “Solicitado” no Instagram.
+     O pedido de seguir foi enviado, mas ainda não foi aceito.
+     Nenhum follow aceito nem unfollow automático foi confirmado.
     </p>}
   </div>}
   <div className="flex flex-wrap gap-2">

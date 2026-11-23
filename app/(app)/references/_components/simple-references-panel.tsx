@@ -11,6 +11,7 @@ import { ApifyPilotConnection } from './apify-pilot-connection';
 import { ApifySocialReadiness } from './apify-social-readiness';
 import { ApifyOneFollowTest } from './apify-one-follow-test';
 import { ApifyReferenceOneFollowPilot } from './apify-reference-one-follow-pilot';
+import { ApifyPendingRequestCancelTest } from './apify-pending-request-cancel-test';
 import { FollowPreviewControls } from './follow-preview-controls';
 
 type Account = { id: string; username: string; connected?: boolean; profileFollowersCount?: number | null; lastSyncedAt?: string | null };
@@ -430,6 +431,7 @@ export function SimpleReferencesPanel() {
       {selectedAccount?.connected && <ApifySocialReadiness />}
       {selectedAccount?.connected && <ApifyOneFollowTest />}
       {selectedAccount?.connected && <ApifyReferenceOneFollowPilot />}
+      {selectedAccount?.connected && <ApifyPendingRequestCancelTest />}
       {selectedAccount?.connected&&<FollowPreviewControls accountId={accountId} />}
       <Card>
         <CardHeader>

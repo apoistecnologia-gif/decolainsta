@@ -10,14 +10,14 @@ export const APIFY_UNFOLLOW_DELAY_HOURS=48;
 export type UnfollowDecisionReason=
  |'unverified-follow'|'invalid-time'|'own-account'|'missing-target-id'
  |'protected'|'prior-unfollow'|'following-not-confirmed'
- |'reciprocity-unknown'|'retain-mutual'|'before-48h'
+ |'reciprocity-unknown'|'retain-mutual'|'before-48h'|'pending-request'
  |'ready-for-manual-approval';
 export type UnfollowPolicy='retain-mutuals'|'unfollow-after-48h';
 export type UnfollowEvidence=Readonly<{
  identity:InstagramExecutorIdentity;
  targetUsername:string;targetInstagramUserId:string|null;
  followedAt:string|null;followIndependentlyVerified:boolean;
- currentlyFollowing:boolean|null;
+ currentlyFollowing:boolean|null;pendingRequest?:boolean;
  reciprocityVerified:boolean;followedBack:boolean|null;
  protectedAccount:boolean;anyPriorUnfollowAttempt:boolean;
  policy:UnfollowPolicy;
@@ -50,6 +50,9 @@ export function evaluateUnfollowEligibility(
     return deny('missing-target-id');
   if(evidence.protectedAccount)return deny('protected');
   if(evidence.anyPriorUnfollowAttempt)return deny('prior-unfollow');
+  // A sent but unaccepted follow request is NOT an established follow.
+  // Do not call unfollow while this relationship remains pending.
+  if(evidence.pendingRequest===true)return deny('pending-request');
   if(evidence.currentlyFollowing!==true)
     return deny('following-not-confirmed');
   if(!evidence.reciprocityVerified||evidence.followedBack===null)

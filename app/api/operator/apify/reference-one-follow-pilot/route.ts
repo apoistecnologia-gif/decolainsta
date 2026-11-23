@@ -149,6 +149,7 @@ function publicReadiness(account:Account,ctx:Awaited<ReturnType<typeof candidate
  return {
   status:receipt?.state??'not-started',
   account:account.username,
+  targetUsername:receipt?.targetUsername??null,
   candidateReference:ctx.plan?.next?.referenceUsername??null,
   readyCandidates:ctx.plan?.eligibleCount??0,
   registeredReferences:ctx.plan?.totalReferences??0,
@@ -215,6 +216,7 @@ export async function POST(req:Request){
   if(changed?.count!==1)return BLOCKED(409,'Consulta simultânea ou indisponível');
   return NextResponse.json({
    status:next.state,costUsd:next.costUsd,
+   targetUsername:next.targetUsername,
    providerReportedFollow:next.providerReportedFollow,
    followIndependentlyVerified:false,unfollowEnabled:false,
    instagramActionsConfirmed:0,
@@ -277,6 +279,7 @@ export async function POST(req:Request){
  }).catch(()=>null);
  return NextResponse.json({
   status:written?.count===1?next.state:'unconfirmed',
+  targetUsername:written?.count===1?next.targetUsername:null,
   actorRunsLaunched:result.status==='queued'?1:0,
   instagramActionsConfirmed:0,
   followIndependentlyVerified:false,

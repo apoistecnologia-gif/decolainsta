@@ -7,7 +7,9 @@ type Readiness={
  status:string;account:string;targetUsername:string|null;
  candidateReference:string|null;readyCandidates:number;
  registeredReferences:number;collectorEnabledReferences:number;
- accountReady:boolean;cookieConfigured:boolean;tokenConfigured:boolean;
+ accountReady:boolean;officialMetaIdentityVerified:boolean;
+ cookieSessionOwnerIndependentlyVerified:false;
+ cookieConfigured:boolean;tokenConfigured:boolean;
  historicalRunResolved:boolean;globallyInDryMode:boolean;
  canLaunch:boolean;canInspect:boolean;providerReportedFollow:boolean;
  followIndependentlyVerified:false;unfollowEnabled:false;
@@ -80,8 +82,9 @@ export function ApifyReferenceOneFollowPilot(){
     Candidatos disponíveis para análise: {data.readyCandidates}.</p>
    <p>Origem prevista: {data.candidateReference
     ?'@'+data.candidateReference:'nenhuma referência disponível'}.</p>
-   <p>Conta Instagram: {data.accountReady?'ativa':'inativa ou não validada'}.
-    Configuração da sessão Apify: {data.cookieConfigured?'presente':'ausente'}.
+   <p>Identidade oficial Meta: {data.officialMetaIdentityVerified
+    ?'verificada':'não verificada'}.
+    Cookies para Apify: {data.cookieConfigured?'presentes (validade não comprovada)':'ausentes'}.
    </p>
    <p>Resultado anterior: {data.historicalRunResolved?'resolvido':'pendente'}.
     Estado do novo teste: {labels[data.status]??data.status}</p>
@@ -94,8 +97,9 @@ export function ApifyReferenceOneFollowPilot(){
     </p>}
    {data.costUsd!==null&&<p>Custo informado: US$ {data.costUsd.toFixed(5)}.</p>}
    {!data.accountReady&&<p role="status">
-     Para permitir o teste, a conexão da conta precisa ser validada como ativa.
-     Não vamos alterar esse estado artificialmente no banco.
+     Para permitir o teste, a identidade oficial precisa ser validada
+     novamente e as demais condições de segurança devem estar atendidas.
+     Não alteraremos o status da conta artificialmente.
     </p>}
    {data.providerReportedFollow&&<p>
      Sucesso informado pelo Actor ainda exige confirmação independente.

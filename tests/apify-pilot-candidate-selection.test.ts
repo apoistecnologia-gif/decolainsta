@@ -17,14 +17,15 @@ const evidence=JSON.stringify(makeApifyCandidateEvidence(
 const item=(id:string,targetUsername:string,details=evidence)=>
  ({id,targetUsername,details});
 
-test('saved references disabled: no selection, no actions',()=>{
+test('disabled collection flag preserves saved candidates for read-only planning',()=>{
  const plan=planOneFollowFromSavedReferences({
   identity,references:[{...reference,enabled:false}],
   candidates:[item('a','perfil_publico_teste')],
   protectedUsernames:[],previouslyAttemptedUsernames:[],
  });
  assert.deepEqual(plan,{totalReferences:1,enabledReferences:0,
-  eligibleCount:0,next:null});
+  eligibleCount:1,next:{username:'perfil_publico_teste',
+   referenceUsername:'prefeituradepetrolina'}});
 });
 
 test('one candidate automatically chosen only from enabled, matching reference',()=>{
@@ -79,7 +80,7 @@ test('Preview status uses real saved references and never launches follow',()=>{
  assert.match(route,/historical-run-unresolved/);
  assert.match(route,/canLaunch:false/);
  assert.match(ui,/Referências cadastradas:/);
- assert.match(ui,/Candidatos das referências ativas/);
+ assert.match(ui,/Candidatos das referências cadastradas/);
  assert.match(ui,/Novo follow bloqueado/);
  assert.doesNotMatch(route,/startOneFollow\(/);
 });
